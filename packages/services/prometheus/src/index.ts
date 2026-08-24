@@ -38,8 +38,18 @@ import {
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
-  /** Prometheus HTTP base, e.g. `http://localhost:9090`. */
+  /** Prometheus HTTP base, e.g. `http://localhost:9090`. Unused in grafana-proxy mode. */
   endpoint: string
+  /**
+   * Grafana base URL, e.g. `https://grafana.cn-0.dev.novo-one.com`. When set,
+   * PromQL goes through Grafana's `/api/ds/query` datasource proxy (the
+   * deployment queries Prometheus exclusively through Grafana — the raw
+   * Prometheus API is not exposed). Username/password/token refs then apply
+   * to the Grafana side.
+   */
+  grafanaEndpoint?: string
+  /** Prometheus datasource uid inside Grafana, default `prometheus`. */
+  datasourceUid?: string
   /** Credential reference for the Bearer token, e.g. `PROMETHEUS_PRODUCTION_TOKEN`. */
   tokenRef?: string
   /** Credential reference for the Basic-auth username. */
@@ -58,7 +68,9 @@ export interface Config {
 
 export class PrometheusService extends Service {
   static Config: z<Config> = z.object({
-    endpoint: endpointField('Prometheus HTTP 地址，如 http://localhost:9090'),
+    endpoint: endpointField('Prometheus HTTP 地址，如 http://localhost:9090（grafana 代理模式下不用）'),
+    grafanaEndpoint: z.string().description('Grafana 地址；设置后 PromQL 经 /api/ds/query 代理查询（该部署的 Prometheus 只经 Grafana 暴露）'),
+    datasourceUid: z.string().default('prometheus').description('Grafana 内 Prometheus 数据源 uid，默认 prometheus'),
     tokenRef: credentialRefField('Bearer token 的凭据引用，如 PROMETHEUS_PRODUCTION_TOKEN'),
     usernameRef: credentialRefField('Basic 认证用户名的凭据引用'),
     passwordRef: credentialRefField('Basic 认证密码的凭据引用'),
@@ -70,6 +82,8 @@ export class PrometheusService extends Service {
 
   /** Configured base URL with trailing slashes stripped (the original `rstrip("/")`). */
   readonly endpoint: string
+  /** Grafana proxy base when configured, trailing slashes stripped. */
+  readonly grafanaEndpoint: string
   private readonly timeoutMs: number
 
   constructor(ctx: Context, config: Config = { endpoint: '' }) {
@@ -77,6 +91,7 @@ export class PrometheusService extends Service {
     // The schema already defaulted optional fields under the Loader; the ??
     // narrows the type for direct (non-Loader) construction in tests.
     this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
+    this.grafanaEndpoint = (config.grafanaEndpoint ?? '').replace(/\/+$/, '')
     this.timeoutMs = config.timeoutMs ?? 30_000
     this.config = config
   }
@@ -147,31 +162,137 @@ export class PrometheusService extends Service {
     }
   }
 
+  /** True when PromQL goes through the Grafana datasource proxy. */
+  get proxied(): boolean {
+    return this.grafanaEndpoint.length > 0
+  }
+
+  /** Constructed grafana proxy request body, for tests and dry-run evidence. */
+  buildProxyBody(query: string, startSec: number, endSec: number): Record<string, unknown> {
+    return {
+      from: `${Math.round(startSec * 1000)}`,
+      to: `${Math.round(endSec * 1000)}`,
+      queries: [{
+        refId: 'A',
+        expr: query,
+        range: true,
+        datasource: { type: 'prometheus', uid: this.config.datasourceUid ?? 'prometheus' },
+      }],
+    }
+  }
+
   /**
-   * GET `/api/v1/query_range`.
-   * @param query - final PromQL expression.
-   * @param start - range start, UTC seconds.
-   * @param end - range end, UTC seconds.
-   * @param step - query resolution step, e.g. `15s`.
-   * @returns the raw parsed Prometheus response envelope.
+   * Range query. Direct mode: GET `/api/v1/query_range` (original port).
+   * Grafana-proxy mode: POST `/api/ds/query`, converting the Grafana frames
+   * back into the Prometheus `query_range` envelope so downstream parsing
+   * (tool layer, evidence shape) is mode-agnostic.
    */
   async queryRange(query: string, start: number, end: number, step: string): Promise<unknown> {
-    const params = new URLSearchParams({
-      query,
-      start: formatPyFloat(start),
-      end: formatPyFloat(end),
-      step,
-    })
-    return this.getJson(`${this.endpoint}/api/v1/query_range?${params.toString()}`)
+    if (!this.proxied) {
+      const params = new URLSearchParams({
+        query,
+        start: formatPyFloat(start),
+        end: formatPyFloat(end),
+        step,
+      })
+      return this.getJson(`${this.endpoint}/api/v1/query_range?${params.toString()}`)
+    }
+
+    const headers: Record<string, string> = {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      ...await this.authHeaders(),
+    }
+    const body = JSON.stringify(this.buildProxyBody(query, start, end))
+    let resp: Response
+    try {
+      resp = await fetch(`${this.grafanaEndpoint}/api/ds/query`, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(this.timeoutMs),
+      })
+    } catch (cause) {
+      throw new Error(`请求 Prometheus 失败: ${cause instanceof Error ? cause.message : String(cause)}`)
+    }
+    if (!resp.ok) {
+      const detail = await resp.text()
+      throw new Error(`Grafana HTTP ${resp.status}: ${detail}`)
+    }
+    let payload: unknown
+    try {
+      payload = await resp.json()
+    } catch (cause) {
+      throw new Error(`请求 Prometheus 失败: ${cause instanceof Error ? cause.message : String(cause)}`)
+    }
+    return framesToQueryRangeEnvelope(payload)
   }
 
   /**
    * GET `/api/v1/rules` (alerting and recording rules with current state).
-   * @returns the raw parsed Prometheus response envelope.
+   * The Grafana datasource proxy has no equivalent for the rules API, so
+   * proxy mode fails loudly instead of pretending.
    */
   async rules(): Promise<unknown> {
+    if (this.proxied) {
+      throw new Error('告警查询需要直连 Prometheus API（/api/v1/rules）；当前为 grafana 代理模式，告警接口不可达')
+    }
     return this.getJson(`${this.endpoint}/api/v1/rules`)
   }
+}
+
+/**
+ * Convert a Grafana `/api/ds/query` response (arrow-style frames) into the
+ * Prometheus `/api/v1/query_range` envelope `{status, data:{result:[...]}}`:
+ * each frame becomes one series `{metric: labels, values: [[ts, str(v)]…]}`.
+ * Unknown shapes yield an empty success envelope — the downstream parser
+ * treats "no series" as zero data points, matching direct mode.
+ */
+export function framesToQueryRangeEnvelope(payload: unknown): unknown {
+  const result: { metric: Record<string, string>; values: [number, string][] }[] = []
+  if (typeof payload === 'object' && payload !== null) {
+    const results = (payload as Record<string, unknown>)['results']
+    if (typeof results === 'object' && results !== null) {
+      for (const frameSet of Object.values(results as Record<string, unknown>)) {
+        if (typeof frameSet !== 'object' || frameSet === null) continue
+        const frames = (frameSet as Record<string, unknown>)['frames']
+        if (!Array.isArray(frames)) continue
+        for (const frame of frames) {
+          if (typeof frame !== 'object' || frame === null) continue
+          const record = frame as Record<string, unknown>
+          const schema = typeof record['schema'] === 'object' && record['schema'] !== null
+            ? record['schema'] as Record<string, unknown>
+            : {}
+          const fields = Array.isArray(schema['fields']) ? schema['fields'] as Record<string, unknown>[] : []
+          const data = typeof record['data'] === 'object' && record['data'] !== null
+            ? record['data'] as Record<string, unknown>
+            : {}
+          const columns = Array.isArray(data['values']) ? data['values'] as unknown[][] : []
+          if (fields.length < 2 || columns.length < 2) continue
+
+          // Frame layout: field[0]/column[0] = Time, field[1]/column[1] = value.
+          const labels = typeof fields[1]?.['labels'] === 'object' && fields[1]!['labels'] !== null
+            ? fields[1]!['labels'] as Record<string, unknown>
+            : {}
+          const metric: Record<string, string> = {}
+          for (const [k, v] of Object.entries(labels)) {
+            if (typeof v === 'string') metric[k] = v
+          }
+          const times = columns[0] ?? []
+          const values = columns[1] ?? []
+          const pairs: [number, string][] = []
+          for (let i = 0; i < Math.min(times.length, values.length); i++) {
+            const ts = Number(times[i])
+            if (!Number.isFinite(ts)) continue
+            const raw = values[i]
+            pairs.push([ts, typeof raw === 'string' ? raw : String(raw)])
+          }
+          result.push({ metric, values: pairs })
+        }
+      }
+    }
+  }
+  return { status: 'success', data: { resultType: 'matrix', result } }
 }
 
 /**

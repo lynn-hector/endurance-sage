@@ -18,32 +18,41 @@
 
 /**
  * Built-in metric templates. Key is the short name accepted in `metrics`;
- * value is `[promql template, unit]`, matching the original
- * `_METRIC_TEMPLATES` table row for row.
+ * value is `[promql template, unit]`.
+ *
+ * DEVIATION FROM THE SCRIPT ERA (validated live against the cluster):
+ * the original templates used `http_requests_total{service="%s"}` — that
+ * metric/label does not exist here. The deployment exposes metrics only
+ * through Grafana (datasource uid `prometheus`), series carry the label
+ * `app`, HTTP RED metrics follow the Spring naming
+ * (`http_server_requests_seconds_*` with `status`/`outcome` labels, present
+ * on the Java services), and the Go commctl services expose only
+ * `go_*`/`process_*`/business metrics — RED short names may return empty
+ * for them, which is an honest zero, not an error.
  */
 export const METRIC_TEMPLATES: Record<string, readonly [string, string]> = {
   qps: [
-    'rate(http_requests_total{service="%s"}[1m])',
+    'sum(rate(http_server_requests_seconds_count{app="%s"}[1m]))',
     'req/s',
   ],
   latency_p99: [
-    'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="%s"}[1m]))',
+    'histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{app="%s"}[1m])))',
     's',
   ],
   latency_p95: [
-    'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service="%s"}[1m]))',
+    'histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{app="%s"}[1m])))',
     's',
   ],
   error_rate: [
-    'rate(http_requests_total{service="%s",status=~"5.."}[1m]) / rate(http_requests_total{service="%s"}[1m])',
+    'sum(rate(http_server_requests_seconds_count{app="%s",status=~"5.."}[1m])) / sum(rate(http_server_requests_seconds_count{app="%s"}[1m]))',
     'ratio',
   ],
   cpu: [
-    'rate(process_cpu_seconds_total{service="%s"}[1m])',
-    'ratio',
+    'rate(process_cpu_seconds_total{app="%s"}[1m])',
+    'cores',
   ],
   memory: [
-    'process_resident_memory_bytes{service="%s"}',
+    'process_resident_memory_bytes{app="%s"}',
     'bytes',
   ],
 }
@@ -62,15 +71,15 @@ export function buildPromql(metricName: string, service?: string): string {
   const template = METRIC_TEMPLATES[metricName]
   if (template !== undefined) {
     if (service) return template[0].replaceAll('%s', service)
-    // No service: strip the exact `{service="%s"}` clause. Note error_rate's
-    // clause is `{service="%s",status=~"5.."}` and survives — original quirk,
+    // No service: strip the exact `{app="%s"}` clause. Note error_rate's
+    // clause is `{app="%s",status=~"5.."}` and survives — script-era quirk
     // kept deliberately (see module doc).
-    return template[0].replaceAll('{service="%s"}', '')
+    return template[0].replaceAll('{app="%s"}', '')
   }
 
   let expr = metricName
   if (service && !expr.includes('{') && !expr.includes('}')) {
-    expr = `${expr}{service="${service}"}`
+    expr = `${expr}{app="${service}"}`
   }
   return expr
 }
@@ -205,7 +214,7 @@ export function extractFiringAlerts(raw: unknown, service?: string): AlertRecord
         const alertRecord = asRecord(alert)
         if (alertRecord === undefined) continue
         const labels = asRecord(alertRecord['labels']) ?? {}
-        if (service && labels['service'] !== service) continue
+        if (service && labels['service'] !== service && labels['app'] !== service) continue
         alerts.push({
           name,
           state,

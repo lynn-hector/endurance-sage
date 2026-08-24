@@ -42,7 +42,11 @@
     - id: sentry-prometheus
       name: '@dsh-sentry/service-prometheus'
       config:
-        endpoint: http://localhost:9090   # [占位] 原项目模板值，无真实远程 Prometheus
+        endpoint: ''   # 未使用：Prometheus 只经 Grafana 数据源代理暴露
+        grafanaEndpoint: https://grafana.cn-0.dev.novo-one.com
+        datasourceUid: prometheus
+        usernameRef: GRAFANA_LOCAL_USERNAME
+        passwordRef: GRAFANA_LOCAL_PASSWORD
 
     - id: sentry-tool-metrics-inspector
       name: '@dsh-sentry/tool-metrics-inspector'

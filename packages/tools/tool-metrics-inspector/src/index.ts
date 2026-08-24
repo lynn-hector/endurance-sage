@@ -122,7 +122,7 @@ export function apply(ctx: Context, config: Config): void {
         default: [...DEFAULT_METRICS],
         description: `Metric short names or raw PromQL expressions. Defaults to ${DEFAULT_METRICS.join(',')}.`,
       },
-      service: { type: 'string', description: 'Service name, used for the {service="..."} label filter.' },
+      service: { type: 'string', description: 'Service name, matched against the `app` label on this cluster.' },
       step: { type: 'string', default: DEFAULT_STEP, description: `Query resolution step. Defaults to ${DEFAULT_STEP}.` },
       dryRun: { type: 'boolean', default: false, description: 'Only return the constructed requests, do not send.' },
       demo: { type: 'boolean', default: false, description: 'Return fixed demo data without connecting to Prometheus.' },
@@ -136,7 +136,7 @@ export function apply(ctx: Context, config: Config): void {
       const serviceLabel = service || 'all'
 
       // Original ordering: endpoint check first, then demo, then time parsing.
-      if (ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_METRIC)
+      if (!ctx.prometheus.proxied && ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_METRIC)
 
       if (args.demo === true) {
         // The original demo path used the raw (untrimmed) --metrics split.
@@ -304,6 +304,15 @@ export function apply(ctx: Context, config: Config): void {
       // drift, ported verbatim (see module doc and promql.ts).
 
       // Original ordering: endpoint check first, then demo.
+      if (ctx.prometheus.proxied) {
+        return buildEvidence({
+          source: SOURCE, type: TYPE_ALERT,
+          data: { env: config.env, alerts: [], error: '告警查询需要直连 Prometheus /api/v1/rules；当前为 grafana 代理模式，告警接口不可达' },
+          summary: '告警查询在 grafana 代理模式下不可用',
+          confidence: 0,
+          refs: [`env:${config.env}:prometheus`],
+        }) as unknown as JsonValue
+      }
       if (ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_ALERT)
 
       if (args.demo === true) {

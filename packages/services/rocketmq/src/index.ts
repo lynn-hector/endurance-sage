@@ -55,7 +55,7 @@ export interface Config {
   /** RocketMQ Console base URL (must be http(s), not a nameserver address). */
   endpoint: string
   /** Console login username (the original `console_username` fallback `username`). */
-  username: string
+  username?: string
   /** Credential reference for the console username, e.g. `ROCKETMQ_LOCAL_USERNAME`. Wins over the literal. */
   usernameRef?: string
   /** Credential reference for the console login password, e.g. `ROCKETMQ_CONSOLE_PASSWORD`. */

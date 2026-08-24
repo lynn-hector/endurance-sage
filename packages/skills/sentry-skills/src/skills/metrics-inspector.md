@@ -35,20 +35,25 @@
 | `step` | 否 | `15s` | Prometheus 查询步长 |
 | `demo` | 否 | `false` | 返回演示数据，不连接 Prometheus |
 
-内置指标短名：
+查询经 Grafana 数据源代理（datasource uid `prometheus`），认证与链路查询共用 Grafana 凭据。
 
-| 短名 | 含义 | 单位 |
+内置指标短名（模板已按集群实际指标校准——标签是 `app`，HTTP 指标为 Spring 命名）：
+
+| 短名 | PromQL 要点 | 单位 |
 | --- | --- | --- |
-| `qps` | 每秒请求数 | req/s |
-| `latency_p99` | P99 延迟 | s |
-| `latency_p95` | P95 延迟 | s |
-| `error_rate` | 5xx 错误率 | ratio |
-| `cpu` | CPU 使用率 | ratio |
-| `memory` | 常驻内存 | bytes |
+| `qps` | `rate(http_server_requests_seconds_count{app="%s"}[1m])` | req/s |
+| `latency_p99` | `http_server_requests_seconds_bucket` 的 0.99 分位 | s |
+| `latency_p95` | 同上 0.95 | s |
+| `error_rate` | `status=~"5.."` 计数占比 | ratio |
+| `cpu` | `rate(process_cpu_seconds_total{app="%s"}[1m])` | cores |
+| `memory` | `process_resident_memory_bytes{app="%s"}` | bytes |
 
-**注意**：`error_rate` 必须提供 `service`——不带 service 时模板中的 `{service="%s"}` 不会被替换，会生成带字面量 `%s` 的非法 PromQL（原实现如此，已知的兼容性怪癖）。
+集群现实（重要）：
+- **HTTP RED 指标只存在于 Java 服务**（ai-voice/push/platform/infrastructure）。Go 的 commctl 服务只暴露 `go_*`/`process_*`/业务指标（如 `novo_novo_commctl_config_*`）——对它们查 qps/latency/error_rate 返回空序列是**真实零值**，不是错误；cpu/memory 全服务可用。
+- `error_rate` 必须提供 `service`——不带时模板中 `{app="%s",status=~"5.."}` 不会被替换，生成带字面量 `%s` 的非法 PromQL（原实现怪癖，保留）。
+- **告警查询（`sentry_list_alerts`）在 grafana 代理模式下不可用**：`/api/v1/rules` 没有代理等价物，会返回 confidence 0 的说明性错误。
 
-自定义 PromQL：直接把表达式放进 `metrics` 数组；表达式不含大括号且提供 `service` 时会自动追加 `{service="..."}` 过滤。
+自定义 PromQL：直接把表达式放进 `metrics` 数组；表达式不含大括号且提供 `service` 时会自动追加 `{app="..."}` 过滤。查 Go 服务业务指标时直接写全名，如 `rate(novo_novo_commctl_config_fs_event_dead_letter_total[5m])`。
 
 ### sentry_list_alerts — 查询告警
 

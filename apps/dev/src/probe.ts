@@ -12,6 +12,7 @@ import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import RocketMqService from '@dsh-sentry/service-rocketmq'
 import DbxService from '@dsh-sentry/service-dbx'
 import TraceService from '@dsh-sentry/service-trace'
+import PrometheusService from '@dsh-sentry/service-prometheus'
 
 const which = process.argv[2] ?? ''
 if (which === '') {
@@ -20,7 +21,7 @@ if (which === '') {
 }
 
 const ctx = new Context()
-await ctx.plugin(LocalCredentialProvider as never)
+await ctx.plugin(LocalCredentialProvider, undefined as never)
 
 function maskSecrets(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(maskSecrets)
@@ -68,6 +69,20 @@ try {
     })
     const session = await ctx.rocketmq.ensureSession()
     console.log(`ROCKETMQ PROBE OK — session established (jsessionid length ${session.jsessionid.length})`)
+  } else if (which === 'prometheus') {
+    await ctx.plugin(PrometheusService, {
+      endpoint: '',
+      grafanaEndpoint: 'https://grafana.cn-0.dev.novo-one.com',
+      usernameRef: 'GRAFANA_LOCAL_USERNAME',
+      passwordRef: 'GRAFANA_LOCAL_PASSWORD',
+    })
+    const endSec = Math.floor(Date.now() / 1000)
+    const envelope = await ctx.prometheus.queryRange('up', endSec - 600, endSec, '60s')
+    const result = (envelope as { data: { result: { metric: Record<string, string>; values: unknown[][] }[] } }).data.result
+    console.log(`PROMETHEUS PROBE OK — 'up' returned ${result.length} series`)
+    for (const series of result.slice(0, 3)) {
+      console.log(`  labels=${JSON.stringify(series.metric)} points=${series.values.length}`)
+    }
   } else {
     console.error(`unknown probe target: ${which}`)
     process.exit(2)
