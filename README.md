@@ -2,9 +2,9 @@
 
 endurance-sentry 的 Cordis 插件化重构仓库：以 DSH（deepseek-harness）原生 Cordis 插件模式，把原项目的 AIOps 能力包（8 个 skill + 共享库 + 模板 + 方法论）重写为有生命周期、有依赖注入、配置带 schema 校验的 TypeScript 插件体系。
 
-重构计划与现状评估见 [`docs/refactor-plan.md`](docs/refactor-plan.md)。
+重构计划与现状评估见 [`docs/refactor-plan.md`](docs/refactor-plan.md)。通过 DSH 启动（headless CLI / web GUI 两种方式）见 [`docs/runbook.md`](docs/runbook.md)。
 
-## 当前状态：Phase 0 已完成
+## 当前状态：Phase 2 已完成（log-analyzer 样板端到端打通，真实数据已验证）
 
 monorepo 骨架已搭好，插件注册双路径已验证：
 
