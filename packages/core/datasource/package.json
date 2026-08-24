@@ -1,0 +1,25 @@
+{
+  "name": "@dsh-sentry/datasource",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared config-schema fields and credential resolution for dsh-sentry datasource plugins.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.7",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
