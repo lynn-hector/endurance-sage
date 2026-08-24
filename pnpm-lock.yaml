@@ -95,6 +95,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: ^0.1.0-rc.7
         version: 0.1.0-rc.7(a82b8abf74c7bffecdcd6d61d381e4b7)
+      '@dsh-sentry/service-dbx':
+        specifier: workspace:*
+        version: link:../../packages/services/dbx
       '@dsh-sentry/service-greptimedb':
         specifier: workspace:*
         version: link:../../packages/services/greptimedb
@@ -104,6 +107,9 @@ importers:
       '@dsh-sentry/service-trace':
         specifier: workspace:*
         version: link:../../packages/services/trace
+      '@dsh-sentry/tool-db-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-db-inspector
       '@dsh-sentry/tool-hello':
         specifier: workspace:*
         version: link:../../packages/tools/tool-hello
@@ -113,6 +119,9 @@ importers:
       '@dsh-sentry/tool-metrics-inspector':
         specifier: workspace:*
         version: link:../../packages/tools/tool-metrics-inspector
+      '@dsh-sentry/tool-redis-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-redis-inspector
       '@dsh-sentry/tool-trace-analyzer':
         specifier: workspace:*
         version: link:../../packages/tools/tool-trace-analyzer

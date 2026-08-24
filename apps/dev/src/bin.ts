@@ -11,12 +11,15 @@ import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import DbxService from '@dsh-sentry/service-dbx'
 import GreptimeDbService from '@dsh-sentry/service-greptimedb'
 import PrometheusService from '@dsh-sentry/service-prometheus'
 import TraceService from '@dsh-sentry/service-trace'
+import * as dbInspector from '@dsh-sentry/tool-db-inspector'
 import * as hello from '@dsh-sentry/tool-hello'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
 import * as metricsInspector from '@dsh-sentry/tool-metrics-inspector'
+import * as redisInspector from '@dsh-sentry/tool-redis-inspector'
 import * as traceAnalyzer from '@dsh-sentry/tool-trace-analyzer'
 
 const root = new Context()
@@ -39,13 +42,19 @@ await root.plugin(TraceService, {
 await root.plugin(traceAnalyzer, { env: 'local', datasourceUid: 'GreptimeDB-Jaeger' })
 await root.plugin(PrometheusService, { endpoint: 'http://prometheus.example.invalid' })
 await root.plugin(metricsInspector, { env: 'local' })
+await root.plugin(DbxService, {
+  endpoint: 'https://dbx.example.invalid',
+  passwordRef: 'DBX_REDIS_PASSWORD',
+})
+await root.plugin(dbInspector, { env: 'local', database: 'novo_commctl_config' })
+await root.plugin(redisInspector, { env: 'local' })
 
 const tool = root.tools.get('sentry_hello')
 if (tool === undefined) {
   throw new Error('FAIL: tool "sentry_hello" was not registered')
 }
 
-for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts']) {
+for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis']) {
   if (root.tools.get(name) === undefined) {
     throw new Error(`FAIL: tool "${name}" was not registered`)
   }
@@ -58,7 +67,7 @@ if (!skills.some(skill => skill.name === 'sentry-hello')) {
 
 console.log('Phase 0 OK')
 console.log('tool parameters:', JSON.stringify(tool.parameters))
-console.log('tools:', ['sentry_hello', 'sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts'].join(', '))
+console.log('tools:', ['sentry_hello', 'sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis'].join(', '))
 console.log('skills:', skills.map(skill => skill.name).join(', '))
 
 await root.fiber.dispose()

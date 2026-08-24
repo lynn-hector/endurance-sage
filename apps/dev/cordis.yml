@@ -53,3 +53,20 @@
   name: '@dsh-sentry/tool-metrics-inspector'
   config:
     env: local
+
+- id: sentry-dbx
+  name: '@dsh-sentry/service-dbx'
+  config:
+    endpoint: https://dbx.example.invalid
+    passwordRef: DBX_REDIS_PASSWORD
+
+- id: sentry-tool-db-inspector
+  name: '@dsh-sentry/tool-db-inspector'
+  config:
+    env: local
+    database: novo_commctl_config
+
+- id: sentry-tool-redis-inspector
+  name: '@dsh-sentry/tool-redis-inspector'
+  config:
+    env: local
