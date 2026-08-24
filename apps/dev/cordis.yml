@@ -29,3 +29,17 @@
   name: '@dsh-sentry/tool-log-analyzer'
   config:
     env: local
+
+- id: sentry-trace
+  name: '@dsh-sentry/service-trace'
+  config:
+    mode: grafana-jaeger
+    endpoint: https://grafana.example.invalid
+    usernameRef: GRAFANA_LOCAL_USERNAME
+    passwordRef: GRAFANA_LOCAL_PASSWORD
+
+- id: sentry-tool-trace-analyzer
+  name: '@dsh-sentry/tool-trace-analyzer'
+  config:
+    env: local
+    datasourceUid: GreptimeDB-Jaeger
