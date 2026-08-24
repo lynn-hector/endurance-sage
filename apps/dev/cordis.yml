@@ -1,5 +1,6 @@
-# Phase 0 declarative composition, loaded by `cordis` (see vendor/cordis/bin.js):
-# plugin names resolve via Node resolution from this file's directory.
+# Phase 0/2 declarative composition, loaded by `tsx src/bin-loader.ts` through
+# the Cordis loader: plugin names resolve via Node resolution from this file's
+# directory.
 
 - id: system-prompt
   name: '@deepseek-ai/dsh-system-prompt'
@@ -14,3 +15,17 @@
   name: '@dsh-sentry/tool-hello'
   config:
     greeting: 'hello from cordis.yml'
+
+# Placeholder endpoint: the dev host verifies registration only, it never
+# queries. Real environments override via settings or an env-specific patch.
+- id: sentry-greptimedb
+  name: '@dsh-sentry/service-greptimedb'
+  config:
+    endpoint: https://greptimedb.example.invalid
+    usernameRef: GREPTIMEDB_LOCAL_USERNAME
+    passwordRef: GREPTIMEDB_LOCAL_PASSWORD
+
+- id: sentry-tool-log-analyzer
+  name: '@dsh-sentry/tool-log-analyzer'
+  config:
+    env: local

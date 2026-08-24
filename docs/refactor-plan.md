@@ -34,7 +34,9 @@ Hermes(外部) → 读 SKILL.md → Bash 调 scripts/*.py → stdout 输出 evid
 - README 提到 `docs/fragments/`、`tools/`，目录不存在；
 - AGENTS.md 引用 `docs/methodology/general-troubleshooting.md`，文件不存在；
 - tests README 引用 `.sh` 脚本，实际全是 `.py`；
-- `lib/config.py` 的占位符正则 `(?::- (?P<default>[^}]*) )?` 写法可疑，`${VAR:-default}` 默认值语法很可能实际失效。
+- `lib/config.py` 的占位符正则 `(?::- (?P<default>[^}]*) )?` 写法可疑，`${VAR:-default}` 默认值语法很可能实际失效；
+- `skills/log-analyzer/SKILL.md` 的"拼接示例"SQL 子句顺序（workload_name 在时间条件之前）与同文件的"多服务查询示例"及 `fetch_logs.py` 的 `build_sql` 实现（基础条件在前）矛盾——语义等价（AND 可交换），仅字符串顺序不同，Phase 2 golden test 发现；
+- `skills/log-analyzer/SKILL.md` 声称输出经 `lib/evidence.py` 统一构建，实际 8 个脚本里只有 metrics-inspector 用了它，其余各自手写 envelope（`evidence.type` 出现文档清单外的 `"alert"`）。
 
 ### 1.4 已确认的决策
 

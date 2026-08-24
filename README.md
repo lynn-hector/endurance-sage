@@ -35,5 +35,15 @@ dsh-sentry/
 ## 依赖约定
 
 - `@deepseek-ai/cordis` 及其 loader/include 插件使用 npm 正式版（cordis ^4.0.1、loader ^1.0.2、include ^1.0.6）；
-- `@deepseek-ai/dsh-*` 包固定在与本地 DSH checkout 一致的 `0.1.0-rc.7`；
+- `@deepseek-ai/dsh-*` 包统一使用 `^0.1.0-rc.7` 范围（实际解析到 0.1.0-rc.8）——必须所有包同一范围，否则 pnpm 会按 peer 上下文装出两份实例，nominal 品牌类型相互不兼容；
 - 运行环境 Node ≥ 22.19，包管理 pnpm 11。
+
+## 验证
+
+```bash
+pnpm install
+pnpm typecheck   # 全部包类型检查
+pnpm test        # vitest（含 SQL golden tests，逐字对齐原 SKILL.md 示例）
+pnpm dev         # 程序化宿主：断言工具/skill 注册
+pnpm dev:loader  # 声明式宿主：cordis.yml + loader 断言同一结果
+```

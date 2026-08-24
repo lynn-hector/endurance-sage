@@ -22,14 +22,17 @@ await ctx.loader.create({
 })
 
 const deadline = Date.now() + 10_000
-let tool: unknown
+let ready = false
 while (Date.now() < deadline) {
-  tool = ctx.get('tools')?.get('sentry_hello')
-  if (tool !== undefined) break
+  const tools = ctx.get('tools')
+  ready = tools?.get('sentry_hello') !== undefined
+    && tools.get('sentry_query_logs') !== undefined
+    && tools.get('sentry_list_log_services') !== undefined
+  if (ready) break
   await new Promise(resolve => setTimeout(resolve, 100))
 }
-if (tool === undefined) {
-  throw new Error('FAIL: tool "sentry_hello" was not registered via cordis.yml')
+if (!ready) {
+  throw new Error('FAIL: probe/log tools were not all registered via cordis.yml')
 }
 
 const skills = await ctx.skills.list()
