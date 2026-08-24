@@ -70,3 +70,15 @@
   name: '@dsh-sentry/tool-redis-inspector'
   config:
     env: local
+
+- id: sentry-zadig
+  name: '@dsh-sentry/service-zadig'
+  config:
+    endpoint: https://zadig.example.invalid
+    project: novo-one
+    envName: dev-env
+
+- id: sentry-tool-zadig-inspector
+  name: '@dsh-sentry/tool-zadig-inspector'
+  config:
+    env: local

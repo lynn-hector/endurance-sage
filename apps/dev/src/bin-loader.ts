@@ -33,6 +33,7 @@ while (Date.now() < deadline) {
     && tools.get('sentry_list_alerts') !== undefined
     && tools.get('sentry_query_db') !== undefined
     && tools.get('sentry_query_redis') !== undefined
+    && tools.get('sentry_query_zadig') !== undefined
   if (ready) break
   await new Promise(resolve => setTimeout(resolve, 100))
 }

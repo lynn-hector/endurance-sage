@@ -13,9 +13,9 @@
 import { randomUUID } from 'node:crypto'
 
 /**
- * Evidence types documented in `templates/evidence-format.md`, plus `alert`,
- * which the original metrics-inspector emitted without the contract listing
- * it (recorded drift; kept deliberately).
+ * Evidence types documented in `templates/evidence-format.md`, plus `alert`
+ * and `cicd`, which the original metrics-inspector / zadig-inspector emitted
+ * without the contract listing them (recorded drift; kept deliberately).
  */
 export const KNOWN_EVIDENCE_TYPES = [
   'log',
@@ -26,6 +26,7 @@ export const KNOWN_EVIDENCE_TYPES = [
   'db',
   'redis',
   'mq',
+  'cicd',
   'inference',
 ] as const
 

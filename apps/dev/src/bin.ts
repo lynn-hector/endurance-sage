@@ -15,12 +15,14 @@ import DbxService from '@dsh-sentry/service-dbx'
 import GreptimeDbService from '@dsh-sentry/service-greptimedb'
 import PrometheusService from '@dsh-sentry/service-prometheus'
 import TraceService from '@dsh-sentry/service-trace'
+import ZadigService from '@dsh-sentry/service-zadig'
 import * as dbInspector from '@dsh-sentry/tool-db-inspector'
 import * as hello from '@dsh-sentry/tool-hello'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
 import * as metricsInspector from '@dsh-sentry/tool-metrics-inspector'
 import * as redisInspector from '@dsh-sentry/tool-redis-inspector'
 import * as traceAnalyzer from '@dsh-sentry/tool-trace-analyzer'
+import * as zadigInspector from '@dsh-sentry/tool-zadig-inspector'
 
 const root = new Context()
 
@@ -48,13 +50,19 @@ await root.plugin(DbxService, {
 })
 await root.plugin(dbInspector, { env: 'local', database: 'novo_commctl_config' })
 await root.plugin(redisInspector, { env: 'local' })
+await root.plugin(ZadigService, {
+  endpoint: 'https://zadig.example.invalid',
+  project: 'novo-one',
+  envName: 'dev-env',
+})
+await root.plugin(zadigInspector, { env: 'local' })
 
 const tool = root.tools.get('sentry_hello')
 if (tool === undefined) {
   throw new Error('FAIL: tool "sentry_hello" was not registered')
 }
 
-for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis']) {
+for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig']) {
   if (root.tools.get(name) === undefined) {
     throw new Error(`FAIL: tool "${name}" was not registered`)
   }
@@ -67,7 +75,7 @@ if (!skills.some(skill => skill.name === 'sentry-hello')) {
 
 console.log('Phase 0 OK')
 console.log('tool parameters:', JSON.stringify(tool.parameters))
-console.log('tools:', ['sentry_hello', 'sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis'].join(', '))
+console.log('tools:', ['sentry_hello', 'sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig'].join(', '))
 console.log('skills:', skills.map(skill => skill.name).join(', '))
 
 await root.fiber.dispose()
