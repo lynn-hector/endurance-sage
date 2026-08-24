@@ -56,6 +56,8 @@ export interface Config {
   endpoint: string
   /** Console login username (the original `console_username` fallback `username`). */
   username: string
+  /** Credential reference for the console username, e.g. `ROCKETMQ_LOCAL_USERNAME`. Wins over the literal. */
+  usernameRef?: string
   /** Credential reference for the console login password, e.g. `ROCKETMQ_CONSOLE_PASSWORD`. */
   passwordRef?: string
   /** Literal password fallback when no reference is configured. Discouraged in composition files. */
@@ -123,7 +125,8 @@ export interface QueryMessagesInput {
 export class RocketMqService extends Service {
   static Config: z<Config> = z.object({
     endpoint: endpointField('RocketMQ Console 地址，如 https://rocketmq.cn-0.dev.novo-one.com（必须是 http(s) URL）'),
-    username: z.string().required().description('Console 登录用户名（原 mq.console_username）'),
+    username: z.string().description('Console 登录用户名（原 mq.console_username；usernameRef 优先）'),
+    usernameRef: credentialRefField('Console 用户名的凭据引用，如 ROCKETMQ_LOCAL_USERNAME'),
     passwordRef: credentialRefField('Console 登录密码的凭据引用，如 ROCKETMQ_CONSOLE_PASSWORD'),
     password: secretField('内联登录密码（credential ref 优先；不推荐写在组合文件）'),
     timeoutMs: timeoutMsField(30_000),
@@ -214,9 +217,19 @@ export class RocketMqService extends Service {
   }
 
   /** Original `_login`: POST credentials, keep the XSRF token paired with the returned JSESSIONID. */
+  /** Resolve the console username: reference wins over the literal. */
+  private async resolveUsername(): Promise<string> {
+    if (this.config.usernameRef !== undefined) {
+      const resolved = await resolveCredential(this.ctx, this.config.usernameRef)
+      if (resolved !== undefined && resolved.length > 0) return resolved
+    }
+    return this.config.username ?? ''
+  }
+
   private async login(): Promise<ConsoleSession> {
     const password = await this.resolvePassword()
-    if (this.endpoint.length === 0 || this.config.username.length === 0 || !password) {
+    const username = await this.resolveUsername()
+    if (this.endpoint.length === 0 || username.length === 0 || !password) {
       throw new Error('RocketMQ Console endpoint/用户名/密码 未配置完整')
     }
 
@@ -233,7 +246,7 @@ export class RocketMqService extends Service {
           'x-xsrf-token': xsrfToken,
           cookie: `XSRF-TOKEN=${xsrfToken}`,
         },
-        body: JSON.stringify({ username: this.config.username, password }),
+        body: JSON.stringify({ username, password }),
         signal: AbortSignal.timeout(this.timeoutMs),
       })
     } catch (cause) {

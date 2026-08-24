@@ -53,7 +53,7 @@
       name: '@dsh-sentry/service-dbx'
       config:
         endpoint: https://dbx.cn-0.dev.novo-one.com
-        passwordRef: DBX_REDIS_PASSWORD
+        passwordRef: DBX_PASSWORD
 
     - id: sentry-tool-db-inspector
       name: '@dsh-sentry/tool-db-inspector'
@@ -82,8 +82,8 @@
       name: '@dsh-sentry/service-rocketmq'
       config:
         endpoint: https://rocketmq.cn-0.test.novo-one.com   # 原配置 console_endpoint 为 test 域
-        username: admin
-        passwordRef: ROCKETMQ_CONSOLE_PASSWORD
+        usernameRef: ROCKETMQ_LOCAL_USERNAME
+        passwordRef: ROCKETMQ_LOCAL_PASSWORD
 
     - id: sentry-tool-mq-inspector
       name: '@dsh-sentry/tool-mq-inspector'
