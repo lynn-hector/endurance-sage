@@ -81,6 +81,22 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
 
+  apps/agent:
+    dependencies:
+      yaml:
+        specifier: ^2.8.0
+        version: 2.9.0
+    devDependencies:
+      tsx:
+        specifier: ^4.20.0
+        version: 4.23.12
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
+
   apps/dev:
     dependencies:
       '@deepseek-ai/cordis':
