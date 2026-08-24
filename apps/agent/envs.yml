@@ -13,7 +13,7 @@
 # 已实测的凭据事实：
 # - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_DP0_USERNAME/PASSWORD），CSV 中该块为陈旧值
 # - grafana 每环境独立密码（admin）；DP0/DP1 已验证，DC0 密码未确证（键未入库）
-# - dbx / rocketmq：每环境独立 endpoint；凭据目前通用（引用 DP0 键），分叉时各环境换自己的键
+# - dbx / rocketmq：每环境独立 endpoint 与凭据键
 # - zadig 为平台级（唯一）
 # - zadig 的 dex 会话 token 约 1h 过期，从浏览器刷新后覆盖 ZADIG_DEX_TOKEN
 
@@ -49,8 +49,8 @@ dev-platform-hosted-1:
   greptimedb:
     endpoint: https://greptimedb.cn-1.dev.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_DP0_USERNAME   # 三环境同凭据（实测）
-    passwordRef: GREPTIMEDB_DP0_PASSWORD
+    usernameRef: GREPTIMEDB_DP1_USERNAME   # 值与 DP0 相同（实测），独立成键便于将来分叉
+    passwordRef: GREPTIMEDB_DP1_PASSWORD
   grafana:
     endpoint: https://grafana.cn-1.dev.novo-one.com
     datasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（DP0 恰为 GreptimeDB-Jaeger）
@@ -60,11 +60,11 @@ dev-platform-hosted-1:
     datasourceUid: prometheus
   dbx:
     endpoint: https://dbx.cn-1.dev.novo-one.com
-    passwordRef: DBX_DP0_PASSWORD
+    passwordRef: DBX_DP1_PASSWORD
   rocketmq:
     endpoint: https://rocketmq.cn-1.dev.novo-one.com   # 每环境独立 console，登录实测通过
-    usernameRef: ROCKETMQ_DP0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
-    passwordRef: ROCKETMQ_DP0_PASSWORD
+    usernameRef: ROCKETMQ_DP1_USERNAME   # 值与 DP0 相同（实测）
+    passwordRef: ROCKETMQ_DP1_PASSWORD
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
@@ -76,8 +76,8 @@ dev-client-hosted-0:
   greptimedb:
     endpoint: https://greptimedb.cn-0.dev-byoi.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_DP0_USERNAME   # 三环境同凭据（实测）
-    passwordRef: GREPTIMEDB_DP0_PASSWORD
+    usernameRef: GREPTIMEDB_DC0_USERNAME   # 值与 DP0 相同（实测），独立成键便于将来分叉
+    passwordRef: GREPTIMEDB_DC0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev-byoi.novo-one.com
     datasourceUid: GreptimeDB-Jaeger
@@ -87,11 +87,11 @@ dev-client-hosted-0:
     datasourceUid: prometheus
   dbx:
     endpoint: https://dbx.cn-0.dev-byoi.novo-one.com
-    passwordRef: DBX_DP0_PASSWORD
+    passwordRef: DBX_DC0_PASSWORD
   rocketmq:
     endpoint: https://rocketmq.cn-1.dev.novo-one.com   # 每环境独立 console，登录实测通过
-    usernameRef: ROCKETMQ_DP0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
-    passwordRef: ROCKETMQ_DP0_PASSWORD
+    usernameRef: ROCKETMQ_DC0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
+    passwordRef: ROCKETMQ_DC0_PASSWORD
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
