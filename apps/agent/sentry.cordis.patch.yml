@@ -1,17 +1,15 @@
-# dsh-sentry AIOps overlay：插在任意 dsh profile 之上的 sentry 插件层。
+# dsh-sentry 生产组装（单一事实来源）——完整的 sentry 插件层。
 #
-# 用法（deepseek-harness checkout 根目录）：
-#   pnpm dsh plugin --profile headless add \
-#     /Users/yangfm/workspace/work/dsh-sentry/packages/core/evidence \
-#     /Users/yangfm/workspace/work/dsh-sentry/packages/core/datasource \
-#     /Users/yangfm/workspace/work/dsh-sentry/packages/services/greptimedb \
-#     /Users/yangfm/workspace/work/dsh-sentry/packages/tools/tool-log-analyzer
-#   pnpm dsh --profile headless --patch <本文件> "<任务>"
+# 用法：把 `- insert:` 列表整体复制进目标 profile 的 cordis.patch.yml
+# （或用 `pnpm dsh --patch <本文件>` 临时叠加）。
 #
-# endpoint 为原项目 config/local.yml 的本地环境地址；凭据引用按
-# endurance-sentry/.env.example 的命名，从进程环境或 $DSH_HOME/.credentials.yaml 注入。
-# 覆盖值（真实 endpoint、不同环境）应写进 profile 的 cordis.patch.yml 或
-# $DSH_HOME/settings.yaml 的对应 section，不要改本文件。
+# 顺序即依赖顺序：每个数据源 service 先于其 tool；persona 和 skills
+# 内容层殿后。凭据全部走引用（$DSH_HOME/.credentials.yaml 或进程环境），
+# 组合文件里不出现明文密码。
+#
+# endpoint 来源：endurance-sentry/config/local.yml 模板。
+# [占位] 标记的数据源原项目也只有模板值——工具会以 confidence 0 的
+# 错误证据回报，不影响其它链路（演练验收点之一）。
 
 - insert:
     - id: sentry-greptimedb
@@ -26,3 +24,80 @@
       name: '@dsh-sentry/tool-log-analyzer'
       config:
         env: local
+
+    - id: sentry-trace
+      name: '@dsh-sentry/service-trace'
+      config:
+        mode: grafana-jaeger
+        endpoint: https://grafana.cn-0.dev.novo-one.com
+        usernameRef: GRAFANA_LOCAL_USERNAME
+        passwordRef: GRAFANA_LOCAL_PASSWORD
+
+    - id: sentry-tool-trace-analyzer
+      name: '@dsh-sentry/tool-trace-analyzer'
+      config:
+        env: local
+        datasourceUid: GreptimeDB-Jaeger
+
+    - id: sentry-prometheus
+      name: '@dsh-sentry/service-prometheus'
+      config:
+        endpoint: http://localhost:9090   # [占位] 原项目模板值，无真实远程 Prometheus
+
+    - id: sentry-tool-metrics-inspector
+      name: '@dsh-sentry/tool-metrics-inspector'
+      config:
+        env: local
+
+    - id: sentry-dbx
+      name: '@dsh-sentry/service-dbx'
+      config:
+        endpoint: https://dbx.cn-0.dev.novo-one.com
+        passwordRef: DBX_REDIS_PASSWORD
+
+    - id: sentry-tool-db-inspector
+      name: '@dsh-sentry/tool-db-inspector'
+      config:
+        env: local
+        database: novo_commctl_config
+
+    - id: sentry-tool-redis-inspector
+      name: '@dsh-sentry/tool-redis-inspector'
+      config:
+        env: local
+
+    - id: sentry-zadig
+      name: '@dsh-sentry/service-zadig'
+      config:
+        endpoint: https://zadig.example.com   # [占位] 原项目模板值
+        project: novo-one
+        envName: dev-env
+
+    - id: sentry-tool-zadig-inspector
+      name: '@dsh-sentry/tool-zadig-inspector'
+      config:
+        env: local
+
+    - id: sentry-service-rocketmq
+      name: '@dsh-sentry/service-rocketmq'
+      config:
+        endpoint: https://rocketmq.cn-0.test.novo-one.com   # 原配置 console_endpoint 为 test 域
+        username: admin
+        passwordRef: ROCKETMQ_CONSOLE_PASSWORD
+
+    - id: sentry-tool-mq-inspector
+      name: '@dsh-sentry/tool-mq-inspector'
+      config:
+        env: local
+
+    - id: sentry-tool-code-repository
+      name: '@dsh-sentry/tool-code-repository'
+      config:
+        env: local
+        baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
+
+    - id: sentry-persona
+      name: '@dsh-sentry/sentry-persona'
+
+    - id: sentry-skills
+      name: '@dsh-sentry/sentry-skills'
