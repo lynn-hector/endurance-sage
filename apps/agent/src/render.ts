@@ -98,8 +98,7 @@ export function renderEntries(row: EnvRow): Entry[] {
       id: 'sentry-prometheus',
       name: '@dsh-sentry/service-prometheus',
       config: {
-        // 未使用：Prometheus 只经 Grafana 数据源代理暴露
-        endpoint: '',
+        // Prometheus 只经 Grafana 数据源代理暴露；直连 endpoint 字段省略
         grafanaEndpoint: row.grafana.endpoint,
         datasourceUid: row.prometheus.datasourceUid,
         usernameRef: row.grafana.usernameRef,

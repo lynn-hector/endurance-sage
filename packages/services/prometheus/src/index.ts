@@ -30,7 +30,6 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
-  endpointField,
   resolveCredential,
   secretField,
   timeoutMsField,
@@ -39,7 +38,8 @@ import {
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
   /** Prometheus HTTP base, e.g. `http://localhost:9090`. Unused in grafana-proxy mode. */
-  endpoint: string
+  /** Prometheus HTTP 地址；grafana 代理模式下省略（二选一）。 */
+  endpoint?: string
   /**
    * Grafana base URL, e.g. `https://grafana.cn-0.dev.novo-one.com`. When set,
    * PromQL goes through Grafana's `/api/ds/query` datasource proxy (the
@@ -68,7 +68,7 @@ export interface Config {
 
 export class PrometheusService extends Service {
   static Config: z<Config> = z.object({
-    endpoint: endpointField('Prometheus HTTP 地址，如 http://localhost:9090（grafana 代理模式下不用）'),
+    endpoint: z.string().description('Prometheus HTTP 地址，如 http://localhost:9090（grafana 代理模式下省略）'),
     grafanaEndpoint: z.string().description('Grafana 地址；设置后 PromQL 经 /api/ds/query 代理查询（该部署的 Prometheus 只经 Grafana 暴露）'),
     datasourceUid: z.string().default('prometheus').description('Grafana 内 Prometheus 数据源 uid，默认 prometheus'),
     tokenRef: credentialRefField('Bearer token 的凭据引用，如 PROMETHEUS_PRODUCTION_TOKEN'),
@@ -86,7 +86,7 @@ export class PrometheusService extends Service {
   readonly grafanaEndpoint: string
   private readonly timeoutMs: number
 
-  constructor(ctx: Context, config: Config = { endpoint: '' }) {
+  constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'prometheus')
     // The schema already defaulted optional fields under the Loader; the ??
     // narrows the type for direct (non-Loader) construction in tests.

@@ -65,7 +65,6 @@ describe('renderEntries', () => {
   it('prometheus goes through the grafana proxy of this env', () => {
     const prometheus = entries.find((e) => e.id === 'sentry-prometheus')
     expect(prometheus?.config).toMatchObject({
-      endpoint: '',
       grafanaEndpoint: 'https://grafana.cn-0.test.novo-one.com',
       datasourceUid: 'prometheus',
       usernameRef: 'GRAFANA_TEST_USERNAME',
@@ -102,9 +101,10 @@ describe('renderPatch', () => {
     expect(parsed[0]!.insert).toHaveLength(16)
     const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
     expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
-    // empty-string endpoint stays a string, not null
+    // direct endpoint field is absent in proxy mode (optional since day one
+    // of the matrix; grafanaEndpoint is the only wiring)
     const prometheus = parsed[0]!.insert.find((e) => e.id === 'sentry-prometheus')
-    expect(prometheus?.config?.['endpoint']).toBe('')
+    expect(prometheus?.config?.['endpoint']).toBeUndefined()
   })
 })
 

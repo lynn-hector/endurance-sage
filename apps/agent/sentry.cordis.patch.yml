@@ -29,7 +29,6 @@
     - id: sentry-prometheus
       name: '@dsh-sentry/service-prometheus'
       config:
-        endpoint: ''
         grafanaEndpoint: "https://grafana.cn-0.dev.novo-one.com"
         datasourceUid: prometheus
         usernameRef: GRAFANA_LOCAL_USERNAME
@@ -82,3 +81,4 @@
       name: '@dsh-sentry/sentry-persona'
     - id: sentry-skills
       name: '@dsh-sentry/sentry-skills'
+# 环境切换时间: 2026-08-24T12:04:57.486Z
