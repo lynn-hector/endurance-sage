@@ -1,6 +1,6 @@
 # cross-service-latency：跨服务延迟排查
 
-跨服务、跨组件的高延迟排查方法。涉及多个技能（trace-analyzer、metrics-inspector、db-inspector、redis-inspector、code-repository【待定：mq-inspector】）。主方法论见 defect-troubleshooting 技能。
+跨服务、跨组件的高延迟排查方法。涉及多个技能（trace-analyzer、metrics-inspector、db-inspector、redis-inspector、code-repository、mq-inspector）。主方法论见 defect-troubleshooting 技能。
 
 ## 常见症状
 
@@ -19,7 +19,7 @@
    - 优先检查跨服务调用和下游依赖。
 
 3. **检查基础设施**
-   - 慢 span 指向 DB/Redis 时，用 `sentry_query_db` / `sentry_query_redis` 进一步确认。
+   - 慢 span 指向 DB/Redis 时，用 `sentry_query_db` / `sentry_query_redis` / `sentry_query_mq` 进一步确认。
    - 检查 CPU、内存、网络、GC 等指标。
 
 4. **关联代码**

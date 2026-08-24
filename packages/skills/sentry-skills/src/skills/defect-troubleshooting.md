@@ -2,7 +2,7 @@
 
 本文档是主排查方法论，用于「现象明确但根因不清」的缺陷排查。它以缺陷分析为核心流程，附录 A 已并入通用排查原则与证据收集方法。
 
-工具映射：log-analyzer / trace-analyzer / metrics-inspector / db-inspector / redis-inspector / zadig-inspector / code-repository 技能负责证据收集；输出模板见 incident-templates 技能；项目背景见 project-context 技能。（mq-inspector 待定，涉及处以【待定】标注）
+工具映射：log-analyzer / trace-analyzer / metrics-inspector / db-inspector / redis-inspector / zadig-inspector / code-repository / mq-inspector 技能负责证据收集；输出模板见 incident-templates 技能；项目背景见 project-context 技能。
 
 ---
 
@@ -343,7 +343,7 @@ defect-troubleshooting（本技能）── 选择方法论，收敛阶段与根
     ▼
 log-analyzer / trace-analyzer / metrics-inspector / zadig-inspector ── 收集可观测性证据
     │
-    ├──▶ db-inspector / redis-inspector / code-repository【待定：mq-inspector】── 执行第 2.4、2.5、2.6 步的验证方法
+    ├──▶ db-inspector / redis-inspector / code-repository / mq-inspector── 执行第 2.4、2.5、2.6 步的验证方法
     │
     ▼
 diagnosis-report（incident-templates 技能）── 根因 + 置信度 + 替代假设

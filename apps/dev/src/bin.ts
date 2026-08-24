@@ -26,6 +26,8 @@ import * as sentrySkills from '@dsh-sentry/sentry-skills'
 import * as traceAnalyzer from '@dsh-sentry/tool-trace-analyzer'
 import * as zadigInspector from '@dsh-sentry/tool-zadig-inspector'
 import * as codeRepository from '@dsh-sentry/tool-code-repository'
+import RocketMq from '@dsh-sentry/service-rocketmq'
+import * as mqInspector from '@dsh-sentry/tool-mq-inspector'
 
 const root = new Context()
 
@@ -60,6 +62,8 @@ await root.plugin(ZadigService, {
 })
 await root.plugin(zadigInspector, { env: 'local' })
 await root.plugin(codeRepository, { env: 'local', baseDir: '/tmp/sentry-code-repos' })
+await root.plugin(RocketMq, { endpoint: 'https://rocketmq.example.invalid', username: 'admin' })
+await root.plugin(mqInspector, { env: 'local' })
 await root.plugin(sentrySkills)
 await root.plugin(sentryPersona)
 
@@ -68,7 +72,7 @@ if (tool === undefined) {
   throw new Error('FAIL: tool "sentry_hello" was not registered')
 }
 
-for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code']) {
+for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_query_mq']) {
   if (root.tools.get(name) === undefined) {
     throw new Error(`FAIL: tool "${name}" was not registered`)
   }
@@ -80,7 +84,7 @@ if (!assembly.sections.some(section => section.name === 'sentry-persona')) {
 }
 
 const skills = await root.skills.list()
-for (const expected of ['sentry-hello', 'log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
+for (const expected of ['sentry-hello', 'log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
   if (!skills.some(skill => skill.name === expected)) {
     throw new Error(`FAIL: skill "${expected}" was not registered`)
   }
@@ -88,7 +92,7 @@ for (const expected of ['sentry-hello', 'log-analyzer', 'defect-troubleshooting'
 
 console.log('Phase 0 OK')
 console.log('tool parameters:', JSON.stringify(tool.parameters))
-console.log('tools:', ['sentry_hello', 'sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code'].join(', '))
+console.log('tools:', ['sentry_hello', 'sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_query_mq'].join(', '))
 console.log('skills:', skills.map(skill => skill.name).join(', '))
 
 await root.fiber.dispose()

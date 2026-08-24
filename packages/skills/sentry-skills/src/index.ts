@@ -81,6 +81,12 @@ const SKILLS: SkillSpec[] = [
       '跨仓代码检索与读取：sentry_search_code（codegraph 索引优先、ripgrep 回退）+ sentry_read_code。从错误信息/日志行/慢 SQL 定位到代码行，作为交叉验证的 code 证据。',
   },
   {
+    file: 'mq-inspector.md',
+    name: 'mq-inspector',
+    description:
+      '通过 RocketMQ Console 查询 topic 消息列表与单条消息消费轨迹（sentry_query_mq 双模式），排查积压、消费延迟、死信、消息丢失。',
+  },
+  {
     file: 'defect-troubleshooting.md',
     name: 'defect-troubleshooting',
     description:

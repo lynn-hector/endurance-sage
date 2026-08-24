@@ -83,6 +83,17 @@
   config:
     env: local
 
+- id: sentry-service-rocketmq
+  name: '@dsh-sentry/service-rocketmq'
+  config:
+    endpoint: https://rocketmq.example.invalid
+    username: admin
+
+- id: sentry-tool-mq-inspector
+  name: '@dsh-sentry/tool-mq-inspector'
+  config:
+    env: local
+
 - id: sentry-tool-code-repository
   name: '@dsh-sentry/tool-code-repository'
   config:
