@@ -69,6 +69,20 @@ pnpm --filter @dsh-sentry/agent run regenerate
 
 一个识别当前环境的技巧：问模型「当前 evidence 里的 env 标签是什么」——它来自插件 config，跟着切换走，不会说谎。
 
+## 切换会改变什么（文件清单）
+
+`use-env <环境>` 的全部副作用是**覆盖写入一个文件**：
+
+| 文件 | 变化 |
+|---|---|
+| `~/.dsh/profiles/web/cordis.patch.yml` | ✅ 全量覆盖为目标环境的 16 插件组装，尾部盖切换时间戳 |
+| repo（`envs.yml`、`sentry.cordis.patch.yml` 等）| ❌ 不动 |
+| `~/.dsh/.credentials.yaml` | ❌ 不动（凭据只在补键/换值时手工编辑）|
+
+生效路径：文件写入 → dsh patch watcher 热重载（冷启动时直接读该文件）。
+已知的坑：watch 热重载在部分 web 宿主上未生效（磁盘已换、运行时仍旧配置）——
+用下面的三层验证确认，第 2 层不过就重启 web。
+
 ## 切换之后怎么验证（三层，从快到慢）
 
 1. **文件层（秒级，不开 web）**：确认 profile 里部署的确实是目标环境
