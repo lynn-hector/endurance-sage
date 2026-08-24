@@ -50,6 +50,36 @@ const SKILLS: SkillSpec[] = [
     description:
       '根据服务、时间范围、关键词和过滤条件从 GreptimeDB 查询 k8s 容器日志，提取异常模式（sentry_query_logs / sentry_list_log_services）。',
   },
+  {
+    file: 'trace-analyzer.md',
+    name: 'trace-analyzer',
+    description:
+      '按 traceId 查询 Grafana Jaeger 调用链路，识别慢调用、错误调用和跨服务边界异常（sentry_fetch_trace）。',
+  },
+  {
+    file: 'metrics-inspector.md',
+    name: 'metrics-inspector',
+    description:
+      '查询 Prometheus 指标曲线与 firing 告警，识别异常拐点（sentry_query_metrics / sentry_list_alerts）。',
+  },
+  {
+    file: 'db-inspector.md',
+    name: 'db-inspector',
+    description:
+      '通过 dbx 平台对 PostgreSQL 执行只读 SQL，收集慢 SQL、连接数、主从延迟等证据（sentry_query_db）。',
+  },
+  {
+    file: 'redis-inspector.md',
+    name: 'redis-inspector',
+    description:
+      '通过 dbx 平台查询 Redis key 的值、TTL 与类型，base64 解码后返回（sentry_query_redis）。',
+  },
+  {
+    file: 'zadig-inspector.md',
+    name: 'zadig-inspector',
+    description:
+      '查询 Zadig 环境各服务运行状态、镜像版本与最近一次部署详情，判断故障是否由发布引入（sentry_query_zadig）。',
+  },
 ]
 
 /** Read one bundled skill body. */

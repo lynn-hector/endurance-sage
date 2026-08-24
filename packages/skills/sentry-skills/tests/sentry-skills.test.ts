@@ -21,9 +21,29 @@ describe('sentry-skills registration', () => {
     const ctx = await bootSkills()
     const skills = await ctx.skills.list()
     const names = skills.map(skill => skill.name)
-    expect(names).toContain('log-analyzer')
-    const full = await ctx.skills.get('log-analyzer')
-    expect(full?.content.length).toBeGreaterThan(1000)
+    for (const expected of [
+      'log-analyzer',
+      'trace-analyzer',
+      'metrics-inspector',
+      'db-inspector',
+      'redis-inspector',
+      'zadig-inspector',
+    ]) {
+      expect(names).toContain(expected)
+      const full = await ctx.skills.get(expected)
+      expect(full?.content.length).toBeGreaterThan(1000)
+    }
+    await ctx.fiber.dispose()
+  })
+
+  it('no bundled body mentions the python CLI era', async () => {
+    const ctx = await bootSkills()
+    for (const skill of await ctx.skills.list()) {
+      if (!skill.name.endsWith('-analyzer') && !skill.name.endsWith('-inspector')) continue
+      const content = (await ctx.skills.get(skill.name))?.content ?? ''
+      expect(content, skill.name).not.toContain('python3')
+      expect(content, skill.name).not.toContain('--env')
+    }
     await ctx.fiber.dispose()
   })
 })
