@@ -1,0 +1,25 @@
+{
+  "name": "@dsh-sentry/service-zadig",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zadig OpenAPI client as a Cordis service.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@dsh-sentry/datasource": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
