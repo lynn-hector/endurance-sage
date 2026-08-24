@@ -50,7 +50,7 @@ dev-platform-hosted-1:
     passwordRef: GREPTIMEDB_LOCAL_PASSWORD
   grafana:
     endpoint: https://grafana.cn-1.dev.novo-one.com
-    datasourceUid: GreptimeDB-Jaeger
+    datasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（PH0 恰为 GreptimeDB-Jaeger）
     usernameRef: GRAFANA_PH1_USERNAME
     passwordRef: GRAFANA_PH1_PASSWORD        # 来自环境清单，已实测 200
   prometheus:
