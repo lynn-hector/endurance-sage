@@ -122,6 +122,9 @@ importers:
       '@dsh-sentry/service-zadig':
         specifier: workspace:*
         version: link:../../packages/services/zadig
+      '@dsh-sentry/tool-code-repository':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-code-repository
       '@dsh-sentry/tool-db-inspector':
         specifier: workspace:*
         version: link:../../packages/tools/tool-db-inspector
@@ -364,9 +367,6 @@ importers:
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
-      '@dsh-sentry/service-code-repository':
-        specifier: workspace:*
-        version: link:../../services/code-repository
     devDependencies:
       typescript:
         specifier: ^5.9.0

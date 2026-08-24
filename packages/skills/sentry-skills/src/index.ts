@@ -75,6 +75,12 @@ const SKILLS: SkillSpec[] = [
       '通过 dbx 平台查询 Redis key 的值、TTL 与类型，base64 解码后返回（sentry_query_redis）。',
   },
   {
+    file: 'code-repository.md',
+    name: 'code-repository',
+    description:
+      '跨仓代码检索与读取：sentry_search_code（codegraph 索引优先、ripgrep 回退）+ sentry_read_code。从错误信息/日志行/慢 SQL 定位到代码行，作为交叉验证的 code 证据。',
+  },
+  {
     file: 'defect-troubleshooting.md',
     name: 'defect-troubleshooting',
     description:

@@ -83,6 +83,12 @@
   config:
     env: local
 
+- id: sentry-tool-code-repository
+  name: '@dsh-sentry/tool-code-repository'
+  config:
+    env: local
+    baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
+
 - id: sentry-persona
   name: '@dsh-sentry/sentry-persona'
 

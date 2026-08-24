@@ -1,6 +1,6 @@
 # cross-service-latency：跨服务延迟排查
 
-跨服务、跨组件的高延迟排查方法。涉及多个技能（trace-analyzer、metrics-inspector、db-inspector、redis-inspector【待定：mq-inspector、code-repository】）。主方法论见 defect-troubleshooting 技能。
+跨服务、跨组件的高延迟排查方法。涉及多个技能（trace-analyzer、metrics-inspector、db-inspector、redis-inspector、code-repository【待定：mq-inspector】）。主方法论见 defect-troubleshooting 技能。
 
 ## 常见症状
 
