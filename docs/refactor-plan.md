@@ -122,7 +122,15 @@ dsh-sentry/
 ### Phase 1 — core：evidence + datasource
 
 - `evidence` 包：evidence-format 契约的 TS 类型 + 构建/校验函数 + 单测（翻译 `lib/evidence.py`，补 schema 校验）。
-- `datasource` 包：按环境（local/staging/production）解析数据源配置，凭据走 `credentialRef`；用 schemastery 替代自写 YAML 解析器；`${VAR:-default}` 默认值语义改由 schema 默认值承担（顺带消除原正则疑似 bug）。
+- `datasource` 包：**不翻译 `lib/config.py`，而是取消其职责**（2026-08-24 设计评审结论）。原自写 YAML 解析器的四个职责分别卸载到 DSH 原生机制：
+  1. **YAML 解析** → 不存在了。配置即 cordis.yml 插件条目（include 插件内含 js-yaml），校验/默认值由各数据源插件的 schemastery `Config` 承担；
+  2. **多环境** → cordis.patch.yml 层叠（DSH bundle 既定模式）：base 组合声明插件行，`config/{env}.cordis.patch.yml` 按 `id` 覆盖 `config`；
+  3. **用户级覆盖**（原 `~/.endurance-sentry/` + global 合并）→ dsh-settings：`installSettingsSection`，落在 `$DSH_HOME/settings.yaml`，热加载；
+  4. **凭据注入**（原 `secrets_ref` + 环境变量）→ dsh-credentials：`role('credential-ref')` + `ctx.credentials.resolve()`，凭据永不进配置文件，支持 `credentials/updated` 轮换事件。
+  - `${VAR}` 占位符 → loader 的 `!!js` 表达式插值。
+  - 架构变化：数据源从「运行期按字符串 id 查字典」变为「装配期类型化注入的 Service」；`--env`、`--datasource-id` 参数随之消失。
+  - **已知取舍**：同一宿主进程只装配一个环境；跨环境对照需跑两个宿主实例（原脚本可单次调用切环境）。接受此取舍，如需跨环境再引入"环境实例"概念。
+  - `datasource` 包因此缩小为：各数据源插件共享的 Config 辅助（credential-ref 字段约定、endpoint/timeout 公共字段）与类型定义。
 
 ### Phase 2 — 样板 skill：log-analyzer 端到端打通
 
