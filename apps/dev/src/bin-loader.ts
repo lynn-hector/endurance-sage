@@ -42,7 +42,7 @@ if (!ready) {
 }
 
 const skills = await ctx.skills.list()
-for (const expected of ['sentry-hello', 'log-analyzer']) {
+for (const expected of ['sentry-hello', 'log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
   if (!skills.some(skill => skill.name === expected)) {
     throw new Error(`FAIL: skill "${expected}" was not registered via cordis.yml`)
   }

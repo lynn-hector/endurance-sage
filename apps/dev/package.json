@@ -30,6 +30,7 @@
     "@dsh-sentry/service-prometheus": "workspace:*",
     "@dsh-sentry/service-trace": "workspace:*",
     "@dsh-sentry/service-zadig": "workspace:*",
+    "@dsh-sentry/sentry-persona": "workspace:*",
     "@dsh-sentry/sentry-skills": "workspace:*",
     "@dsh-sentry/tool-db-inspector": "workspace:*",
     "@dsh-sentry/tool-hello": "workspace:*",

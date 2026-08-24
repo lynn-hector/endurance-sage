@@ -83,5 +83,8 @@
   config:
     env: local
 
+- id: sentry-persona
+  name: '@dsh-sentry/sentry-persona'
+
 - id: sentry-skills
   name: '@dsh-sentry/sentry-skills'

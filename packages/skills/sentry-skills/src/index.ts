@@ -75,6 +75,30 @@ const SKILLS: SkillSpec[] = [
       '通过 dbx 平台查询 Redis key 的值、TTL 与类型，base64 解码后返回（sentry_query_redis）。',
   },
   {
+    file: 'defect-troubleshooting.md',
+    name: 'defect-troubleshooting',
+    description:
+      '缺陷排查主方法论：10 步分析框架（描述/事实/未知/假设/验证/排序/信息/修复/回归/复盘）、红线与输出示例。任何「现象明确但根因不清」的排查都应加载。',
+  },
+  {
+    file: 'cross-service-latency.md',
+    name: 'cross-service-latency',
+    description:
+      '跨服务延迟排查专项：p99 升高/接口慢/超时增多的排查步骤、典型根因与止损建议。',
+  },
+  {
+    file: 'incident-templates.md',
+    name: 'incident-templates',
+    description:
+      '结构化输出模板：triage-intake 输入评估、diagnosis-report 诊断报告、action-plan 行动计划、incident-summary 事件摘要、chat-response 对话回复。',
+  },
+  {
+    file: 'project-context.md',
+    name: 'project-context',
+    description:
+      'novo-commctl 项目背景：服务清单、关键用户旅程、常见故障模式、部署拓扑与域名结构、排查边界与升级路径。排查前加载以理解影响面。',
+  },
+  {
     file: 'zadig-inspector.md',
     name: 'zadig-inspector',
     description:

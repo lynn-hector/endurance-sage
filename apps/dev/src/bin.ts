@@ -21,6 +21,7 @@ import * as hello from '@dsh-sentry/tool-hello'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
 import * as metricsInspector from '@dsh-sentry/tool-metrics-inspector'
 import * as redisInspector from '@dsh-sentry/tool-redis-inspector'
+import * as sentryPersona from '@dsh-sentry/sentry-persona'
 import * as sentrySkills from '@dsh-sentry/sentry-skills'
 import * as traceAnalyzer from '@dsh-sentry/tool-trace-analyzer'
 import * as zadigInspector from '@dsh-sentry/tool-zadig-inspector'
@@ -58,6 +59,7 @@ await root.plugin(ZadigService, {
 })
 await root.plugin(zadigInspector, { env: 'local' })
 await root.plugin(sentrySkills)
+await root.plugin(sentryPersona)
 
 const tool = root.tools.get('sentry_hello')
 if (tool === undefined) {
@@ -70,8 +72,13 @@ for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fet
   }
 }
 
+const assembly = await root.systemPrompt.assemble()
+if (!assembly.sections.some(section => section.name === 'sentry-persona')) {
+  throw new Error('FAIL: persona section missing from assembled system prompt')
+}
+
 const skills = await root.skills.list()
-for (const expected of ['sentry-hello', 'log-analyzer']) {
+for (const expected of ['sentry-hello', 'log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
   if (!skills.some(skill => skill.name === expected)) {
     throw new Error(`FAIL: skill "${expected}" was not registered`)
   }
