@@ -9,7 +9,7 @@
 # - dev-client-hosted-0      研发-客户自托管 cn-0.dev-byoi.novo-one.com
 #
 # 已实测的凭据事实：
-# - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_USERNAME/PASSWORD），CSV 中该块为陈旧值
+# - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_PH0_USERNAME/PASSWORD），CSV 中该块为陈旧值
 # - grafana 每环境独立密码（admin）；PH0/PH1 已验证，CH0 密码未确证（键未入库）
 # - dbx / rocketmq / zadig 凭据跨环境复用
 # - zadig 的 dex 会话 token 约 1h 过期，从浏览器刷新后覆盖 ZADIG_DEX_TOKEN
@@ -19,13 +19,13 @@ dev-platform-hosted-0:
   greptimedb:
     endpoint: https://greptimedb.cn-0.dev.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_USERNAME
-    passwordRef: GREPTIMEDB_PASSWORD
+    usernameRef: GREPTIMEDB_PH0_USERNAME
+    passwordRef: GREPTIMEDB_PH0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev.novo-one.com
     datasourceUid: GreptimeDB-Jaeger
-    usernameRef: GRAFANA_USERNAME
-    passwordRef: GRAFANA_PASSWORD
+    usernameRef: GRAFANA_PH0_USERNAME
+    passwordRef: GRAFANA_PH0_PASSWORD
   prometheus:
     datasourceUid: prometheus   # 经 grafana 代理，endpoint 复用 grafana
   dbx:
@@ -46,8 +46,8 @@ dev-platform-hosted-1:
   greptimedb:
     endpoint: https://greptimedb.cn-1.dev.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_USERNAME   # 三环境同凭据（实测）
-    passwordRef: GREPTIMEDB_PASSWORD
+    usernameRef: GREPTIMEDB_PH0_USERNAME   # 三环境同凭据（实测）
+    passwordRef: GREPTIMEDB_PH0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-1.dev.novo-one.com
     datasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（PH0 恰为 GreptimeDB-Jaeger）
@@ -73,8 +73,8 @@ dev-client-hosted-0:
   greptimedb:
     endpoint: https://greptimedb.cn-0.dev-byoi.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_USERNAME   # 三环境同凭据（实测）
-    passwordRef: GREPTIMEDB_PASSWORD
+    usernameRef: GREPTIMEDB_PH0_USERNAME   # 三环境同凭据（实测）
+    passwordRef: GREPTIMEDB_PH0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev-byoi.novo-one.com
     datasourceUid: GreptimeDB-Jaeger
