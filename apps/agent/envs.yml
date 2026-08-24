@@ -2,15 +2,20 @@
 #
 # 每行环境 = 一组数据源 endpoint + 凭据键名（引用，不是值）。
 # 值放 ~/.dsh/.credentials.yaml（键名即此处的 *Ref 字段）。
-# use-env 切换前会校验该环境全部凭据键是否就绪，缺任何一个都拒绝切换，
-# 所以"补齐凭据的进度"就是"环境启用的进度"。
+# use-env 切换前会校验该环境全部凭据键是否就绪，缺任何一个都拒绝切换。
 #
-# 约定：
-# - credentials 键名沿用原项目 .env.example 的 <SYSTEM>_<ENV>_<FIELD> 命名。
-# - [待补] 标记的字段是没有确证值的占位，拿到真实值后替换。
+# 环境命名与 docs/环境清单（csv，不入库）的环境标识一致：
+# - dev-platform-hosted-0/1  研发-平台托管 cn-0/cn-1.dev.novo-one.com
+# - dev-client-hosted-0      研发-客户自托管 cn-0.dev-byoi.novo-one.com
+#
+# 已实测的凭据事实：
+# - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_LOCAL_*），CSV 中该块为陈旧值
+# - grafana 每环境独立密码（admin）；PH0/PH1 已验证，CH0 密码未确证（键未入库）
+# - dbx / rocketmq / zadig 凭据跨环境复用
+# - zadig 的 dex 会话 token 约 1h 过期，从浏览器刷新后覆盖 ZADIG_DEX_TOKEN
 
-local:
-  envLabel: local
+dev-platform-hosted-0:
+  envLabel: dev-platform-hosted-0
   greptimedb:
     endpoint: https://greptimedb.cn-0.dev.novo-one.com
     database: public
@@ -33,59 +38,59 @@ local:
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
-    envName: dev-client-hosted-0
-    tokenRef: ZADIG_DEX_TOKEN   # dex 会话 token，约 1h 过期，从浏览器刷新
+    envName: dev-platform-hosted-0
+    tokenRef: ZADIG_DEX_TOKEN
 
-test:
-  envLabel: test
+dev-platform-hosted-1:
+  envLabel: dev-platform-hosted-1
   greptimedb:
-    endpoint: https://greptimedb.cn-0.test.novo-one.com   # [待补] 按域名惯例推断
+    endpoint: https://greptimedb.cn-1.dev.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_TEST_USERNAME
-    passwordRef: GREPTIMEDB_TEST_PASSWORD
+    usernameRef: GREPTIMEDB_LOCAL_USERNAME   # 三环境同凭据（实测）
+    passwordRef: GREPTIMEDB_LOCAL_PASSWORD
   grafana:
-    endpoint: https://grafana.cn-0.test.novo-one.com   # [待补] 按域名惯例推断
+    endpoint: https://grafana.cn-1.dev.novo-one.com
     datasourceUid: GreptimeDB-Jaeger
-    usernameRef: GRAFANA_TEST_USERNAME
-    passwordRef: GRAFANA_TEST_PASSWORD
+    usernameRef: GRAFANA_PH1_USERNAME
+    passwordRef: GRAFANA_PH1_PASSWORD        # 来自环境清单，已实测 200
   prometheus:
     datasourceUid: prometheus
   dbx:
-    endpoint: https://dbx.cn-0.test.novo-one.com   # [待补] 按域名惯例推断
-    passwordRef: DBX_TEST_PASSWORD
+    endpoint: https://dbx.cn-1.dev.novo-one.com
+    passwordRef: DBX_PASSWORD
   rocketmq:
     endpoint: https://rocketmq.cn-0.test.novo-one.com
-    usernameRef: ROCKETMQ_LOCAL_USERNAME   # 同一 console，账号复用；不同则改键名
+    usernameRef: ROCKETMQ_LOCAL_USERNAME
     passwordRef: ROCKETMQ_LOCAL_PASSWORD
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
-    envName: tst-platform-hosted-0   # [待补] 对应部署文档的测试环境标识，需在 Zadig 确认
+    envName: dev-platform-hosted-1
     tokenRef: ZADIG_DEX_TOKEN
 
-production:
-  envLabel: production
+dev-client-hosted-0:
+  envLabel: dev-client-hosted-0
   greptimedb:
-    endpoint: https://TODO.invalid   # [待补] 生产域名未确证
+    endpoint: https://greptimedb.cn-0.dev-byoi.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_PRODUCTION_USERNAME
-    passwordRef: GREPTIMEDB_PRODUCTION_PASSWORD
+    usernameRef: GREPTIMEDB_LOCAL_USERNAME   # 三环境同凭据（实测）
+    passwordRef: GREPTIMEDB_LOCAL_PASSWORD
   grafana:
-    endpoint: https://TODO.invalid   # [待补]
+    endpoint: https://grafana.cn-0.dev-byoi.novo-one.com
     datasourceUid: GreptimeDB-Jaeger
-    usernameRef: GRAFANA_PRODUCTION_USERNAME
-    passwordRef: GRAFANA_PRODUCTION_PASSWORD
+    usernameRef: GRAFANA_CH0_USERNAME
+    passwordRef: GRAFANA_CH0_PASSWORD        # [待补] 环境清单中的值实测 401，真实密码未确证
   prometheus:
     datasourceUid: prometheus
   dbx:
-    endpoint: https://TODO.invalid   # [待补]
-    passwordRef: DBX_PRODUCTION_PASSWORD
+    endpoint: https://dbx.cn-0.dev-byoi.novo-one.com
+    passwordRef: DBX_PASSWORD
   rocketmq:
-    endpoint: https://TODO.invalid   # [待补]
-    usernameRef: ROCKETMQ_PRODUCTION_USERNAME
-    passwordRef: ROCKETMQ_PRODUCTION_PASSWORD
+    endpoint: https://rocketmq.cn-0.test.novo-one.com
+    usernameRef: ROCKETMQ_LOCAL_USERNAME
+    passwordRef: ROCKETMQ_LOCAL_PASSWORD
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
-    envName: TODO   # [待补] 生产环境在 Zadig 中的环境名
+    envName: dev-client-hosted-0
     tokenRef: ZADIG_DEX_TOKEN

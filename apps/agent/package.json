@@ -8,7 +8,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "use-env": "tsx src/use-env.ts",
-    "regenerate": "tsx src/use-env.ts local --out sentry.cordis.patch.yml"
+    "regenerate": "tsx src/use-env.ts dev-platform-hosted-0 --out sentry.cordis.patch.yml"
   },
   "dependencies": {
     "yaml": "^2.8.0"

@@ -1,4 +1,4 @@
-# dsh-sentry 组装（env: local）——由 apps/agent/envs.yml 生成，勿手改。
+# dsh-sentry 组装（env: dev-platform-hosted-0）——由 apps/agent/envs.yml 生成，勿手改。
 # 手工维护入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate
 # 顺序即依赖顺序：数据源 service 先于其 tool；凭据全部走引用，不出现明文密码。
 
@@ -13,7 +13,7 @@
     - id: sentry-tool-log-analyzer
       name: '@dsh-sentry/tool-log-analyzer'
       config:
-        env: local
+        env: dev-platform-hosted-0
     - id: sentry-trace
       name: '@dsh-sentry/service-trace'
       config:
@@ -24,7 +24,7 @@
     - id: sentry-tool-trace-analyzer
       name: '@dsh-sentry/tool-trace-analyzer'
       config:
-        env: local
+        env: dev-platform-hosted-0
         datasourceUid: GreptimeDB-Jaeger
     - id: sentry-prometheus
       name: '@dsh-sentry/service-prometheus'
@@ -37,7 +37,7 @@
     - id: sentry-tool-metrics-inspector
       name: '@dsh-sentry/tool-metrics-inspector'
       config:
-        env: local
+        env: dev-platform-hosted-0
     - id: sentry-dbx
       name: '@dsh-sentry/service-dbx'
       config:
@@ -46,23 +46,23 @@
     - id: sentry-tool-db-inspector
       name: '@dsh-sentry/tool-db-inspector'
       config:
-        env: local
+        env: dev-platform-hosted-0
         database: novo_commctl_config
     - id: sentry-tool-redis-inspector
       name: '@dsh-sentry/tool-redis-inspector'
       config:
-        env: local
+        env: dev-platform-hosted-0
     - id: sentry-zadig
       name: '@dsh-sentry/service-zadig'
       config:
         endpoint: "https://zadig.yeastardigital.com"
         project: novo-one-helm-charts-project
-        envName: dev-client-hosted-0
+        envName: dev-platform-hosted-0
         tokenRef: ZADIG_DEX_TOKEN
     - id: sentry-tool-zadig-inspector
       name: '@dsh-sentry/tool-zadig-inspector'
       config:
-        env: local
+        env: dev-platform-hosted-0
     - id: sentry-service-rocketmq
       name: '@dsh-sentry/service-rocketmq'
       config:
@@ -72,11 +72,11 @@
     - id: sentry-tool-mq-inspector
       name: '@dsh-sentry/tool-mq-inspector'
       config:
-        env: local
+        env: dev-platform-hosted-0
     - id: sentry-tool-code-repository
       name: '@dsh-sentry/tool-code-repository'
       config:
-        env: local
+        env: dev-platform-hosted-0
         baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
     - id: sentry-persona
       name: '@dsh-sentry/sentry-persona'

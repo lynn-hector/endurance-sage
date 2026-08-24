@@ -112,7 +112,7 @@ describe('envs.yml contract', () => {
   it('the real matrix parses and every row passes the readiness contract shape', () => {
     const matrix = parse(readFileSync(join(import.meta.dirname, '..', 'envs.yml'), 'utf8')) as Record<string, EnvRow>
     for (const [name, row] of Object.entries(matrix)) {
-      expect(row.envLabel, `${name}.envLabel`).toBe(name === 'local' ? 'local' : name)
+      expect(row.envLabel, `${name}.envLabel`).toBe(name)
       expect(row.greptimedb.usernameRef, `${name}.greptimedb.usernameRef`).toMatch(/^[A-Z0-9_]+$/)
       expect(row.zadig.tokenRef, `${name}.zadig.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
       expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(8)

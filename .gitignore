@@ -6,3 +6,4 @@ dist/
 .sessions/
 .DS_Store
 .pnpm-store/
+docs/环境清单*.csv
