@@ -1,0 +1,39 @@
+# dsh-sentry
+
+endurance-sentry 的 Cordis 插件化重构仓库：以 DSH（deepseek-harness）原生 Cordis 插件模式，把原项目的 AIOps 能力包（8 个 skill + 共享库 + 模板 + 方法论）重写为有生命周期、有依赖注入、配置带 schema 校验的 TypeScript 插件体系。
+
+重构计划与现状评估见 [`docs/refactor-plan.md`](docs/refactor-plan.md)。
+
+## 当前状态：Phase 0 已完成
+
+monorepo 骨架已搭好，插件注册双路径已验证：
+
+```bash
+pnpm install
+
+# 程序化宿主：Context + SystemPrompt + ToolRuntime + SkillRegistry + 探针插件
+pnpm dev
+
+# 声明式宿主：通过 cordis.yml + loader 加载同一棵插件树
+pnpm dev:loader
+```
+
+两条路径都会断言探针工具 `sentry_hello` 和探针 skill `sentry-hello` 注册成功，失败时以非零码退出。
+
+## 目录结构
+
+```text
+dsh-sentry/
+├── docs/                  # 重构计划与设计文档
+├── apps/
+│   └── dev/               # Phase 0 开发宿主（程序化 + cordis.yml 两种启动方式）
+└── packages/
+    └── tools/
+        └── tool-hello/    # Phase 0 探针插件（验证用，后续被真实工具替代）
+```
+
+## 依赖约定
+
+- `@deepseek-ai/cordis` 及其 loader/include 插件使用 npm 正式版（cordis ^4.0.1、loader ^1.0.2、include ^1.0.6）；
+- `@deepseek-ai/dsh-*` 包固定在与本地 DSH checkout 一致的 `0.1.0-rc.7`；
+- 运行环境 Node ≥ 22.19，包管理 pnpm 11。
