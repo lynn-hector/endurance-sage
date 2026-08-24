@@ -72,6 +72,15 @@
       name: '@dsh-sentry/tool-mq-inspector'
       config:
         env: dev-platform-hosted-0
+    - id: sentry-tapd
+      name: '@dsh-sentry/service-tapd'
+      config:
+        workspaceId: 63822673
+        tokenRef: TAPD_TOKEN
+    - id: sentry-tool-tapd-inspector
+      name: '@dsh-sentry/tool-tapd-inspector'
+      config:
+        env: dev-platform-hosted-0
     - id: sentry-tool-code-repository
       name: '@dsh-sentry/tool-code-repository'
       config:
@@ -81,4 +90,4 @@
       name: '@dsh-sentry/sentry-persona'
     - id: sentry-skills
       name: '@dsh-sentry/sentry-skills'
-# 环境切换时间: 2026-08-24T12:20:23.935Z
+# 环境切换时间: 2026-08-24T14:06:39.227Z

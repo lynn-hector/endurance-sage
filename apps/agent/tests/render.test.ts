@@ -51,6 +51,8 @@ describe('renderEntries', () => {
       'sentry-tool-zadig-inspector',
       'sentry-service-rocketmq',
       'sentry-tool-mq-inspector',
+      'sentry-tapd',
+      'sentry-tool-tapd-inspector',
       'sentry-tool-code-repository',
       'sentry-persona',
       'sentry-skills',
@@ -98,7 +100,7 @@ describe('renderPatch', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(16)
+    expect(parsed[0]!.insert).toHaveLength(18)
     const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
     expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
     // direct endpoint field is absent in proxy mode (optional since day one

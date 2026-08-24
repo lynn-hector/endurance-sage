@@ -142,6 +142,16 @@ export function renderEntries(row: EnvRow): Entry[] {
     },
     { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector', config: { env } },
     {
+      id: 'sentry-tapd',
+      name: '@dsh-sentry/service-tapd',
+      config: {
+        // TAPD 为平台级数据源（唯一缺陷单来源），不随环境切换
+        workspaceId: '63822673',
+        tokenRef: 'TAPD_TOKEN',
+      },
+    },
+    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector', config: { env } },
+    {
       id: 'sentry-tool-code-repository',
       name: '@dsh-sentry/tool-code-repository',
       config: { env, baseDir: row.codeRepository?.baseDir ?? DEFAULT_CODE_BASE_DIR },
