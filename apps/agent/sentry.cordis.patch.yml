@@ -1,0 +1,28 @@
+# dsh-sentry AIOps overlay：插在任意 dsh profile 之上的 sentry 插件层。
+#
+# 用法（deepseek-harness checkout 根目录）：
+#   pnpm dsh plugin --profile headless add \
+#     /Users/yangfm/workspace/work/dsh-sentry/packages/core/evidence \
+#     /Users/yangfm/workspace/work/dsh-sentry/packages/core/datasource \
+#     /Users/yangfm/workspace/work/dsh-sentry/packages/services/greptimedb \
+#     /Users/yangfm/workspace/work/dsh-sentry/packages/tools/tool-log-analyzer
+#   pnpm dsh --profile headless --patch <本文件> "<任务>"
+#
+# endpoint 为原项目 config/local.yml 的本地环境地址；凭据引用按
+# endurance-sentry/.env.example 的命名，从进程环境或 $DSH_HOME/.credentials.yaml 注入。
+# 覆盖值（真实 endpoint、不同环境）应写进 profile 的 cordis.patch.yml 或
+# $DSH_HOME/settings.yaml 的对应 section，不要改本文件。
+
+- insert:
+    - id: sentry-greptimedb
+      name: '@dsh-sentry/service-greptimedb'
+      config:
+        endpoint: https://greptimedb.cn-0.dev.novo-one.com
+        database: public
+        usernameRef: GREPTIMEDB_LOCAL_USERNAME
+        passwordRef: GREPTIMEDB_LOCAL_PASSWORD
+
+    - id: sentry-tool-log-analyzer
+      name: '@dsh-sentry/tool-log-analyzer'
+      config:
+        env: local

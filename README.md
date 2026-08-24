@@ -47,3 +47,27 @@ pnpm test        # vitest（含 SQL golden tests，逐字对齐原 SKILL.md 示�
 pnpm dev         # 程序化宿主：断言工具/skill 注册
 pnpm dev:loader  # 声明式宿主：cordis.yml + loader 断言同一结果
 ```
+
+## 通过 DSH 启动（已实测）
+
+插件以 profile patch 叠加层挂进 DSH（deepseek-harness checkout 根目录执行）：
+
+```bash
+# 1. 安装 sentry 插件到 profile（link 依赖，一次即可；headless 首次使用会自动初始化）
+pnpm dsh plugin --profile headless add \
+  /Users/yangfm/workspace/work/dsh-sentry/packages/core/evidence \
+  /Users/yangfm/workspace/work/dsh-sentry/packages/core/datasource \
+  /Users/yangfm/workspace/work/dsh-sentry/packages/services/greptimedb \
+  /Users/yangfm/workspace/work/dsh-sentry/packages/tools/tool-log-analyzer
+
+# 2. 带 sentry 叠加层启动一次性任务会话
+pnpm dsh --profile headless \
+  --patch /Users/yangfm/workspace/work/dsh-sentry/apps/agent/sentry.cordis.patch.yml \
+  "调用 sentry_list_log_services，把 evidence 结果原样告诉我"
+```
+
+叠加层文件：`apps/agent/sentry.cordis.patch.yml`。模型/凭据沿用 `$DSH_HOME` 的 settings 与 credentials（当前为 kimi/k3）。
+
+已实测验证的链路：profile 启动 → 模型发现并调用 `sentry_*` 工具 → SQL 生成 → 凭据解析（环境变量/`$DSH_HOME/.credentials.yaml`）→ HTTP 到达真实 GreptimeDB（401 无效凭据被正确包装为 `confidence=0` 的错误 evidence）。
+
+**让查询真正成功**：把真实凭据注入 `GREPTIMEDB_LOCAL_USERNAME` / `GREPTIMEDB_LOCAL_PASSWORD`（写进 `$DSH_HOME/.credentials.yaml`，或运行前 export）；endpoint 不同时改 patch 文件或对应 settings section。
