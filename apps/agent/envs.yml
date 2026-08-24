@@ -4,14 +4,16 @@
 # 值放 ~/.dsh/.credentials.yaml（键名即此处的 *Ref 字段）。
 # use-env 切换前会校验该环境全部凭据键是否就绪，缺任何一个都拒绝切换。
 #
-# 环境命名与 docs/环境清单（csv，不入库）的环境标识一致：
+# 环境命名与 docs/环境清单（csv，不入库）的环境标识一致；凭据键短码：
+#   DP0=dev-platform-hosted-0, DP1=dev-platform-hosted-1, DC0=dev-client-hosted-0，
+#   测试环境将来用 TP0/TP1（tst-platform-hosted-0/1）
 # - dev-platform-hosted-0/1  研发-平台托管 cn-0/cn-1.dev.novo-one.com
 # - dev-client-hosted-0      研发-客户自托管 cn-0.dev-byoi.novo-one.com
 #
 # 已实测的凭据事实：
-# - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_PH0_USERNAME/PASSWORD），CSV 中该块为陈旧值
-# - grafana 每环境独立密码（admin）；PH0/PH1 已验证，CH0 密码未确证（键未入库）
-# - dbx / rocketmq：每环境独立 endpoint；凭据目前通用（引用 PH0 键），分叉时各环境换自己的键
+# - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_DP0_USERNAME/PASSWORD），CSV 中该块为陈旧值
+# - grafana 每环境独立密码（admin）；DP0/DP1 已验证，DC0 密码未确证（键未入库）
+# - dbx / rocketmq：每环境独立 endpoint；凭据目前通用（引用 DP0 键），分叉时各环境换自己的键
 # - zadig 为平台级（唯一）
 # - zadig 的 dex 会话 token 约 1h 过期，从浏览器刷新后覆盖 ZADIG_DEX_TOKEN
 
@@ -20,22 +22,22 @@ dev-platform-hosted-0:
   greptimedb:
     endpoint: https://greptimedb.cn-0.dev.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_PH0_USERNAME
-    passwordRef: GREPTIMEDB_PH0_PASSWORD
+    usernameRef: GREPTIMEDB_DP0_USERNAME
+    passwordRef: GREPTIMEDB_DP0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev.novo-one.com
     datasourceUid: GreptimeDB-Jaeger
-    usernameRef: GRAFANA_PH0_USERNAME
-    passwordRef: GRAFANA_PH0_PASSWORD
+    usernameRef: GRAFANA_DP0_USERNAME
+    passwordRef: GRAFANA_DP0_PASSWORD
   prometheus:
     datasourceUid: prometheus   # 经 grafana 代理，endpoint 复用 grafana
   dbx:
     endpoint: https://dbx.cn-0.dev.novo-one.com
-    passwordRef: DBX_PH0_PASSWORD
+    passwordRef: DBX_DP0_PASSWORD
   rocketmq:
     endpoint: https://rocketmq.cn-0.dev.novo-one.com   # 每环境独立 console，登录实测通过
-    usernameRef: ROCKETMQ_PH0_USERNAME
-    passwordRef: ROCKETMQ_PH0_PASSWORD
+    usernameRef: ROCKETMQ_DP0_USERNAME
+    passwordRef: ROCKETMQ_DP0_PASSWORD
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
@@ -47,22 +49,22 @@ dev-platform-hosted-1:
   greptimedb:
     endpoint: https://greptimedb.cn-1.dev.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_PH0_USERNAME   # 三环境同凭据（实测）
-    passwordRef: GREPTIMEDB_PH0_PASSWORD
+    usernameRef: GREPTIMEDB_DP0_USERNAME   # 三环境同凭据（实测）
+    passwordRef: GREPTIMEDB_DP0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-1.dev.novo-one.com
-    datasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（PH0 恰为 GreptimeDB-Jaeger）
-    usernameRef: GRAFANA_PH1_USERNAME
-    passwordRef: GRAFANA_PH1_PASSWORD        # 来自环境清单，已实测 200
+    datasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（DP0 恰为 GreptimeDB-Jaeger）
+    usernameRef: GRAFANA_DP1_USERNAME
+    passwordRef: GRAFANA_DP1_PASSWORD        # 来自环境清单，已实测 200
   prometheus:
     datasourceUid: prometheus
   dbx:
     endpoint: https://dbx.cn-1.dev.novo-one.com
-    passwordRef: DBX_PH0_PASSWORD
+    passwordRef: DBX_DP0_PASSWORD
   rocketmq:
     endpoint: https://rocketmq.cn-1.dev.novo-one.com   # 每环境独立 console，登录实测通过
-    usernameRef: ROCKETMQ_PH0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
-    passwordRef: ROCKETMQ_PH0_PASSWORD
+    usernameRef: ROCKETMQ_DP0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
+    passwordRef: ROCKETMQ_DP0_PASSWORD
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
@@ -74,22 +76,22 @@ dev-client-hosted-0:
   greptimedb:
     endpoint: https://greptimedb.cn-0.dev-byoi.novo-one.com
     database: public
-    usernameRef: GREPTIMEDB_PH0_USERNAME   # 三环境同凭据（实测）
-    passwordRef: GREPTIMEDB_PH0_PASSWORD
+    usernameRef: GREPTIMEDB_DP0_USERNAME   # 三环境同凭据（实测）
+    passwordRef: GREPTIMEDB_DP0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev-byoi.novo-one.com
     datasourceUid: GreptimeDB-Jaeger
-    usernameRef: GRAFANA_CH0_USERNAME
-    passwordRef: GRAFANA_CH0_PASSWORD        # [待补] 环境清单中的值实测 401，真实密码未确证
+    usernameRef: GRAFANA_DC0_USERNAME
+    passwordRef: GRAFANA_DC0_PASSWORD        # [待补] 环境清单中的值实测 401，真实密码未确证
   prometheus:
     datasourceUid: prometheus
   dbx:
     endpoint: https://dbx.cn-0.dev-byoi.novo-one.com
-    passwordRef: DBX_PH0_PASSWORD
+    passwordRef: DBX_DP0_PASSWORD
   rocketmq:
     endpoint: https://rocketmq.cn-1.dev.novo-one.com   # 每环境独立 console，登录实测通过
-    usernameRef: ROCKETMQ_PH0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
-    passwordRef: ROCKETMQ_PH0_PASSWORD
+    usernameRef: ROCKETMQ_DP0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
+    passwordRef: ROCKETMQ_DP0_PASSWORD
   zadig:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project

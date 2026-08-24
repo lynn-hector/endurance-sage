@@ -8,8 +8,8 @@
       config:
         endpoint: "https://greptimedb.cn-0.dev.novo-one.com"
         database: public
-        usernameRef: GREPTIMEDB_PH0_USERNAME
-        passwordRef: GREPTIMEDB_PH0_PASSWORD
+        usernameRef: GREPTIMEDB_DP0_USERNAME
+        passwordRef: GREPTIMEDB_DP0_PASSWORD
     - id: sentry-tool-log-analyzer
       name: '@dsh-sentry/tool-log-analyzer'
       config:
@@ -19,8 +19,8 @@
       config:
         mode: grafana-jaeger
         endpoint: "https://grafana.cn-0.dev.novo-one.com"
-        usernameRef: GRAFANA_PH0_USERNAME
-        passwordRef: GRAFANA_PH0_PASSWORD
+        usernameRef: GRAFANA_DP0_USERNAME
+        passwordRef: GRAFANA_DP0_PASSWORD
     - id: sentry-tool-trace-analyzer
       name: '@dsh-sentry/tool-trace-analyzer'
       config:
@@ -31,8 +31,8 @@
       config:
         grafanaEndpoint: "https://grafana.cn-0.dev.novo-one.com"
         datasourceUid: prometheus
-        usernameRef: GRAFANA_PH0_USERNAME
-        passwordRef: GRAFANA_PH0_PASSWORD
+        usernameRef: GRAFANA_DP0_USERNAME
+        passwordRef: GRAFANA_DP0_PASSWORD
     - id: sentry-tool-metrics-inspector
       name: '@dsh-sentry/tool-metrics-inspector'
       config:
@@ -41,7 +41,7 @@
       name: '@dsh-sentry/service-dbx'
       config:
         endpoint: "https://dbx.cn-0.dev.novo-one.com"
-        passwordRef: DBX_PH0_PASSWORD
+        passwordRef: DBX_DP0_PASSWORD
     - id: sentry-tool-db-inspector
       name: '@dsh-sentry/tool-db-inspector'
       config:
@@ -66,8 +66,8 @@
       name: '@dsh-sentry/service-rocketmq'
       config:
         endpoint: "https://rocketmq.cn-0.dev.novo-one.com"
-        usernameRef: ROCKETMQ_PH0_USERNAME
-        passwordRef: ROCKETMQ_PH0_PASSWORD
+        usernameRef: ROCKETMQ_DP0_USERNAME
+        passwordRef: ROCKETMQ_DP0_PASSWORD
     - id: sentry-tool-mq-inspector
       name: '@dsh-sentry/tool-mq-inspector'
       config:
@@ -81,4 +81,4 @@
       name: '@dsh-sentry/sentry-persona'
     - id: sentry-skills
       name: '@dsh-sentry/sentry-skills'
-# 环境切换时间: 2026-08-24T12:16:22.666Z
+# 环境切换时间: 2026-08-24T12:20:23.935Z
