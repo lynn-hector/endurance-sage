@@ -43,3 +43,13 @@
   config:
     env: local
     datasourceUid: GreptimeDB-Jaeger
+
+- id: sentry-prometheus
+  name: '@dsh-sentry/service-prometheus'
+  config:
+    endpoint: http://prometheus.example.invalid
+
+- id: sentry-tool-metrics-inspector
+  name: '@dsh-sentry/tool-metrics-inspector'
+  config:
+    env: local

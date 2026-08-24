@@ -29,6 +29,8 @@ while (Date.now() < deadline) {
     && tools.get('sentry_query_logs') !== undefined
     && tools.get('sentry_list_log_services') !== undefined
     && tools.get('sentry_fetch_trace') !== undefined
+    && tools.get('sentry_query_metrics') !== undefined
+    && tools.get('sentry_list_alerts') !== undefined
   if (ready) break
   await new Promise(resolve => setTimeout(resolve, 100))
 }
