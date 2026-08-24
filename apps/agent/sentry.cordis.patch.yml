@@ -41,7 +41,7 @@
       name: '@dsh-sentry/service-dbx'
       config:
         endpoint: "https://dbx.cn-0.dev.novo-one.com"
-        passwordRef: DBX_PASSWORD
+        passwordRef: DBX_PH0_PASSWORD
     - id: sentry-tool-db-inspector
       name: '@dsh-sentry/tool-db-inspector'
       config:
@@ -65,9 +65,9 @@
     - id: sentry-service-rocketmq
       name: '@dsh-sentry/service-rocketmq'
       config:
-        endpoint: "https://rocketmq.cn-0.test.novo-one.com"
-        usernameRef: ROCKETMQ_USERNAME
-        passwordRef: ROCKETMQ_PASSWORD
+        endpoint: "https://rocketmq.cn-0.dev.novo-one.com"
+        usernameRef: ROCKETMQ_PH0_USERNAME
+        passwordRef: ROCKETMQ_PH0_PASSWORD
     - id: sentry-tool-mq-inspector
       name: '@dsh-sentry/tool-mq-inspector'
       config:
@@ -81,4 +81,4 @@
       name: '@dsh-sentry/sentry-persona'
     - id: sentry-skills
       name: '@dsh-sentry/sentry-skills'
-# 环境切换时间: 2026-08-24T12:13:16.333Z
+# 环境切换时间: 2026-08-24T12:16:22.666Z
