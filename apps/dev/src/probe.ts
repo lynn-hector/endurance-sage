@@ -10,6 +10,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import RocketMqService from '@dsh-sentry/service-rocketmq'
+import ZadigService from '@dsh-sentry/service-zadig'
 import DbxService from '@dsh-sentry/service-dbx'
 import TraceService from '@dsh-sentry/service-trace'
 import PrometheusService from '@dsh-sentry/service-prometheus'
@@ -82,6 +83,18 @@ try {
     console.log(`PROMETHEUS PROBE OK — 'up' returned ${result.length} series`)
     for (const series of result.slice(0, 3)) {
       console.log(`  labels=${JSON.stringify(series.metric)} points=${series.values.length}`)
+    }
+  } else if (which === 'zadig') {
+    await ctx.plugin(ZadigService, {
+      endpoint: 'https://zadig.yeastardigital.com',
+      project: 'novo-one-helm-charts-project',
+      envName: 'dev-client-hosted-0',
+      tokenRef: 'ZADIG_DEX_TOKEN',
+    })
+    const services = await ctx.zadig.fetchServices()
+    console.log(`ZADIG PROBE OK — ${services.length} workloads`)
+    for (const svc of services.slice(0, 5)) {
+      console.log(`  ${svc.name} | ${svc.status} | ${svc.build_time ?? '-'} build=${svc.build_id ?? '-'} branch=${svc.branch ?? '-'}`)
     }
   } else {
     console.error(`unknown probe target: ${which}`)

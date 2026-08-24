@@ -73,14 +73,15 @@
     - id: sentry-zadig
       name: '@dsh-sentry/service-zadig'
       config:
-        # 真实地址与参数已确证（来自有效浏览器会话的调用示例）。
-        # 现状：该 envoy 入口只认 dex 会话 JWT，API Key 在所有路径族上均 401
-        # （/api/aslan、/api/openapi、/openapi 都试过）——待平台侧给 API Key
-        # 放行入口后此处即通；期间 zadig 工具以 401 错误证据回报。
+        # 真实地址与参数已确证并实测打通（21 workloads，镜像 tag 解析正常）。
+        # 认证现状：envoy 入口只认 dex 会话 JWT（约 1 小时有效期，凭据键
+        # ZADIG_DEX_TOKEN，过期后需从浏览器刷新重新入库）；正式 API Key 在
+        # 所有路径族上均被网关 401（/api/aslan、/api/openapi、/openapi），
+        # 待平台侧给 API Key 放行入口后把 tokenRef 换回 ZADIG_API_TOKEN。
         endpoint: https://zadig.yeastardigital.com
         project: novo-one-helm-charts-project
         envName: dev-client-hosted-0
-        tokenRef: ZADIG_API_TOKEN
+        tokenRef: ZADIG_DEX_TOKEN
 
     - id: sentry-tool-zadig-inspector
       name: '@dsh-sentry/tool-zadig-inspector'
