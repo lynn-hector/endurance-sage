@@ -8,8 +8,8 @@
       config:
         endpoint: "https://greptimedb.cn-0.dev.novo-one.com"
         database: public
-        usernameRef: GREPTIMEDB_LOCAL_USERNAME
-        passwordRef: GREPTIMEDB_LOCAL_PASSWORD
+        usernameRef: GREPTIMEDB_USERNAME
+        passwordRef: GREPTIMEDB_PASSWORD
     - id: sentry-tool-log-analyzer
       name: '@dsh-sentry/tool-log-analyzer'
       config:
@@ -19,8 +19,8 @@
       config:
         mode: grafana-jaeger
         endpoint: "https://grafana.cn-0.dev.novo-one.com"
-        usernameRef: GRAFANA_LOCAL_USERNAME
-        passwordRef: GRAFANA_LOCAL_PASSWORD
+        usernameRef: GRAFANA_USERNAME
+        passwordRef: GRAFANA_PASSWORD
     - id: sentry-tool-trace-analyzer
       name: '@dsh-sentry/tool-trace-analyzer'
       config:
@@ -31,8 +31,8 @@
       config:
         grafanaEndpoint: "https://grafana.cn-0.dev.novo-one.com"
         datasourceUid: prometheus
-        usernameRef: GRAFANA_LOCAL_USERNAME
-        passwordRef: GRAFANA_LOCAL_PASSWORD
+        usernameRef: GRAFANA_USERNAME
+        passwordRef: GRAFANA_PASSWORD
     - id: sentry-tool-metrics-inspector
       name: '@dsh-sentry/tool-metrics-inspector'
       config:
@@ -66,8 +66,8 @@
       name: '@dsh-sentry/service-rocketmq'
       config:
         endpoint: "https://rocketmq.cn-0.test.novo-one.com"
-        usernameRef: ROCKETMQ_LOCAL_USERNAME
-        passwordRef: ROCKETMQ_LOCAL_PASSWORD
+        usernameRef: ROCKETMQ_USERNAME
+        passwordRef: ROCKETMQ_PASSWORD
     - id: sentry-tool-mq-inspector
       name: '@dsh-sentry/tool-mq-inspector'
       config:
@@ -81,4 +81,4 @@
       name: '@dsh-sentry/sentry-persona'
     - id: sentry-skills
       name: '@dsh-sentry/sentry-skills'
-# 环境切换时间: 2026-08-24T12:04:57.486Z
+# 环境切换时间: 2026-08-24T12:07:33.839Z
