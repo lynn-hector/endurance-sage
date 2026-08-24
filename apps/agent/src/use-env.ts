@@ -31,14 +31,16 @@ interface Args {
   out?: string
   dryRun: boolean
   list: boolean
+  current: boolean
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { profile: 'web', dryRun: false, list: false }
+  const args: Args = { profile: 'web', dryRun: false, list: false, current: false }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!
     if (arg === '--dry-run') args.dryRun = true
     else if (arg === '--list') args.list = true
+    else if (arg === '--current') args.current = true
     else if (arg === '--profile') args.profile = argv[++i] ?? ''
     else if (arg === '--out') args.out = argv[++i]
     else if (arg.startsWith('--')) {
@@ -67,6 +69,20 @@ function knownCredentialKeys(): Set<string> {
 function main(): void {
   const args = parseArgs(process.argv.slice(2))
   const matrix = parse(readFileSync(join(AGENT_DIR, 'envs.yml'), 'utf8')) as Matrix
+
+  if (args.current) {
+    const target = join(homedir(), '.dsh', 'profiles', args.profile, 'cordis.patch.yml')
+    if (!existsSync(target)) {
+      console.error(`profile ${args.profile} 尚无组装文件: ${target}`)
+      process.exit(1)
+    }
+    const text = readFileSync(target, 'utf8')
+    const env = /^# dsh-sentry 组装（env: (.+?)）——/m.exec(text)?.[1] ?? '未知（文件头无环境标记）'
+    const written = text.match(/^环境切换时间.*$/m)?.[0] ?? ''
+    console.log(`profile ${args.profile} 当前部署环境: ${env}`)
+    if (written) console.log(`  ${written}`)
+    return
+  }
 
   if (args.list || args.env === undefined) {
     console.log('可用环境（envs.yml）:')
@@ -98,6 +114,8 @@ function main(): void {
   }
 
   const patch = renderPatch(row)
+    + `# 环境切换时间: ${new Date().toISOString()}
+`
   if (args.dryRun) {
     console.log(patch)
     return

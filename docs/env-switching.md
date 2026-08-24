@@ -69,6 +69,23 @@ pnpm --filter @dsh-sentry/agent run regenerate
 
 一个识别当前环境的技巧：问模型「当前 evidence 里的 env 标签是什么」——它来自插件 config，跟着切换走，不会说谎。
 
+## 切换之后怎么验证（三层，从快到慢）
+
+1. **文件层（秒级，不开 web）**：确认 profile 里部署的确实是目标环境
+   ```bash
+   pnpm --filter @dsh-sentry/agent run use-env --current
+   # → profile web 当前部署环境: dev-platform-hosted-1（附切换时间戳）
+   ```
+   或直接抽查 endpoint：`grep dbx ~/.dsh/profiles/web/cordis.patch.yml` 应出现 cn-1 域名。
+
+2. **模型层（真对话）**：在切换前的**原有对话**里问模型：
+   > 查一下 commctl-config 最近 30 分钟的日志量，并告诉我 evidence 里的 env 标签
+   `env` 标签来自插件 config、跟随切换走——它是系统自己申报的环境，比人眼检查更可信。
+
+3. **数据层（铁证）**：不同环境的流量特征不同。PH1 的 freeswitch-sig 30 分钟约 11.7 万行日志、PH0 明显更少；两边各查一次对比行数量级，即确认查的是不同集群。
+
+三层都过 = 切换完全生效。若第 1 层已变而第 2 层没变，说明 watcher 热重载有异常——回退方法：重跑一次 `use-env <环境>` 或重启 web。
+
 ## 边界与注意事项
 
 - 切换是**运维动作**（你敲命令），不是模型动作：模型永远只能查当前部署的环境，无法在对话里跳环境。
