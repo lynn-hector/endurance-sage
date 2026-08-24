@@ -6,16 +6,16 @@
 
 ## 前提状态
 
-| 链路 | 状态 |
+| 链路 | 状态（多环境矩阵就绪，详见 env-switching.md） |
 | --- | --- |
-| 组装文件 | `apps/agent/sentry.cordis.patch.yml`（16 插件，依赖序），已同步到 web profile |
-| 日志（GreptimeDB） | ✅ 凭据已配，真实可达 |
+| 组装 | `envs.yml` → `use-env` 生成，web profile 当前部署 DP0/DP1（`use-env --current` 确认） |
+| 日志（GreptimeDB） | ✅ DP0/DP1 实测 |
 | 代码（rg/codegraph） | ✅ baseDir 指向本机仓库 |
-| 链路（Grafana Jaeger） | ⚠️ 需在 `.credentials.yaml` 补 `GRAFANA_LOCAL_USERNAME/PASSWORD` |
-| DB / Redis（dbx） | ⚠️ 需补 `DBX_REDIS_PASSWORD`（一个引用同时服务 db/redis） |
-| MQ（RocketMQ Console） | ⚠️ 需补 `ROCKETMQ_CONSOLE_PASSWORD`；console 在 cn-0.test 域 |
-| 指标（Prometheus） | ❌ 无真实远程端点（原项目也只有 localhost 模板值） |
-| Zadig | ❌ 占位 endpoint（原项目模板值） |
+| 链路（Grafana Jaeger） | ✅ DP0/DP1 实测（uid 随环境漂移已入矩阵） |
+| DB / Redis（dbx） | ✅ 实测 |
+| MQ（每环境独立 console） | ✅ DP0/DP1/DC0 登录实测 |
+| 指标（grafana 代理） | ✅ 实测；告警接口在代理模式下不可用（已知边界） |
+| Zadig | ⚠️ dex 会话 token 约 1h 过期——演练前刷新则活，过期则 401 错误证据 |
 
 未配凭据/占位的链路**不是演练阻塞项**：预期行为是工具返回 `confidence: 0` 的
 错误证据、模型如实说明"这个数据源看不到"，而不是编造——这本身是验收点。
@@ -56,8 +56,11 @@ sentry_search_code / sentry_read_code`。
 
 ## 已知边界（记录在案，不算失败）
 
-- Prometheus/Zadig 无真实端点 → 指标拐点与"是否发布引入"两条腿本次走不通
+- 指标告警（sentry_list_alerts）在 grafana 代理模式下永远返回错误证据——部署形态决定
+- Zadig：dex token 过期则 401 错误证据；刷新过则可查 DP1 部署列表（注意 envName 随环境）
 - fixture 的 `method: general-troubleshooting` 引用的是原仓库缺失文件（漂移已记录），
   实际应加载 defect-troubleshooting
 - fixture 的 order-service 是虚构服务：project-context 里没有它，预期模型会指出
-  "该服务不在已知服务清单"——这恰好验证项目知识层在工作
+  "该服务不在已知服务清单"——这恰好验证项目知识层在工作；此外指标标签 `app` 下也无此服务
+- 指标模板按集群现实校准：HTTP RED 指标只有 Java 服务有，commctl（Go）查 qps/latency
+  返回空是真实零值（metrics-inspector skill 已写明）
