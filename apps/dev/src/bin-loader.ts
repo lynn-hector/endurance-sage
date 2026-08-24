@@ -42,8 +42,10 @@ if (!ready) {
 }
 
 const skills = await ctx.skills.list()
-if (!skills.some(skill => skill.name === 'sentry-hello')) {
-  throw new Error('FAIL: skill "sentry-hello" was not registered via cordis.yml')
+for (const expected of ['sentry-hello', 'log-analyzer']) {
+  if (!skills.some(skill => skill.name === expected)) {
+    throw new Error(`FAIL: skill "${expected}" was not registered via cordis.yml`)
+  }
 }
 
 console.log('Phase 0 loader OK')

@@ -82,3 +82,6 @@
   name: '@dsh-sentry/tool-zadig-inspector'
   config:
     env: local
+
+- id: sentry-skills
+  name: '@dsh-sentry/sentry-skills'

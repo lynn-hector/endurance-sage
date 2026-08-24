@@ -21,6 +21,7 @@ import * as hello from '@dsh-sentry/tool-hello'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
 import * as metricsInspector from '@dsh-sentry/tool-metrics-inspector'
 import * as redisInspector from '@dsh-sentry/tool-redis-inspector'
+import * as sentrySkills from '@dsh-sentry/sentry-skills'
 import * as traceAnalyzer from '@dsh-sentry/tool-trace-analyzer'
 import * as zadigInspector from '@dsh-sentry/tool-zadig-inspector'
 
@@ -56,6 +57,7 @@ await root.plugin(ZadigService, {
   envName: 'dev-env',
 })
 await root.plugin(zadigInspector, { env: 'local' })
+await root.plugin(sentrySkills)
 
 const tool = root.tools.get('sentry_hello')
 if (tool === undefined) {
@@ -69,8 +71,10 @@ for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fet
 }
 
 const skills = await root.skills.list()
-if (!skills.some(skill => skill.name === 'sentry-hello')) {
-  throw new Error('FAIL: skill "sentry-hello" was not registered')
+for (const expected of ['sentry-hello', 'log-analyzer']) {
+  if (!skills.some(skill => skill.name === expected)) {
+    throw new Error(`FAIL: skill "${expected}" was not registered`)
+  }
 }
 
 console.log('Phase 0 OK')
