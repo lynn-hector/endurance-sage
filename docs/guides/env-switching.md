@@ -44,7 +44,7 @@ pnpm --filter @dsh-sentry/agent run regenerate
 - dbx / rocketmq / zadig 凭据跨环境复用
 - grafana 每环境独立密码（admin）
 - Jaeger 数据源 uid 随环境漂移（PH0 是 `GreptimeDB-Jaeger`，PH1 是 `PCD48328C06B18945`）——矩阵里是每环境字段
-- zadig 用 dex 会话 token（`ZADIG_DEX_TOKEN`），约 1 小时过期，从浏览器刷新后覆盖入库；过期后 zadig 工具以 401 错误证据回报，不影响其他腿
+- zadig 用长期 OpenAPI token（`ZADIG_API_TOKEN`，Zadig 个人设置创建，不会过期）；不要用浏览器复制的 dex 会话 token（约 1 小时过期）。详见 [incidents/2026-08-25-zadig-token.md](../incidents/2026-08-25-zadig-token.md)
 
 ## 新增一个环境（示例）
 

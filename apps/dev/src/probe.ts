@@ -89,7 +89,7 @@ try {
       endpoint: 'https://zadig.yeastardigital.com',
       project: 'novo-one-helm-charts-project',
       envName: 'dev-client-hosted-0',
-      tokenRef: 'ZADIG_DEX_TOKEN',
+      tokenRef: 'ZADIG_API_TOKEN',
     })
     const services = await ctx.zadig.fetchServices()
     console.log(`ZADIG PROBE OK — ${services.length} workloads`)

@@ -11,6 +11,8 @@
  * @module @dsh-sentry/agent/render
  */
 
+import { stringify } from 'yaml'
+
 /** One datasource leg of an environment row. */
 export interface EnvLeg {
   endpoint?: string
@@ -158,6 +160,12 @@ export function renderEntries(row: EnvRow): Entry[] {
     },
     { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
     { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
+    {
+      // 平台级门禁：拦 bash 工具里的破坏性 git 命令（deny）与影响远端的命令（ask）。
+      // 不随环境切换；规则与局限见 packages/guard/git-guard/src/index.ts。
+      id: 'sentry-git-guard',
+      name: '@dsh-sentry/guard-git',
+    },
   ]
 }
 
@@ -188,7 +196,9 @@ function stringifyEntries(entries: Entry[], indent = '    '): string {
 }
 
 function yamlScalar(value: unknown): string {
-  if (value === '') return "''"
-  if (typeof value === 'string' && /[:#{}[\]'"]/.test(value)) return JSON.stringify(value)
+  // Delegate scalar rendering to the yaml package: it quotes any string that
+  // would re-parse as another type (numbers like '63822673', booleans, null),
+  // which the previous hand-rolled special-character check let through plain.
+  if (typeof value === 'string') return stringify(value).trimEnd()
   return String(value)
 }

@@ -1,73 +1,58 @@
 # dsh-sentry
 
-endurance-sentry 的 Cordis 插件化重构仓库：以 DSH（deepseek-harness）原生 Cordis 插件模式，把原项目的 AIOps 能力包（8 个 skill + 共享库 + 模板 + 方法论）重写为有生命周期、有依赖注入、配置带 schema 校验的 TypeScript 插件体系。
+通信产品（novo-commctl）的 AIOps 故障调查员：以 DSH（deepseek-harness）原生 Cordis 插件体系构建的排障 Agent——八条证据腿（日志、链路、指标、DB、Redis、MQ、CI/CD、缺陷单）+ 方法论 persona + 危险命令门禁，在 web GUI 里以只读纪律完成「现象 → 根因 → 建议」的闭环排查。
 
-重构计划与现状评估见 [`docs/refactor-plan.md`](docs/refactor-plan.md)。通过 DSH 启动（headless CLI / web GUI 两种方式）见 [`docs/runbook.md`](docs/runbook.md)。
+## 能力全景
 
-## 当前状态：Phase 2 已完成（log-analyzer 样板端到端打通，真实数据已验证）
+| 证据腿 | 工具 | 说明 |
+|---|---|---|
+| 日志 | `sentry_query_logs` / `sentry_list_log_services` | GreptimeDB k8s 容器日志，异常模式提取 |
+| 链路 | `sentry_fetch_trace` | Grafana Jaeger 按 traceId 追踪，慢/错调用识别 |
+| 指标 | `sentry_query_metrics` / `sentry_list_alerts` | Prometheus 曲线与 firing 告警 |
+| 数据库 | `sentry_query_db` | PostgreSQL 只读 SQL（dbx 平台） |
+| Redis | `sentry_query_redis` | key 值 / TTL / 类型查询 |
+| MQ | `sentry_query_mq` | RocketMQ 消息列表与消费轨迹 |
+| CI/CD | `sentry_query_zadig` | Zadig 服务状态、镜像版本、最近部署 |
+| 缺陷单 | `sentry_query_tapd` | TAPD 缺陷单，「现象 × 已知缺陷」对账 |
+| 代码 | `sentry_search_code` / `sentry_read_code` | 跨仓代码检索，作为交叉验证证据 |
 
-monorepo 骨架已搭好，插件注册双路径已验证：
+另有：方法论 skill 集（10 步排查框架、各证据腿使用边界、结构化输出模板）、`git-guard` 危险 git 命令双层门禁（[docs/architecture/git-guard.md](docs/architecture/git-guard.md)）。
 
-```bash
-pnpm install
-
-# 程序化宿主：Context + SystemPrompt + ToolRuntime + SkillRegistry + 探针插件
-pnpm dev
-
-# 声明式宿主：通过 cordis.yml + loader 加载同一棵插件树
-pnpm dev:loader
-```
-
-两条路径都会断言探针工具 `sentry_hello` 和探针 skill `sentry-hello` 注册成功，失败时以非零码退出。
+所有工具输出统一 `{ evidence: {...} }` 信封；错误同样以 confidence 0 的证据返回。**默认只读**，不执行任何改变线上状态的操作。
 
 ## 目录结构
 
 ```text
 dsh-sentry/
-├── docs/                  # 重构计划与设计文档
 ├── apps/
-│   └── dev/               # Phase 0 开发宿主（程序化 + cordis.yml 两种启动方式）
-└── packages/
-    └── tools/
-        └── tool-hello/    # Phase 0 探针插件（验证用，后续被真实工具替代）
+│   ├── agent/               # 环境矩阵（envs.yml）+ patch 生成器 + 环境切换器
+│   └── dev/                 # 开发探针宿主
+├── packages/
+│   ├── core/                # evidence 信封、datasource 基类
+│   ├── services/            # 8 个数据源 service（凭据引用，不落值）
+│   ├── tools/               # 9 个 model-facing 工具插件
+│   ├── guard/               # git-guard 双层门禁
+│   └── skills/              # persona + 方法论 skill 集
+└── docs/                    # 文档地图见 docs/index.md
 ```
 
-## 依赖约定
-
-- `@deepseek-ai/cordis` 及其 loader/include 插件使用 npm 正式版（cordis ^4.0.1、loader ^1.0.2、include ^1.0.6）；
-- `@deepseek-ai/dsh-*` 包统一使用 `^0.1.0-rc.7` 范围（实际解析到 0.1.0-rc.8）——必须所有包同一范围，否则 pnpm 会按 peer 上下文装出两份实例，nominal 品牌类型相互不兼容；
-- 运行环境 Node ≥ 22.19，包管理 pnpm 11。
-
-## 验证
+## 快速上手
 
 ```bash
 pnpm install
 pnpm typecheck   # 全部包类型检查
-pnpm test        # vitest（含 SQL golden tests，逐字对齐原 SKILL.md 示例）
-pnpm dev         # 程序化宿主：断言工具/skill 注册
-pnpm dev:loader  # 声明式宿主：cordis.yml + loader 断言同一结果
+pnpm test        # vitest
 ```
 
-## 通过 DSH 启动（已实测）
+启动与挂载（headless CLI / web GUI 两种方式）：[docs/guides/runbook.md](docs/guides/runbook.md)。
+多环境切换：[docs/guides/env-switching.md](docs/guides/env-switching.md)。
 
-插件以 profile patch 叠加层挂进 DSH（deepseek-harness checkout 根目录执行）：
+## 关键约定
 
-```bash
-# 1. 安装 sentry 插件到 profile（link 依赖，一次即可；headless 首次使用会自动初始化）
-pnpm dsh plugin --profile headless add \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/core/evidence \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/core/datasource \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/services/greptimedb \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/tools/tool-log-analyzer
+- **凭据只引用不落值**：环境矩阵 `apps/agent/envs.yml` 写 `*Ref` 键名，值存本机 `~/.dsh/.credentials.yaml`（见 [docs/guides/credentials.md](docs/guides/credentials.md)）
+- **依赖版本**：`@deepseek-ai/dsh-*` 统一 `^0.1.0-rc.7` 范围——必须所有包同一范围，否则 pnpm 按 peer 上下文装出两份实例，nominal 品牌类型不兼容
+- **运行环境**：Node ≥ 22.19，pnpm 11
 
-# 2. 带 sentry 叠加层启动一次性任务会话
-pnpm dsh --profile headless \
-  --patch /Users/yangfm/workspace/work/dsh-sentry/apps/agent/sentry.cordis.patch.yml \
-  "调用 sentry_list_log_services，把 evidence 结果原样告诉我"
-```
+## 文档
 
-叠加层文件：`apps/agent/sentry.cordis.patch.yml`。模型/凭据沿用 `$DSH_HOME` 的 settings 与 credentials（当前为 kimi/k3）。
-
-已实测验证的链路：profile 启动 → 模型发现并调用 `sentry_*` 工具 → SQL 生成 → 凭据解析（环境变量/`$DSH_HOME/.credentials.yaml`）→ HTTP 到达真实 GreptimeDB（401 无效凭据被正确包装为 `confidence=0` 的错误 evidence）。
-
-**让查询真正成功**：把真实凭据注入 `GREPTIMEDB_LOCAL_USERNAME` / `GREPTIMEDB_LOCAL_PASSWORD`（写进 `$DSH_HOME/.credentials.yaml`，或运行前 export）；endpoint 不同时改 patch 文件或对应 settings section。
+入口：[docs/index.md](docs/index.md)（使用手册 / 设计文档 / 对接档案 / 事件档案四类导航）。

@@ -57,7 +57,7 @@
         endpoint: "https://zadig.yeastardigital.com"
         project: novo-one-helm-charts-project
         envName: dev-platform-hosted-0
-        tokenRef: ZADIG_DEX_TOKEN
+        tokenRef: ZADIG_API_TOKEN
     - id: sentry-tool-zadig-inspector
       name: '@dsh-sentry/tool-zadig-inspector'
       config:
@@ -90,4 +90,6 @@
       name: '@dsh-sentry/sentry-persona'
     - id: sentry-skills
       name: '@dsh-sentry/sentry-skills'
-# 环境切换时间: 2026-08-24T14:06:39.227Z
+    - id: sentry-git-guard
+      name: '@dsh-sentry/guard-git'
+# 环境切换时间: 2026-08-25T08:05:11.163Z

@@ -2,8 +2,8 @@
  * Shared configuration surface for dsh-sentry datasource plugins.
  *
  * This package is what remains of the original `skills/lib/config.py` after
- * its four responsibilities moved to native DSH mechanisms (see
- * `docs/refactor-plan.md` Phase 1): parsing is the loader's job, environments
+ * its four responsibilities moved to native DSH mechanisms: parsing is the
+ * loader's job, environments
  * are cordis.patch.yml layers, user overrides are dsh-settings sections, and
  * secrets are dsh-credentials references. What is left is the vocabulary every
  * datasource plugin's `Config` shares — endpoint, timeout, credential refs —

@@ -14,6 +14,9 @@ importers:
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:packages/core/evidence
+      '@dsh-sentry/guard-git':
+        specifier: workspace:*
+        version: link:packages/guard/git-guard
       '@dsh-sentry/sentry-persona':
         specifier: workspace:*
         version: link:packages/skills/sentry-persona
@@ -203,6 +206,22 @@ importers:
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
+
+  packages/guard/git-guard:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/dsh-tools':
+        specifier: ^0.1.0-rc.7
+        version: 0.1.0-rc.7(a82b8abf74c7bffecdcd6d61d381e4b7)
+      '@deepseek-ai/schemastery':
+        specifier: ^3.18.1
+        version: 3.18.1
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
 
   packages/services/code-repository:
     dependencies:

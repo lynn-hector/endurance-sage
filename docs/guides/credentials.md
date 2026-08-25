@@ -1,0 +1,48 @@
+# 凭据管理
+
+dsh-sentry 的全部凭据走**引用**（`*Ref` 字段），值只存于本机凭据库，不入仓库。
+
+## 凭据库
+
+位置：`~/.dsh/.credentials.yaml`（dsh 进程以此解析所有 `tokenRef` / `usernameRef` / `passwordRef`）。
+
+```yaml
+GREPTIMEDB_DP0_USERNAME: <grafana 用户>
+GREPTIMEDB_DP0_PASSWORD: <密码>
+ZADIG_API_TOKEN: <长期 OpenAPI token>
+TAPD_TOKEN: <token>
+...
+```
+
+键名约定 `<SYSTEM>_<ENV>_<FIELD>`；平台级数据源（zadig、tapd）无环境段。每行环境引用哪些键，权威来源是 `apps/agent/envs.yml`（`use-env` 切换前会校验全部键就绪，缺一个拒绝切换）。
+
+## 各数据源 token 获取方式
+
+### Zadig（长期 OpenAPI token）
+
+Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**不要**从浏览器开发者工具复制请求头里的 token——那是 dex 登录会话 token，约 1 小时过期（历史教训见 [incidents/2026-08-25-zadig-token.md](../incidents/2026-08-25-zadig-token.md)）。
+
+键名：`ZADIG_API_TOKEN`。
+
+本地 zadig CLI 复用同一 token：`~/.zshrc` 里从凭据库动态读取（`ZADIG_API_HOST` + `ZADIG_API_TOKEN`），不明文落第二份。注意 `zadig auth login` 在公司服务端版本上必然 404（CLI 依赖的新端点服务端没有），凭据只能走环境变量。
+
+### TAPD
+
+见 [integrations/tapd-integration.md](../integrations/tapd-integration.md)。键名：`TAPD_TOKEN`。
+
+### GreptimeDB / Grafana / dbx / RocketMQ
+
+每环境独立或跨环境复用的实测结论记录在 `apps/agent/envs.yml` 头部注释；密码值不入库。
+
+## 换 token 的操作
+
+只需改 `~/.dsh/.credentials.yaml` 一处，然后触发 profile patch 重载（touch 或重新生成 `cordis.patch.yml`）。**不要**在 dsh 进程运行时对 `~/.dsh/profiles/web` 目录跑 `pnpm install`——会卡死 patch 热重载（事故记录见 incidents）。
+
+## 给 profile 挂新插件包的步骤
+
+profile（`~/.dsh/profiles/web/package.json`）用显式 `link:` 依赖解析 workspace 插件包：
+
+1. 根 `package.json` 加 `"@dsh-sentry/<包名>": "workspace:*"`，工作区 `pnpm install`
+2. profile 的 `package.json` `dependencies` 加 `"@dsh-sentry/<包名>": "link:<绝对路径>"`
+3. **停掉 dsh 进程后**在 profile 目录 `pnpm install`（原因见上）
+4. 把插件条目加进 `apps/agent/envs.yml` / `render.ts` 生成器，regenerate 并同步 patch 文件，重启进程

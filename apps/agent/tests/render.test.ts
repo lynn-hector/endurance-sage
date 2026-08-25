@@ -29,14 +29,14 @@ const fixture: EnvRow = {
     endpoint: 'https://zadig.yeastardigital.com',
     project: 'novo-one-helm-charts-project',
     envName: 'tst-platform-hosted-0',
-    tokenRef: 'ZADIG_DEX_TOKEN',
+    tokenRef: 'ZADIG_API_TOKEN',
   },
 }
 
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders all 16 plugins in dependency order', () => {
+  it('renders all 19 plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
       'sentry-greptimedb',
       'sentry-tool-log-analyzer',
@@ -56,6 +56,7 @@ describe('renderEntries', () => {
       'sentry-tool-code-repository',
       'sentry-persona',
       'sentry-skills',
+      'sentry-git-guard',
     ])
   })
 
@@ -90,7 +91,7 @@ describe('requiredCredentialRefs', () => {
       'GREPTIMEDB_TEST_USERNAME',
       'ROCKETMQ_LOCAL_PASSWORD',
       'ROCKETMQ_LOCAL_USERNAME',
-      'ZADIG_DEX_TOKEN',
+      'ZADIG_API_TOKEN',
     ])
   })
 })
@@ -100,13 +101,16 @@ describe('renderPatch', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(18)
+    expect(parsed[0]!.insert).toHaveLength(19)
     const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
     expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
     // direct endpoint field is absent in proxy mode (optional since day one
     // of the matrix; grafanaEndpoint is the only wiring)
     const prometheus = parsed[0]!.insert.find((e) => e.id === 'sentry-prometheus')
     expect(prometheus?.config?.['endpoint']).toBeUndefined()
+    // Number-like strings must survive the round trip as strings.
+    const tapd = parsed[0]!.insert.find((e) => e.id === 'sentry-tapd')
+    expect(tapd?.config?.['workspaceId']).toBe('63822673')
   })
 })
 
