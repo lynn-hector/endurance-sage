@@ -184,6 +184,19 @@ export function renderPatch(row: EnvRow): string {
   return `${header}\n\n- insert:\n${stringifyEntries(renderEntries(row))}\n`
 }
 
+/**
+ * Entry-list text（cordis-plugin-include 的 `path` 格式）for one environment row.
+ * 本地 profile 采用「引入」模式时，其 cordis.patch.yml 只含一条 include 条目，
+ * 指向本文件；市场插件等个人配置不受 sentry 更新影响。
+ */
+export function renderIncludePatch(row: EnvRow): string {
+  const header = [
+    `# dsh-sentry 组装（env: ${row.envLabel}，include 格式）——由 apps/agent/envs.yml 生成，勿手改。`,
+    '# 供 cordis-plugin-include 按路径引入（本地 profile 模式）；服务器符号链接模式用 cordis.patch.yml。',
+  ].join('\n')
+  return `${header}\n${stringifyEntries(renderEntries(row), '  ')}\n`
+}
+
 function stringifyEntries(entries: Entry[], indent = '    '): string {
   // `yaml` package handles the objects; simple line rendering keeps diffs readable.
   return entries

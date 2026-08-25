@@ -21,7 +21,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from 'yaml'
-import { type Matrix, renderPatch, requiredCredentialRefs } from './render.ts'
+import { type Matrix, renderPatch, renderIncludePatch, requiredCredentialRefs } from './render.ts'
 
 const AGENT_DIR = new URL('..', import.meta.url).pathname
 
@@ -124,6 +124,14 @@ function main(): void {
   const target = args.out ?? join(homedir(), '.dsh', 'profiles', args.profile, 'cordis.patch.yml')
   writeFileSync(target, patch)
   console.log(`✓ 环境 ${args.env} → ${target}`)
+  // 同步生成 include 格式（本地 profile「引入」模式消费），与 patch 同目录
+  const includeTarget = target.replace(/cordis\.patch\.yml$/, 'cordis.include.yml')
+  if (includeTarget !== target) {
+    writeFileSync(includeTarget, renderIncludePatch(row)
+      + `# 环境切换时间: ${new Date().toISOString()}
+`)
+    console.log(`✓ include 格式 → ${includeTarget}`)
+  }
   console.log('  dsh 的 patch watcher 会自动热重载；无需重启，对话不中断。')
 }
 

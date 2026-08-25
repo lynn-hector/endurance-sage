@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Runnable dsh web profile as a workspace package: pnpm links every sentry plugin automatically on any machine; deploy = clone + pnpm install + pnpm run profile:link + dsh web.",
+  "description": "Pure sentry core profile (workspace package). Server deploy: symlink mode via pnpm run profile:link. Local machine: adopt mode — your real profile keeps its personal plugins and includes this layer by path.",
   "dsh": {
     "profile": {
       "bundles": [

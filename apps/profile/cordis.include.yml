@@ -1,0 +1,92 @@
+# dsh-sentry 组装（env: dev-platform-hosted-0，include 格式）——由 apps/agent/envs.yml 生成，勿手改。
+# 供 cordis-plugin-include 按路径引入（本地 profile 模式）；服务器符号链接模式用 cordis.patch.yml。
+  - id: sentry-greptimedb
+    name: '@dsh-sentry/service-greptimedb'
+    config:
+      endpoint: https://greptimedb.cn-0.dev.novo-one.com
+      database: public
+      usernameRef: GREPTIMEDB_DP0_USERNAME
+      passwordRef: GREPTIMEDB_DP0_PASSWORD
+  - id: sentry-tool-log-analyzer
+    name: '@dsh-sentry/tool-log-analyzer'
+    config:
+      env: dev-platform-hosted-0
+  - id: sentry-trace
+    name: '@dsh-sentry/service-trace'
+    config:
+      mode: grafana-jaeger
+      endpoint: https://grafana.cn-0.dev.novo-one.com
+      usernameRef: GRAFANA_DP0_USERNAME
+      passwordRef: GRAFANA_DP0_PASSWORD
+  - id: sentry-tool-trace-analyzer
+    name: '@dsh-sentry/tool-trace-analyzer'
+    config:
+      env: dev-platform-hosted-0
+      datasourceUid: GreptimeDB-Jaeger
+  - id: sentry-prometheus
+    name: '@dsh-sentry/service-prometheus'
+    config:
+      grafanaEndpoint: https://grafana.cn-0.dev.novo-one.com
+      datasourceUid: prometheus
+      usernameRef: GRAFANA_DP0_USERNAME
+      passwordRef: GRAFANA_DP0_PASSWORD
+  - id: sentry-tool-metrics-inspector
+    name: '@dsh-sentry/tool-metrics-inspector'
+    config:
+      env: dev-platform-hosted-0
+  - id: sentry-dbx
+    name: '@dsh-sentry/service-dbx'
+    config:
+      endpoint: https://dbx.cn-0.dev.novo-one.com
+      passwordRef: DBX_DP0_PASSWORD
+  - id: sentry-tool-db-inspector
+    name: '@dsh-sentry/tool-db-inspector'
+    config:
+      env: dev-platform-hosted-0
+      database: novo_commctl_config
+  - id: sentry-tool-redis-inspector
+    name: '@dsh-sentry/tool-redis-inspector'
+    config:
+      env: dev-platform-hosted-0
+  - id: sentry-zadig
+    name: '@dsh-sentry/service-zadig'
+    config:
+      endpoint: https://zadig.yeastardigital.com
+      project: novo-one-helm-charts-project
+      envName: dev-platform-hosted-0
+      tokenRef: ZADIG_API_TOKEN
+  - id: sentry-tool-zadig-inspector
+    name: '@dsh-sentry/tool-zadig-inspector'
+    config:
+      env: dev-platform-hosted-0
+  - id: sentry-service-rocketmq
+    name: '@dsh-sentry/service-rocketmq'
+    config:
+      endpoint: https://rocketmq.cn-0.dev.novo-one.com
+      usernameRef: ROCKETMQ_DP0_USERNAME
+      passwordRef: ROCKETMQ_DP0_PASSWORD
+  - id: sentry-tool-mq-inspector
+    name: '@dsh-sentry/tool-mq-inspector'
+    config:
+      env: dev-platform-hosted-0
+  - id: sentry-tapd
+    name: '@dsh-sentry/service-tapd'
+    config:
+      workspaceId: "63822673"
+      tokenRef: TAPD_TOKEN
+  - id: sentry-tool-tapd-inspector
+    name: '@dsh-sentry/tool-tapd-inspector'
+    config:
+      env: dev-platform-hosted-0
+  - id: sentry-tool-code-repository
+    name: '@dsh-sentry/tool-code-repository'
+    config:
+      env: dev-platform-hosted-0
+      baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
+  - id: sentry-persona
+    name: '@dsh-sentry/sentry-persona'
+  - id: sentry-skills
+    name: '@dsh-sentry/sentry-skills'
+  - id: sentry-git-guard
+    name: '@dsh-sentry/guard-git'
+# 环境切换时间: 2026-08-25T11:39:28.508Z
