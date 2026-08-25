@@ -109,6 +109,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Normalize an optional passthrough field to `null` when the Zadig response
+ * omits it. Raw `undefined` embedded in a tool output fails the harness's
+ * lossless-JSON snapshot (`value is not lossless JSON`), and
+ * `JSON.stringify` silently drops such keys — so this bug class is invisible
+ * to the original Python script era and only surfaces under the strict JSON
+ * boundary.
+ */
+function orNull<T>(value: T | undefined): T | null {
+  return value === undefined ? null : value
+}
+
+/**
  * Port of `_parse_image`: split `{repo}:{tag}` and decode the tag as
  * `{timestamp}-{build_id}-{version?}-{branch}`.
  */
@@ -329,9 +341,9 @@ export class ZadigService extends Service {
       const image = images.length > 0 && typeof images[0] === 'string' ? images[0] : null
       result.push({
         name,
-        status: svc['status'],
-        ready: svc['ready'],
-        error: svc['error'],
+        status: orNull(svc['status']),
+        ready: orNull(svc['ready']),
+        error: orNull(svc['error']),
         workLoadType: typeof svc['workLoadType'] === 'string' ? svc['workLoadType'] : this.workLoadType,
         image,
         ...(image !== null ? parseImageTag(image) : {}),
@@ -375,23 +387,23 @@ export class ZadigService extends Service {
     for (const pod of Array.isArray(scale['pods']) ? scale['pods'] : []) {
       if (!isRecord(pod)) continue
       pods.push({
-        name: pod['name'],
-        status: pod['status'],
-        age: pod['age'],
-        ip: pod['ip'],
-        node_name: pod['node_name'],
-        started_at: pod['started_at'],
+        name: orNull(pod['name']),
+        status: orNull(pod['status']),
+        age: orNull(pod['age']),
+        ip: orNull(pod['ip']),
+        node_name: orNull(pod['node_name']),
+        started_at: orNull(pod['started_at']),
         started_at_iso: formatTs(pod['started_at']),
-        pod_ready: pod['pod_ready'],
-        containers_ready: pod['containers_ready'],
+        pod_ready: orNull(pod['pod_ready']),
+        containers_ready: orNull(pod['containers_ready']),
         containers: (Array.isArray(pod['containers']) ? pod['containers'] : [])
           .filter(isRecord)
           .map(c => ({
-            name: c['name'],
-            image: c['image'],
-            restart_count: c['restart_count'],
-            status: c['status'],
-            ready: c['ready'],
+            name: orNull(c['name']),
+            image: orNull(c['image']),
+            restart_count: orNull(c['restart_count']),
+            status: orNull(c['status']),
+            ready: orNull(c['ready']),
           })),
       })
     }
@@ -403,12 +415,12 @@ export class ZadigService extends Service {
 
     return {
       service_name: payload['service_name'] ?? service,
-      namespace: payload['namespace'],
+      namespace: orNull(payload['namespace']),
       env_name: payload['env_name'] ?? this.envName,
       product_name: payload['product_name'] ?? this.config.project,
-      status: scale['status'] ?? payload['status'],
-      ready: scale['ready'],
-      replicas: scale['replicas'],
+      status: scale['status'] ?? orNull(payload['status']),
+      ready: orNull(scale['ready']),
+      replicas: orNull(scale['replicas']),
       image: mainImage,
       ...(mainImage !== null ? parseImageTag(mainImage) : {}),
       images: scaleImages,
