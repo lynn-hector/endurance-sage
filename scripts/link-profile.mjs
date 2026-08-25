@@ -73,6 +73,17 @@ if (existsSync(target) && !lstatSync(target).isSymbolicLink()) {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
   pkg.dependencies ??= {}
   let added = 0
+  let removed = 0
+  // 清理：本仓库 scope 下、已不在清单（或 link 目标已消失）的条目。
+  // 只碰 @dsh-sentry/* 且 link 指向本仓库的——个人插件依赖绝不触碰。
+  for (const [name, spec] of Object.entries(pkg.dependencies)) {
+    if (!name.startsWith('@dsh-sentry/') || typeof spec !== 'string' || !spec.startsWith(`link:${repoRoot}`)) continue
+    if (!sentry.has(name)) {
+      delete pkg.dependencies[name]
+      removed++
+      console.log(`– 移除失效 link：${name}（不在 sentry 装配清单中）`)
+    }
+  }
   for (const [name, path] of sentry) {
     const want = `link:${path}`
     if (pkg.dependencies[name] !== want) { pkg.dependencies[name] = want; added++ }
@@ -103,7 +114,7 @@ if (existsSync(target) && !lstatSync(target).isSymbolicLink()) {
   ].join('\n'))
 
   console.log(`✓ 引入模式：${target}（真实目录，个人插件保留）`)
-  console.log(`  · 依赖同步 ${added} 项（link: 指向仓库，路径自动计算）`)
+  console.log(`  · 依赖同步 +${added} / -${removed}（link: 指向仓库，路径自动计算）`)
   console.log(`  · ${patchPath} → include ${includeYml}`)
   console.log('下一步：停 dsh 进程 → 在 profile 目录 pnpm install → 重启。')
 } else {
