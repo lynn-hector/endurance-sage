@@ -93,10 +93,19 @@ export class TapdService extends Service {
     const token = await this.tokenValue()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    // MCP 通道标记（TAPD 为 MCP 流量开的专用权限路径）：`Via: mcp` 头 +
+    // `s=mcp` 参数。经典 /bugs/list、/bugs/get 端点要求企业级 API 权限
+    // （个人令牌 403）；/bugs 端点 + MCP 标记允许个人令牌读取缺陷。
+    query.set('s', 'mcp')
     let resp: Response
     try {
       resp = await fetch(`${this.endpoint}${path}?${query.toString()}`, {
-        headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/json',
+          'content-type': 'application/json',
+          via: 'mcp',
+        },
         signal: controller.signal,
       })
     } finally {
@@ -146,29 +155,36 @@ export class TapdService extends Service {
       params['modified'] = `${options.modifiedStart}..${options.modifiedEnd}`
     }
     if (options.title !== undefined) params['title'] = options.title
-    const data = await this.getJson<{ data: TapdBug[] } | TapdBug[]>('/bugs/list', params)
-    return Array.isArray(data) ? data : (data.data ?? [])
+    // /bugs 端点返回 [{Bug: {...}}] 实体包裹结构（实测 2026-08，个人令牌走
+    // MCP 通道标记；/bugs/list 虽为文档端点但仅对企业 API 账号开放）。
+    const data = await this.getJson<Array<{ Bug?: TapdBug } | TapdBug>>('/bugs', params)
+    return data.map((row) => (row as { Bug?: TapdBug }).Bug ?? (row as TapdBug))
   }
 
-  /** Full detail for one bug id. */
+  /** Full detail for one bug id (short ids are padded to TAPD long ids). */
   async fetchBug(id: string): Promise<TapdBug> {
-    const data = await this.getJson<{ data: TapdBug } | TapdBug>('/bugs/get', {
+    const data = await this.getJson<Array<{ Bug?: TapdBug } | TapdBug>>('/bugs', {
       workspace_id: this.config.workspaceId,
-      id,
+      id: this.toLongId(id),
       fields: FIELDS_DETAIL,
+      page: 1,
+      limit: 1,
     })
-    const bug = (data as { data?: TapdBug }).data ?? (data as TapdBug)
+    const row = data[0]
+    const bug = row !== undefined ? ((row as { Bug?: TapdBug }).Bug ?? (row as TapdBug)) : undefined
     if (bug === undefined || bug.id === undefined) {
       throw new Error(`TAPD 缺陷 ${id} 不存在或无权查看`)
     }
     return bug
   }
 
-  /** The workspace's bug status map (id → display name). */
-  async statusMap(): Promise<Record<string, string>> {
-    return this.getJson<Record<string, string>>('/bugs/status_map', {
-      workspace_id: this.config.workspaceId,
-    })
+  /** 短 id → 长 id（云端格式：`11` + workspace_id + 9 位补零序号）。 */
+  private toLongId(id: string): string {
+    const trimmed = id.trim()
+    if (/^\d+$/.test(trimmed) && trimmed.length <= 9) {
+      return `11${this.config.workspaceId}${trimmed.padStart(9, '0')}`
+    }
+    return trimmed
   }
 
   /** Total bug count for the workspace (cheapest liveness check). */

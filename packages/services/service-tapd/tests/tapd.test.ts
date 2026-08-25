@@ -3,22 +3,28 @@ import { Context } from '@deepseek-ai/cordis'
 import TapdService, { type Config } from '../src/index.ts'
 
 /**
- * Golden tests over a canned fetch: envelope enforcement (status!=1 → error
- * with TAPD's info text), filter → query-param mapping, pagination caps,
- * and the detail unwrap of TAPD's nested {data:{data:[...]}} shapes.
+ * Golden tests over a canned fetch, matching the live-probed wire format
+ * (2026-08): endpoint /bugs with `s=mcp` + `Via: mcp` header, response rows
+ * wrapped as {Bug: {...}}, envelope enforcement (status!=1 → error with
+ * TAPD's info text), short-id padding, and filter → query-param mapping.
  */
 
-interface Call { path: string; params: URLSearchParams }
+interface Call { path: string; params: URLSearchParams; headers: Record<string, string> }
 
 function makeService(handler: (call: Call) => { status: number; data?: unknown; info?: string }): TapdService {
   const ctx = new Context()
   const config: Config = { workspaceId: '63822673', token: 't0k3n' }
   const service = new TapdService(ctx, config)
-  // intercept fetch via the service's private getJson by stubbing global fetch
   const original = globalThis.fetch
-  globalThis.fetch = (async (url: string | URL) => {
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
     const u = new URL(String(url))
-    const call: Call = { path: u.pathname, params: u.searchParams }
+    const call: Call = {
+      path: u.pathname,
+      params: u.searchParams,
+      headers: Object.fromEntries(
+        Object.entries((init?.headers as Record<string, string>) ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
+      ),
+    }
     const payload = handler(call)
     return new Response(JSON.stringify(payload), {
       status: 200,
@@ -35,13 +41,17 @@ function cleanup(service: TapdService): void {
   ;(service as unknown as { __restore?: () => void }).__restore?.()
 }
 
-describe('TapdService envelope', () => {
-  it('status 1 passes through; nested data unwrapped', async () => {
+describe('TapdService envelope and MCP lane', () => {
+  it('sends Via: mcp header and s=mcp param on every request', async () => {
+    let seen: Call | undefined
     const svc = makeService((call) => {
-      if (call.path === '/bugs/count') return { status: 1, data: { count: 4684 } }
-      throw new Error('unexpected path')
+      seen = call
+      return { status: 1, data: [{ Bug: { id: '1', title: 't', status: 'new' } }] }
     })
-    expect(await svc.count()).toBe(4684)
+    await svc.listBugs()
+    expect(seen!.headers['via']).toBe('mcp')
+    expect(seen!.params.get('s')).toBe('mcp')
+    expect(seen!.headers['authorization']).toBe('Bearer t0k3n')
     cleanup(svc)
   })
 
@@ -65,11 +75,11 @@ describe('TapdService envelope', () => {
 })
 
 describe('TapdService listBugs mapping', () => {
-  it('time window → created range; owner → current_owner; limit capped at 200', async () => {
+  it('hits /bugs with filters; time window → created range; limit capped at 200', async () => {
     let seen: Call | undefined
     const svc = makeService((call) => {
       seen = call
-      return { status: 1, data: { data: [] } }
+      return { status: 1, data: [] }
     })
     await svc.listBugs({
       owner: 'yangfm',
@@ -77,6 +87,7 @@ describe('TapdService listBugs mapping', () => {
       createdEnd: '2026-08-25',
       limit: 999,
     })
+    expect(seen!.path).toBe('/bugs')
     expect(seen!.params.get('workspace_id')).toBe('63822673')
     expect(seen!.params.get('current_owner')).toBe('yangfm')
     expect(seen!.params.get('created')).toBe('2026-08-24..2026-08-25')
@@ -85,32 +96,45 @@ describe('TapdService listBugs mapping', () => {
     cleanup(svc)
   })
 
-  it('severity/status filters and both list envelope shapes', async () => {
-    const flat = makeService(() => ({ status: 1, data: [{ id: '1', title: 't', status: 'new' }] }))
-    expect((await flat.listBugs({ severity: 'High' }))[0]!.id).toBe('1')
-    cleanup(flat)
-    const nested = makeService(() => ({ status: 1, data: { data: [{ id: '2' }] } }))
-    expect((await nested.listBugs())[0]!.id).toBe('2')
-    cleanup(nested)
+  it('unwraps {Bug: {...}} rows (live-probed shape)', async () => {
+    const svc = makeService(() => ({
+      status: 1,
+      data: [{ Bug: { id: '1163822673001160533', title: '外线呼入转录无原文', status: 'in_progress' } }],
+    }))
+    const bugs = await svc.listBugs()
+    expect(bugs[0]!.id).toBe('1163822673001160533')
+    expect(bugs[0]!.title).toContain('转录')
+    cleanup(svc)
   })
 })
 
 describe('TapdService fetchBug', () => {
-  it('unwraps the nested detail and passes the id', async () => {
+  it('long id passes through; detail fields requested', async () => {
     let seen: Call | undefined
     const svc = makeService((call) => {
       seen = call
-      return { status: 1, data: { data: { id: '113', title: 'x', description: 'd' } } }
+      return { status: 1, data: [{ Bug: { id: '1163822673001160533', description: 'd' } }] }
     })
-    const bug = await svc.fetchBug('113')
+    const bug = await svc.fetchBug('1163822673001160533')
     expect(bug.description).toBe('d')
-    expect(seen!.params.get('id')).toBe('113')
+    expect(seen!.params.get('id')).toBe('1163822673001160533')
     expect(seen!.params.get('fields')).toContain('description')
     cleanup(svc)
   })
 
-  it('missing id in the payload throws the not-found wording', async () => {
-    const svc = makeService(() => ({ status: 1, data: {} }))
+  it('short id is padded to the cloud long format 11<ws><9位序号>', async () => {
+    let seen: Call | undefined
+    const svc = makeService((call) => {
+      seen = call
+      return { status: 1, data: [{ Bug: { id: 'x' } }] }
+    })
+    await svc.fetchBug('1160533')
+    expect(seen!.params.get('id')).toBe('1163822673001160533')
+    cleanup(svc)
+  })
+
+  it('empty result throws the not-found wording', async () => {
+    const svc = makeService(() => ({ status: 1, data: [] }))
     await expect(svc.fetchBug('999')).rejects.toThrow(/不存在或无权查看/)
     cleanup(svc)
   })
