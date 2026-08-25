@@ -179,6 +179,75 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  apps/profile:
+    dependencies:
+      '@dsh-sentry/datasource':
+        specifier: workspace:*
+        version: link:../../packages/core/datasource
+      '@dsh-sentry/evidence':
+        specifier: workspace:*
+        version: link:../../packages/core/evidence
+      '@dsh-sentry/guard-git':
+        specifier: workspace:*
+        version: link:../../packages/guard/git-guard
+      '@dsh-sentry/sentry-persona':
+        specifier: workspace:*
+        version: link:../../packages/skills/sentry-persona
+      '@dsh-sentry/sentry-skills':
+        specifier: workspace:*
+        version: link:../../packages/skills/sentry-skills
+      '@dsh-sentry/service-code-repository':
+        specifier: workspace:*
+        version: link:../../packages/services/code-repository
+      '@dsh-sentry/service-dbx':
+        specifier: workspace:*
+        version: link:../../packages/services/dbx
+      '@dsh-sentry/service-greptimedb':
+        specifier: workspace:*
+        version: link:../../packages/services/greptimedb
+      '@dsh-sentry/service-prometheus':
+        specifier: workspace:*
+        version: link:../../packages/services/prometheus
+      '@dsh-sentry/service-rocketmq':
+        specifier: workspace:*
+        version: link:../../packages/services/rocketmq
+      '@dsh-sentry/service-tapd':
+        specifier: workspace:*
+        version: link:../../packages/services/service-tapd
+      '@dsh-sentry/service-trace':
+        specifier: workspace:*
+        version: link:../../packages/services/trace
+      '@dsh-sentry/service-zadig':
+        specifier: workspace:*
+        version: link:../../packages/services/zadig
+      '@dsh-sentry/tool-code-repository':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-code-repository
+      '@dsh-sentry/tool-db-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-db-inspector
+      '@dsh-sentry/tool-log-analyzer':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-log-analyzer
+      '@dsh-sentry/tool-metrics-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-metrics-inspector
+      '@dsh-sentry/tool-mq-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-mq-inspector
+      '@dsh-sentry/tool-redis-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-redis-inspector
+      '@dsh-sentry/tool-tapd-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-tapd-inspector
+      '@dsh-sentry/tool-trace-analyzer':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-trace-analyzer
+      '@dsh-sentry/tool-zadig-inspector':
+        specifier: workspace:*
+        version: link:../../packages/tools/tool-zadig-inspector
+
   packages/core/datasource:
     dependencies:
       '@deepseek-ai/cordis':

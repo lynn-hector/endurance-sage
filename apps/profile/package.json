@@ -1,0 +1,39 @@
+{
+  "name": "@dsh-sentry/profile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runnable dsh web profile as a workspace package: pnpm links every sentry plugin automatically on any machine; deploy = clone + pnpm install + pnpm run profile:link + dsh web.",
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app"
+      ]
+    }
+  },
+  "dependencies": {
+    "@dsh-sentry/datasource": "workspace:*",
+    "@dsh-sentry/evidence": "workspace:*",
+    "@dsh-sentry/guard-git": "workspace:*",
+    "@dsh-sentry/sentry-persona": "workspace:*",
+    "@dsh-sentry/sentry-skills": "workspace:*",
+    "@dsh-sentry/service-code-repository": "workspace:*",
+    "@dsh-sentry/service-dbx": "workspace:*",
+    "@dsh-sentry/service-greptimedb": "workspace:*",
+    "@dsh-sentry/service-prometheus": "workspace:*",
+    "@dsh-sentry/service-rocketmq": "workspace:*",
+    "@dsh-sentry/service-tapd": "workspace:*",
+    "@dsh-sentry/service-trace": "workspace:*",
+    "@dsh-sentry/service-zadig": "workspace:*",
+    "@dsh-sentry/tool-code-repository": "workspace:*",
+    "@dsh-sentry/tool-db-inspector": "workspace:*",
+    "@dsh-sentry/tool-log-analyzer": "workspace:*",
+    "@dsh-sentry/tool-metrics-inspector": "workspace:*",
+    "@dsh-sentry/tool-mq-inspector": "workspace:*",
+    "@dsh-sentry/tool-redis-inspector": "workspace:*",
+    "@dsh-sentry/tool-tapd-inspector": "workspace:*",
+    "@dsh-sentry/tool-trace-analyzer": "workspace:*",
+    "@dsh-sentry/tool-zadig-inspector": "workspace:*"
+  }
+}

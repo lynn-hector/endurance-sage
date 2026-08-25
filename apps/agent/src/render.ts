@@ -3,7 +3,7 @@
  * plugin entry list for a cordis.patch.yml `- insert:` layer.
  *
  * The single hand-maintained source is envs.yml; this module turns one row
- * into the same 16-plugin assembly that sentry.cordis.patch.yml has carried
+ * into the same 16-plugin assembly that ../profile/cordis.patch.yml carries
  * since Phase 5 — same ids, same order (services before their tools, persona
  * and skills last), same credential-reference discipline (refs only, never
  * values).
@@ -44,7 +44,12 @@ export interface Matrix {
 }
 
 const DEFAULT_DB_DATABASE = 'novo_commctl_config'
-const DEFAULT_CODE_BASE_DIR = '/Users/yangfm/workspace/work/novo-one/novo-commctl'
+/**
+ * 代码检索腿的仓库基目录。服务器部署时用环境变量指向服务器上的 clone
+ * （如 DSH_SENTRY_CODE_BASE=/srv/novo-commctl）；本机缺省沿用历史路径。
+ */
+const DEFAULT_CODE_BASE_DIR = process.env.DSH_SENTRY_CODE_BASE
+  ?? '/Users/yangfm/workspace/work/novo-one/novo-commctl'
 
 type Entry = { id: string; name: string; config?: Record<string, unknown> }
 

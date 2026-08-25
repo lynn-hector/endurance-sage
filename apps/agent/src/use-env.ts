@@ -4,7 +4,7 @@
  * 用法：
  *   pnpm --filter @dsh-sentry/agent run use-env local            # 写入 web profile（热重载）
  *   pnpm --filter @dsh-sentry/agent run use-env test -- --dry-run # 只打印，不写文件
- *   pnpm --filter @dsh-sentry/agent run use-env local -- --out apps/agent/sentry.cordis.patch.yml
+ *   pnpm --filter @dsh-sentry/agent run use-env local -- --out apps/profile/cordis.patch.yml
  *   pnpm --filter @dsh-sentry/agent run use-env test -- --profile sentry-test
  *
  * 切换前校验该环境引用的全部凭据键（envs.yml 的 *Ref 字段）在

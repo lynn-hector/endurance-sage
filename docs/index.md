@@ -9,6 +9,7 @@
 | 启动 / 挂载这套插件（headless 或 web GUI） | [guides/runbook.md](guides/runbook.md) |
 | 在多个环境间切换（不重启不断会话） | [guides/env-switching.md](guides/env-switching.md) |
 | 换 token / 加凭据 / 挂新插件包 | [guides/credentials.md](guides/credentials.md) |
+| 部署到远程服务器（免手改路径） | [guides/deploy.md](guides/deploy.md) |
 
 ## 了解设计
 

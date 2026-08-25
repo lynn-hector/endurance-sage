@@ -13,7 +13,8 @@
     "test": "vitest run",
     "dev": "pnpm --filter @dsh-sentry/dev run start",
     "dev:loader": "pnpm --filter @dsh-sentry/dev run start:loader",
-    "verify": "pnpm run typecheck && pnpm run test && pnpm run dev && pnpm run dev:loader"
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run dev && pnpm run dev:loader",
+    "profile:link": "node scripts/link-profile.mjs"
   },
   "devDependencies": {
     "@dsh-sentry/datasource": "workspace:*",

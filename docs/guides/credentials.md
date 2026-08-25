@@ -40,9 +40,11 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 
 ## 给 profile 挂新插件包的步骤
 
-profile（`~/.dsh/profiles/web/package.json`）用显式 `link:` 依赖解析 workspace 插件包：
+profile 已是仓库内 workspace 包（`apps/profile/`），服务器与本机共用同一套流程：
 
-1. 根 `package.json` 加 `"@dsh-sentry/<包名>": "workspace:*"`，工作区 `pnpm install`
-2. profile 的 `package.json` `dependencies` 加 `"@dsh-sentry/<包名>": "link:<绝对路径>"`
-3. **停掉 dsh 进程后**在 profile 目录 `pnpm install`（原因见上）
-4. 把插件条目加进 `apps/agent/envs.yml` / `render.ts` 生成器，regenerate 并同步 patch 文件，重启进程
+1. 新包加进根 `package.json` 和 `apps/profile/package.json` 的 `workspace:*` 依赖
+2. 仓库根目录 `pnpm install`（任意机器自动链接，无需手改路径）
+3. 插件条目加进 `apps/agent/envs.yml` / `render.ts` 生成器，`pnpm --filter @dsh-sentry/agent run regenerate`
+4. `pnpm run profile:link` 接入 `~/.dsh/profiles/web`，重启 dsh 进程
+
+部署全流程见 [deploy.md](deploy.md)。
