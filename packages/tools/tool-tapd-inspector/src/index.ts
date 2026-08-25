@@ -86,6 +86,7 @@ export function apply(ctx: Context, config: Config): void {
       createdStart: { type: 'string', description: '创建时间起（YYYY-MM-DD 或完整时间）' },
       createdEnd: { type: 'string', description: '创建时间止' },
       limit: { type: 'number', default: 30, description: '返回条数上限，默认 30，最大 200' },
+      orderBy: { type: 'string', description: "排序，如 'priority desc'（按优先级）或 'created desc'；默认 modified desc" },
     },
     output: {
       schema: { type: 'json' },
@@ -119,6 +120,7 @@ export function apply(ctx: Context, config: Config): void {
             createdStart: args.createdStart,
             createdEnd: args.createdEnd,
             limit: args.limit ?? 30,
+            orderBy: args.orderBy,
           })
           const tickets = bugs.map(toTicketRow)
           return buildEvidence({

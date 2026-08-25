@@ -147,13 +147,15 @@ export class TapdService extends Service {
     title?: string
     limit?: number
     page?: number
+    /** 排序字段，默认 modified desc；priority desc 可按优先级排（实测支持）。 */
+    orderBy?: string
   } = {}): Promise<TapdBug[]> {
     const params: Record<string, string | number> = {
       workspace_id: this.config.workspaceId,
       fields: FIELDS_LIST,
       limit: Math.min(options.limit ?? 30, 200),
       page: options.page ?? 1,
-      order: 'modified desc',
+      order: options.orderBy ?? 'modified desc',
     }
     if (options.status !== undefined) params['status'] = options.status
     if (options.severity !== undefined) params['severity'] = options.severity
