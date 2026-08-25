@@ -15,6 +15,7 @@
 | 主题 | 看这里 |
 |---|---|
 | git-guard 危险命令双层门禁（A+B 架构、规则分级、局限） | [architecture/git-guard.md](architecture/git-guard.md) |
+| 目录职责：apps（agent=装配 / dev=探针）与 packages（插件零件）的关系 | [README 目录结构一节](../README.md#目录结构) |
 
 ## 数据源对接档案
 

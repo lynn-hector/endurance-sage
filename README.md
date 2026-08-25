@@ -24,10 +24,15 @@
 
 ```text
 dsh-sentry/
-├── apps/
-│   ├── agent/               # 环境矩阵（envs.yml）+ patch 生成器 + 环境切换器
-│   └── dev/                 # 开发探针宿主
-├── packages/
+├── apps/                     # 应用宿主（怎么把插件用起来）
+│   ├── agent/                # 生产装配线：环境矩阵（envs.yml）+ patch 生成器
+│   │                         # （render.ts）+ 环境切换器（use-env.ts）。
+│   │                         # 日常改环境配置、切环境只动这个目录。
+│   └── dev/                  # 开发探针：单腿连通性验证（probe.ts，如
+│                             # `tsx src/probe.ts zadig` 只拉一个 service
+│                             # 打无害读请求）+ 插件注册断言宿主。改了
+│                             # packages 里的代码，先在这里验证再装配。
+├── packages/                 # 插件零件（真正干活的代码）
 │   ├── core/                # evidence 信封、datasource 基类
 │   ├── services/            # 8 个数据源 service（凭据引用，不落值）
 │   ├── tools/               # 9 个 model-facing 工具插件
@@ -35,6 +40,8 @@ dsh-sentry/
 │   └── skills/              # persona + 方法论 skill 集
 └── docs/                    # 文档地图见 docs/index.md
 ```
+
+**apps 与 packages 的关系一句话**：packages 是零件（每个插件一个包），apps 是用法——`agent` 负责"把零件按某套环境的图纸总装进 dsh GUI"，`dev` 负责"改零件后先单件试跑"。
 
 ## 快速上手
 
