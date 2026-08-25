@@ -18,7 +18,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import type { TapdBug } from '@dsh-sentry/service-tapd'
+import type { TapdBug, TapdComment } from '@dsh-sentry/service-tapd'
 
 export const name = 'tool-tapd-inspector'
 
@@ -38,6 +38,16 @@ const TYPE = 'defect'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** Strip comment HTML (<br> → newline) for the evidence envelope. */
+export function commentText(raw: string): string {
+  return raw
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .trim()
 }
 
 /** Strip fields an incident reader doesn't need before the envelope. */
@@ -85,11 +95,17 @@ export function apply(ctx: Context, config: Config): void {
         try {
           if (args.id !== undefined) {
             const bug = await ctx.tapd.fetchBug(args.id)
+            // 评论（测试反馈/流转备注）与详情并行拉取；评论失败不拖垮详情
+            const comments = await ctx.tapd.listComments(args.id)
+              .then((rows: TapdComment[]) => rows.map((c) => ({
+                author: c.author, created: c.created, text: commentText(c.description),
+              })))
+              .catch((error: unknown) => [{ error: errorMessage(error) }])
             return buildEvidence({
               source: SOURCE,
               type: TYPE,
-              data: { env: config.env, mode: 'detail', ticket: toTicketRow(bug) },
-              summary: `TAPD 缺陷 ${bug.id}: ${bug.title}（${bug.status}）`,
+              data: { env: config.env, mode: 'detail', ticket: toTicketRow(bug), comments },
+              summary: `TAPD 缺陷 ${bug.id}: ${bug.title}（${bug.status}，评论 ${Array.isArray(comments) ? comments.length : 0} 条）`,
               confidence: 0.9,
               refs: [`env:${config.env}:tapd`, `tapd:bug:${bug.id}`],
             }) as unknown as JsonValue

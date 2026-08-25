@@ -133,6 +133,20 @@ describe('TapdService fetchBug', () => {
     cleanup(svc)
   })
 
+  it('listComments uses entry_type=Bug (singular) and unwraps {Comment}', async () => {
+    let seen: Call | undefined
+    const svc = makeService((call) => {
+      seen = call
+      return { status: 1, data: [{ Comment: { id: 'c1', description: '反馈', author: '赵杰龙6651', created: '2026-08-24 20:34:37' } }] }
+    })
+    const comments = await svc.listComments('1163822673001163903')
+    expect(seen!.path).toBe('/comments')
+    expect(seen!.params.get('entry_type')).toBe('Bug')
+    expect(seen!.params.get('entry_id')).toBe('1163822673001163903')
+    expect(comments[0]!.author).toBe('赵杰龙6651')
+    cleanup(svc)
+  })
+
   it('empty result throws the not-found wording', async () => {
     const svc = makeService(() => ({ status: 1, data: [] }))
     await expect(svc.fetchBug('999')).rejects.toThrow(/不存在或无权查看/)

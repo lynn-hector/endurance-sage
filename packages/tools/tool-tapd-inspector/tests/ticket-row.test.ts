@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toTicketRow } from '../src/index.ts'
+import { commentText, toTicketRow } from '../src/index.ts'
 import type { TapdBug } from '@dsh-sentry/service-tapd'
 
 describe('toTicketRow', () => {
@@ -25,5 +25,11 @@ describe('toTicketRow', () => {
     expect(row.description).toBe('现象描述')
     expect(row.resolution).toBe('fixed')
     expect(row.fixer).toBe('dev1')
+  })
+})
+
+describe('commentText', () => {
+  it('converts <br> to newlines, strips tags, unescapes entities', () => {
+    expect(commentText('第一行<br/>第二行&lt;b&gt;x&lt;/b&gt;&amp;more')).toBe('第一行\n第二行<b>x</b>&more')
   })
 })

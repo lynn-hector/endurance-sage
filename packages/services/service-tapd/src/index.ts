@@ -48,6 +48,15 @@ export interface TapdBug {
   custom_field?: Record<string, string>
 }
 
+/** One TAPD comment row (workflow notes / tester feedback). */
+export interface TapdComment {
+  id: string
+  title?: string
+  description: string
+  author: string
+  created: string
+}
+
 const DEFAULT_ENDPOINT = 'https://api.tapd.cn'
 const FIELDS_LIST = 'id,title,status,severity,priority,current_owner,reporter,created,modified'
 const FIELDS_DETAIL = `${FIELDS_LIST},description,resolution,fixer,te,deadline`
@@ -185,6 +194,22 @@ export class TapdService extends Service {
       return `11${this.config.workspaceId}${trimmed.padStart(9, '0')}`
     }
     return trimmed
+  }
+
+  /**
+   * Comments (workflow notes + tester feedback) for one bug.
+   * Live-probed quirk (2026-08): `entry_type` MUST be `Bug` (singular,
+   * capitalized) — `bugs` returns 200 with an empty array, silently.
+   */
+  async listComments(id: string): Promise<TapdComment[]> {
+    const data = await this.getJson<Array<{ Comment?: TapdComment } | TapdComment>>('/comments', {
+      workspace_id: this.config.workspaceId,
+      entry_type: 'Bug',
+      entry_id: this.toLongId(id),
+      limit: 100,
+      order: 'created asc',
+    })
+    return data.map((row) => (row as { Comment?: TapdComment }).Comment ?? (row as TapdComment))
   }
 
   /** Total bug count for the workspace (cheapest liveness check). */
