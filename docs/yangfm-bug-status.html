@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>杨风鸣6850 · 缺陷单状态分布</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a2233; --muted: #6b7280;
+    --grid: #e5e7eb; --accent: #3b82f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1420; --card: #171d2b; --ink: #e5e9f2; --muted: #8b93a5; --grid: #262d3d; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; justify-content: center; padding: 32px 16px;
+  }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 28px 32px;
+    width: 100%; max-width: 860px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.06);
+  }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 24px; }
+  .row { display: grid; grid-template-columns: 130px 1fr 72px; align-items: center; gap: 12px; margin: 10px 0; }
+  .label { text-align: right; font-size: 13px; white-space: nowrap; }
+  .label small { color: var(--muted); font-size: 11px; }
+  .track { position: relative; height: 26px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+  .bar { position: absolute; inset: 0 auto 0 0; border-radius: 5px; display: flex; align-items: center;
+         padding-left: 8px; color: #fff; font-size: 12px; font-weight: 600;
+         transition: width .6s cubic-bezier(.22,1,.36,1); min-width: 2px; }
+  .count { font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 700; }
+  .pct { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  .summary { display: flex; gap: 24px; margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--grid); flex-wrap: wrap; }
+  .stat .v { font-size: 22px; font-weight: 700; }
+  .stat .k { font-size: 11px; color: var(--muted); }
+  footer { margin-top: 18px; color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>杨风鸣6850 · 缺陷单状态分布</h1>
+  <div class="sub">TAPD workspace 63822673（NovoOne-ITSP）· current_owner=杨风鸣6850 · 共 77 张 · 数据快照 2026-08-25</div>
+  <div id="chart"></div>
+  <div class="summary">
+    <div class="stat"><div class="v">64</div><div class="k">已闭环（closed+resolved）</div></div>
+    <div class="stat"><div class="v">8</div><div class="k">活跃待处理</div></div>
+    <div class="stat"><div class="v">5</div><div class="k">已拒绝</div></div>
+    <div class="stat"><div class="v">28</div><div class="k">serious 级</div></div>
+  </div>
+  <footer>status_10 为项目自定义流转状态 · 生成：dsh-sentry TAPD 腿（MCP 通道）</footer>
+</div>
+
+<script>
+  // TAPD 状态 → (显示名, 颜色, 是否活跃)。颜色：绿=闭环，蓝=进行，橙=待确认，红=退回，灰=拒绝
+  const rows = [
+    { key: 'closed',       name: '已关闭',        n: 34, color: '#10b981', hint: '' },
+    { key: 'resolved',     name: '已解决',        n: 30, color: '#34d399', hint: '待测试验证' },
+    { key: 'status_10',    name: 'status_10',     n: 3,  color: '#3b82f6', hint: '自定义状态' },
+    { key: 'new',          name: '新建',          n: 2,  color: '#60a5fa', hint: '' },
+    { key: 'rejected',     name: '已拒绝',        n: 5,  color: '#9ca3af', hint: '' },
+    { key: 'reopened',     name: '重新打开',      n: 1,  color: '#ef4444', hint: '修复被打回' },
+    { key: 'unconfirmed',  name: '待确认',        n: 1,  color: '#f59e0b', hint: '' },
+    { key: 'TM_audited',   name: '测试已审核',    n: 1,  color: '#8b5cf6', hint: '' },
+  ]
+  const total = rows.reduce((s, r) => s + r.n, 0)
+  const max = Math.max(...rows.map(r => r.n))
+  const el = document.getElementById('chart')
+  for (const r of rows) {
+    const pct = (r.n / total * 100).toFixed(1)
+    const w = Math.max(r.n / max * 100, 1.5)
+    el.insertAdjacentHTML('beforeend', `
+      <div class="row">
+        <div class="label">${r.name}${r.hint ? `<br><small>${r.hint}</small>` : ''}</div>
+        <div class="track"><div class="bar" style="width:0;background:${r.color}" data-w="${w}">${r.n >= 3 ? r.n : ''}</div></div>
+        <div><span class="count">${r.n}</span><span class="pct">${pct}%</span></div>
+      </div>`)
+  }
+  // 入场动画
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('.bar').forEach(b => { b.style.width = b.dataset.w + '%' })
+  }))
+</script>
+</body>
+</html>
