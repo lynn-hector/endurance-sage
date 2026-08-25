@@ -94,10 +94,11 @@ if (existsSync(target) && !lstatSync(target).isSymbolicLink()) {
   writeFileSync(patchPath, [
     '# sentry 核心经 cordis-plugin-include 引入（由 pnpm run profile:link 维护，勿手改）。',
     '# 个人/市场插件的原 patch 内容备份在 cordis.patch.yml.pre-sentry-core；bundles 由 package.json 管理。',
-    '- id: sentry-core',
-    "  name: '@deepseek-ai/cordis-plugin-include'",
-    '  config:',
-    `    path: ${includeYml}`,
+    '- insert:',
+    '    - id: sentry-core',
+    "      name: '@deepseek-ai/cordis-plugin-include'",
+    '      config:',
+    `        path: ${includeYml}`,
     '',
   ].join('\n'))
 
