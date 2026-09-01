@@ -21,7 +21,14 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from 'yaml'
-import { type Matrix, renderPatch, renderIncludePatch, requiredCredentialRefs } from './render.ts'
+import {
+  extractCurrentEnv,
+  type Matrix,
+  renderPatch,
+  renderIncludePatch,
+  requiredCredentialRefs,
+  resolveEnvName,
+} from './render.ts'
 
 const AGENT_DIR = new URL('..', import.meta.url).pathname
 
@@ -77,7 +84,7 @@ function main(): void {
       process.exit(1)
     }
     const text = readFileSync(target, 'utf8')
-    const env = /^# dsh-sentry 组装（env: (.+?)）——/m.exec(text)?.[1] ?? '未知（文件头无环境标记）'
+    const env = extractCurrentEnv(text) ?? '未知（文件头无环境标记）'
     const written = text.match(/^环境切换时间.*$/m)?.[0] ?? ''
     console.log(`profile ${args.profile} 当前部署环境: ${env}`)
     if (written) console.log(`  ${written}`)
@@ -98,16 +105,17 @@ function main(): void {
     return
   }
 
-  const row = matrix[args.env]
-  if (row === undefined) {
-    console.error(`未知环境: ${args.env}（envs.yml 中没有这一行；--list 查看全部）`)
+  const envName = resolveEnvName(args.env, matrix)
+  const row = envName === undefined ? undefined : matrix[envName]
+  if (envName === undefined || row === undefined) {
+    console.error(`未知环境: ${args.env}（envs.yml 中没有这一行；--list 查看全部，支持 DP0/DP1/DC0/TP0/TP1/TC0 短名）`)
     process.exit(2)
   }
 
   const known = knownCredentialKeys()
   const missing = requiredCredentialRefs(row).filter((ref) => !known.has(ref))
   if (missing.length > 0) {
-    console.error(`✗ 环境 ${args.env} 缺少凭据，拒绝切换:`)
+    console.error(`✗ 环境 ${envName} 缺少凭据，拒绝切换:`)
     for (const ref of missing) console.error(`    ${ref}   （凭据库中不存在）`)
     console.error('  补入 $DSH_HOME/.credentials.yaml 后重试。')
     process.exit(1)
@@ -123,7 +131,7 @@ function main(): void {
 
   const target = args.out ?? join(homedir(), '.dsh', 'profiles', args.profile, 'cordis.patch.yml')
   writeFileSync(target, patch)
-  console.log(`✓ 环境 ${args.env} → ${target}`)
+  console.log(`✓ 环境 ${envName} → ${target}`)
   // 同步生成 include 格式（本地 profile「引入」模式消费），与 patch 同目录
   const includeTarget = target.replace(/cordis\.patch\.yml$/, 'cordis.include.yml')
   if (includeTarget !== target) {

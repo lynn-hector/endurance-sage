@@ -6,6 +6,7 @@
 
 | 我想… | 看这里 |
 |---|---|
+| 我是新同事，从零接入（含 dsh 宿主、模型、凭据） | [guides/onboarding.md](guides/onboarding.md) |
 | 启动 / 挂载这套插件（headless 或 web GUI） | [guides/runbook.md](guides/runbook.md) |
 | 在多个环境间切换（不重启不断会话） | [guides/env-switching.md](guides/env-switching.md) |
 | 换 token / 加凭据 / 挂新插件包 | [guides/credentials.md](guides/credentials.md) |

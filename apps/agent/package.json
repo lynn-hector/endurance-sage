@@ -11,6 +11,7 @@
     "regenerate": "tsx src/use-env.ts dev-platform-hosted-0 --out ../profile/cordis.patch.yml"
   },
   "dependencies": {
+    "@dsh-sentry/env-matrix": "workspace:*",
     "yaml": "^2.8.0"
   },
   "devDependencies": {

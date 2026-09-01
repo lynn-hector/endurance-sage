@@ -22,13 +22,13 @@ TAPD_TOKEN: <token>
 
 Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**不要**从浏览器开发者工具复制请求头里的 token——那是 dex 登录会话 token，约 1 小时过期（历史教训见 [incidents/2026-08-25-zadig-token.md](../incidents/2026-08-25-zadig-token.md)）。
 
-键名：`ZADIG_API_TOKEN`。
+键名：`ZADIG_API_TOKEN`。插件是纯 HTTP OpenAPI 客户端，**不需要安装 zadig CLI**。
 
-本地 zadig CLI 复用同一 token：`~/.zshrc` 里从凭据库动态读取（`ZADIG_API_HOST` + `ZADIG_API_TOKEN`），不明文落第二份。注意 `zadig auth login` 在公司服务端版本上必然 404（CLI 依赖的新端点服务端没有），凭据只能走环境变量。
+（可选便利项，与插件无关）本机 zadig CLI 可复用同一 token：`~/.zshrc` 里从凭据库动态读取（`ZADIG_API_HOST` + `ZADIG_API_TOKEN`），不明文落第二份。注意 `zadig auth login` 在公司服务端版本上必然 404（CLI 依赖的新端点服务端没有），凭据只能走环境变量。
 
 ### TAPD
 
-见 [integrations/tapd-integration.md](../integrations/tapd-integration.md)。键名：`TAPD_TOKEN`。
+个人令牌：TAPD 网页 → 我的设置 → 个人访问令牌。权限跟账号项目角色走，无需管理员审批。插件直连 `api.tapd.cn`，**不需要安装官方 `mcp-server-tapd`**（已评估否决）。键名：`TAPD_TOKEN`。细节见 [integrations/tapd-integration.md](../integrations/tapd-integration.md)。
 
 ### GreptimeDB / Grafana / dbx / RocketMQ
 

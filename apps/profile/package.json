@@ -28,6 +28,7 @@
     "@dsh-sentry/service-zadig": "workspace:*",
     "@dsh-sentry/tool-code-repository": "workspace:*",
     "@dsh-sentry/tool-db-inspector": "workspace:*",
+    "@dsh-sentry/tool-env-switcher": "workspace:*",
     "@dsh-sentry/tool-log-analyzer": "workspace:*",
     "@dsh-sentry/tool-metrics-inspector": "workspace:*",
     "@dsh-sentry/tool-mq-inspector": "workspace:*",

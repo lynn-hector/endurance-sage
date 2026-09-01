@@ -105,9 +105,4 @@ GREPTIMEDB_LOCAL_PASSWORD: <密码>
 
 ## 当前已加载的 sentry 能力
 
-| 工具 | 作用 |
-|---|---|
-| `sentry_list_log_services` | 列出近 N 分钟有日志的 workload（服务发现） |
-| `sentry_query_logs` | 按服务/时间窗/关键词/过滤 DSL 查 GreptimeDB 日志，聚合重复模式 |
-
-更多数据源工具随 Phase 3 推进陆续加入，加载方式不变：新包 `dsh plugin add` + patch 里加 insert 行。
+全部工具与数据源清单见 [README 能力全景](../../README.md#能力全景)（以仓库装配文件 `apps/profile/cordis.include.yml` 为准）。新包加入方式不变：加进根和 `apps/profile` 的 `workspace:*` 依赖 → regenerate → profile:link → 停机安装 → 重启，详见 [onboarding.md](onboarding.md) 日常更新一节。

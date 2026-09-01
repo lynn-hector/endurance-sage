@@ -36,8 +36,9 @@ const fixture: EnvRow = {
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders all 19 plugins in dependency order', () => {
+  it('renders all 20 plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
+      'sentry-tool-env-switcher',
       'sentry-greptimedb',
       'sentry-tool-log-analyzer',
       'sentry-trace',
@@ -101,7 +102,7 @@ describe('renderPatch', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(19)
+    expect(parsed[0]!.insert).toHaveLength(20)
     const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
     expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
     // direct endpoint field is absent in proxy mode (optional since day one

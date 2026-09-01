@@ -14,6 +14,22 @@ dsh-sentry 支持在**一个不重启、不断会话**的 web GUI 里排查多�
 
 ## 日常命令
 
+## 对话内切换（推荐）
+
+装配了 `@dsh-sentry/tool-env-switcher` 后，直接在 dsh 对话里说“列出环境”“当前环境”“切到 TP1”即可。模型可调用：
+
+| 工具 | 用途 |
+|---|---|
+| `sentry_env_list` | 列出环境、短名、当前环境与凭据就绪度 |
+| `sentry_env_current` | 读取当前装配环境，判断热重载是否 pending |
+| `sentry_env_switch` | 校验凭据并重写 repo 内 patch/include，支持 `DP0/DP1/DC0/TP0/TP1/TC0` |
+
+工具不接受 endpoint 或输出路径参数。若当前 profile 是 include 桩，只写仓库内 `apps/profile/cordis.patch.yml` 与 `cordis.include.yml`；若当前 profile 已是直写 sentry 装配，则同步写入该 profile。两种模式都不会触碰个人插件。
+
+首次启用该工具属于新增插件包，需要一次停机接入：停止 dsh web → 仓库根目录执行 `pnpm run profile:link` → 在 `~/.dsh/profiles/web` 执行 `pnpm install` → 重启 dsh web。后续切环境不再需要安装或重启。
+
+## CLI 切换
+
 ```bash
 # 查看环境与就绪度（缺哪个凭据键一目了然）
 pnpm --filter @dsh-sentry/agent run use-env --list
@@ -38,6 +54,9 @@ pnpm --filter @dsh-sentry/agent run regenerate
 | `dev-platform-hosted-0` | cn-0.dev.novo-one.com | ✅ 就绪 | 七条腿全实测 |
 | `dev-platform-hosted-1` | cn-1.dev.novo-one.com | ✅ 就绪 | 五条腿全实测 |
 | `dev-client-hosted-0` | cn-0.dev-byoi.novo-one.com | ⛔ 缺 `GRAFANA_CH0_PASSWORD` | 该实例禁用 basic auth；service account Bearer token 已建好待入库 |
+| `tst-platform-hosted-0` | cn-0.test.novo-one.com | 🔶 凭据就绪 | 待联调实测；Jaeger 数据源 UID 先用默认值 |
+| `tst-platform-hosted-1` | cn-1.test.novo-one.com | 🔶 凭据就绪 | 待联调实测；Jaeger 数据源 UID 先用默认值 |
+| `tst-client-hosted-0` | cn-0.test-byoi.novo-one.com | 🔶 凭据就绪 | 待联调实测；Jaeger 数据源 UID 先用默认值 |
 
 跨环境共享的凭据事实（实测）：
 - greptimedb 三环境同凭据（`grafana` 用户，键 `GREPTIMEDB_LOCAL_*`）
