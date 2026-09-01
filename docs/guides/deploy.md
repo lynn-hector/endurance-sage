@@ -50,7 +50,7 @@ RocketMQ）都在里面。键名清单以 `apps/agent/envs.yml` 为准。
 `sentry_search_code` 需要服务器上有 novo-commctl 的 clone：
 
 ```bash
-export DSH_SENTRY_CODE_BASE=/srv/novo-commctl   # 服务器上的 clone 路径
+export DSH_SENTRY_CODE_BASE=/srv/novo-commctl   # 服务器上的 clone 路径（或写入 $DSH_HOME/.credentials.yaml 的同名键）
 git clone <novo-commctl 地址> $DSH_SENTRY_CODE_BASE
 pnpm --filter @dsh-sentry/agent run regenerate
 ```

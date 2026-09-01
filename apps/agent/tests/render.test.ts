@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { parse } from 'yaml'
 import { join } from 'node:path'
@@ -94,6 +94,29 @@ describe('requiredCredentialRefs', () => {
       'ROCKETMQ_LOCAL_USERNAME',
       'ZADIG_API_TOKEN',
     ])
+  })
+})
+
+describe('code leg baseDir', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('omits baseDir entirely when no source configures it', () => {
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', '')
+    const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
+    expect(entry?.config).toEqual({ env: 'test' })
+  })
+
+  it('bakes DSH_SENTRY_CODE_BASE into baseDir when set', () => {
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/novo-commctl')
+    const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
+    expect(entry?.config).toEqual({ env: 'test', baseDir: '/tmp/novo-commctl' })
+  })
+
+  it('envs.yml codeRepository.baseDir wins over the environment variable', () => {
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/from-env')
+    const row: EnvRow = { ...fixture, codeRepository: { baseDir: '/tmp/from-matrix' } }
+    const entry = renderEntries(row).find((e) => e.id === 'sentry-tool-code-repository')
+    expect(entry?.config).toEqual({ env: 'test', baseDir: '/tmp/from-matrix' })
   })
 })
 

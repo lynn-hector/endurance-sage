@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 import {
   aliasesForEnv,
+  credentialStorePath,
   extractCurrentEnv,
   type EnvRow,
   knownCredentialKeys,
@@ -83,7 +84,7 @@ export function defaultRuntimeConfig(env: string): RuntimeConfig {
     patchPath: join(REPO_ROOT, 'apps/profile/cordis.patch.yml'),
     includePath: join(REPO_ROOT, 'apps/profile/cordis.include.yml'),
     profilePatchPath: join(dshHome, 'profiles/web/cordis.patch.yml'),
-    credentialStorePath: join(dshHome, '.credentials.yaml'),
+    credentialStorePath: credentialStorePath(),
   }
 }
 

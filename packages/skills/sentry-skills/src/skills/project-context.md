@@ -30,7 +30,7 @@
 
 ## 代码仓库布局
 
-代码在本机 `~/workspace/work/novo-one/novo-commctl/` 下，目录名即服务仓库名（上表映射）；每个服务仓库是独立 Go module（`go.mod` + `main.go`）。定位代码用 code-repository 技能（`sentry_search_code` 跨仓搜索 + `sentry_read_code` 读文件）；典型层次：`internal/data/` 是数据访问层（SQL、Redis 客户端多在此）、`internal/biz/` 是业务逻辑、`internal/server/` 是 gRPC/HTTP 入口、`api/` 是 Proto 生成代码。
+代码在 `DSH_SENTRY_CODE_BASE` 指向的检出（novo-commctl）下，目录名即服务仓库名（上表映射）；每个服务仓库是独立 Go module（`go.mod` + `main.go`）。定位代码用 code-repository 技能（`sentry_search_code` 跨仓搜索 + `sentry_read_code` 读文件）；典型层次：`internal/data/` 是数据访问层（SQL、Redis 客户端多在此）、`internal/biz/` 是业务逻辑、`internal/server/` 是 gRPC/HTTP 入口、`api/` 是 Proto 生成代码。
 
 ## 关键用户旅程（排查优先级）
 

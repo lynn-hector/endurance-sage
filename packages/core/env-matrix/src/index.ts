@@ -9,6 +9,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { parse, stringify } from 'yaml'
 
 export interface EnvLeg {
@@ -48,8 +50,6 @@ export const ENV_ALIASES: Readonly<Record<string, string>> = {
 }
 
 const DEFAULT_DB_DATABASE = 'novo_commctl_config'
-const DEFAULT_CODE_BASE_DIR = process.env.DSH_SENTRY_CODE_BASE
-  ?? '/Users/yangfm/workspace/work/novo-one/novo-commctl'
 
 type Entry = { id: string; name: string; config?: Record<string, unknown> }
 
@@ -79,31 +79,68 @@ export function requiredCredentialRefs(row: EnvRow): string[] {
 }
 
 /**
+ * Default credential store location: `$DSH_HOME/.credentials.yaml`, else
+ * `~/.dsh/.credentials.yaml`. Shared by the CLI, the env-switcher tool, and
+ * store-backed config resolution below.
+ */
+export function credentialStorePath(env: NodeJS.ProcessEnv = process.env): string {
+  return join(env.DSH_HOME ?? join(homedir(), '.dsh'), '.credentials.yaml')
+}
+
+/**
+ * Flat view of the credential store: top-level keys plus keys nested under
+ * `refs:` (the dsh-managed `version`/`refs`/`records` schema). Values are
+ * returned as-is; callers decide how to interpret them.
+ */
+function readCredentialStore(storePath: string): Record<string, unknown> {
+  const merged: Record<string, unknown> = {}
+  if (!existsSync(storePath)) return merged
+  const store = parse(readFileSync(storePath, 'utf8')) as Record<string, unknown> | null
+  if (store === null || typeof store !== 'object' || Array.isArray(store)) return merged
+  Object.assign(merged, store)
+  const refs = store['refs']
+  if (refs !== null && typeof refs === 'object' && !Array.isArray(refs)) {
+    Object.assign(merged, refs as Record<string, unknown>)
+  }
+  return merged
+}
+
+/**
  * Collect the credential key names the local credential provider would
  * resolve from: the store file at `storePath` plus the process environment.
- *
- * The store accepts two shapes: hand-written flat files (credential keys at
- * the top level, as documented in docs/guides/credentials.md) and the
- * dsh-managed schema (`version`/`refs`/`records`) where the keys nest under
- * `refs`. Reading only the top level misjudges every environment as missing
- * its credentials on dsh-managed machines, so both layers are collected.
  */
 export function knownCredentialKeys(storePath: string, env: NodeJS.ProcessEnv = process.env): Set<string> {
   const keys = new Set(Object.keys(env))
-  if (!existsSync(storePath)) return keys
-  const store = parse(readFileSync(storePath, 'utf8')) as Record<string, unknown> | null
-  if (store !== null && typeof store === 'object' && !Array.isArray(store)) {
-    for (const key of Object.keys(store)) keys.add(key)
-    const refs = store['refs']
-    if (refs !== null && typeof refs === 'object' && !Array.isArray(refs)) {
-      for (const key of Object.keys(refs as Record<string, unknown>)) keys.add(key)
-    }
-  }
+  for (const key of Object.keys(readCredentialStore(storePath))) keys.add(key)
   return keys
+}
+
+/**
+ * Resolve the code-search base dir. Three machine-local sources, highest
+ * precedence first:
+ *
+ * 1. an explicit `codeRepository.baseDir` row in envs.yml (committed team
+ *    config);
+ * 2. the `DSH_SENTRY_CODE_BASE` environment variable (server deploys,
+ *    one-off runs);
+ * 3. the `DSH_SENTRY_CODE_BASE` key in the credential store — one
+ *    machine-local file for everything dsh-sentry reads (paths are not
+ *    secrets; dsh itself only resolves `*Ref` keys and ignores the rest).
+ *
+ * No hardcoded fallback: an unset value leaves the code leg unconfigured,
+ * the CLI warns, and the plugin reports an actionable message.
+ */
+export function resolveCodeBaseDir(row?: Pick<EnvRow, 'codeRepository'>): string | undefined {
+  const fromStore = readCredentialStore(credentialStorePath())['DSH_SENTRY_CODE_BASE']
+  const value = row?.codeRepository?.baseDir
+    ?? process.env.DSH_SENTRY_CODE_BASE
+    ?? (typeof fromStore === 'string' ? fromStore : undefined)
+  return value === '' ? undefined : value
 }
 
 export function renderEntries(row: EnvRow): Entry[] {
   const env = row.envLabel
+  const codeBaseDir = resolveCodeBaseDir(row)
   return [
     {
       id: 'sentry-tool-env-switcher',
@@ -194,7 +231,7 @@ export function renderEntries(row: EnvRow): Entry[] {
     {
       id: 'sentry-tool-code-repository',
       name: '@dsh-sentry/tool-code-repository',
-      config: { env, baseDir: row.codeRepository?.baseDir ?? DEFAULT_CODE_BASE_DIR },
+      config: codeBaseDir === undefined ? { env } : { env, baseDir: codeBaseDir },
     },
     { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
     { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },

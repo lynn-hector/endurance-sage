@@ -22,17 +22,20 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from 'yaml'
 import {
+  credentialStorePath,
+  type EnvRow,
   extractCurrentEnv,
   knownCredentialKeys,
   type Matrix,
   renderPatch,
   renderIncludePatch,
   requiredCredentialRefs,
+  resolveCodeBaseDir,
   resolveEnvName,
 } from './render.ts'
 
 const AGENT_DIR = new URL('..', import.meta.url).pathname
-const CREDENTIAL_STORE = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), '.credentials.yaml')
+const CREDENTIAL_STORE = credentialStorePath()
 
 interface Args {
   env?: string
@@ -58,6 +61,19 @@ function parseArgs(argv: string[]): Args {
     } else args.env = arg
   }
   return args
+}
+
+/** 可选代码检索腿的就绪提示：未配置或路径缺失时明确告知（stderr），不静默失效。 */
+function warnCodeLeg(row: EnvRow): void {
+  const base = resolveCodeBaseDir(row)
+  if (base === undefined) {
+    console.error('⚠ 代码检索腿未配置（可选，其余工具不受影响）: envs.yml 无 codeRepository.baseDir，环境变量与凭据库（$DSH_HOME/.credentials.yaml 的 DSH_SENTRY_CODE_BASE 键）也均未设置。')
+    console.error('  启用方式: git clone <novo-commctl> 后把 DSH_SENTRY_CODE_BASE=<检出路径> 写入凭据库 refs: 下（推荐，与凭据同文件）或 ~/.zshrc，重跑 regenerate。')
+    return
+  }
+  if (!existsSync(base)) {
+    console.error(`⚠ 代码检索腿目录不存在: ${base}，sentry_search_code 将找不到任何仓库——检查 DSH_SENTRY_CODE_BASE / envs.yml codeRepository.baseDir。`)
+  }
 }
 
 function main(): void {
@@ -112,6 +128,7 @@ function main(): void {
   const patch = renderPatch(row)
     + `# 环境切换时间: ${new Date().toISOString()}
 `
+  warnCodeLeg(row)
   if (args.dryRun) {
     console.log(patch)
     return

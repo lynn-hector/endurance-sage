@@ -303,9 +303,9 @@ export function apply(ctx: Context, config: Config): void {
             env: config.env,
             query: args.query,
             results: [],
-            error: '未配置任何代码仓库，请在插件 Config 中设置 repos、baseDir 或 repoPath。',
+            error: '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。',
           },
-          summary: '未配置任何代码仓库，请在插件 Config 中设置 repos、baseDir 或 repoPath。',
+          summary: '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。',
           confidence: 0,
           refs: [`env:${config.env}:code`],
         }))
