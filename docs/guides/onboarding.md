@@ -92,6 +92,8 @@ ZADIG_API_TOKEN: <Zadig 页面头像 → 个人设置 → OpenAPI → 创建 tok
 TAPD_TOKEN: <TAPD 网页 → 我的设置 → 个人访问令牌>
 ```
 
+**（可选）**同一文件顺手加一行 `DSH_SENTRY_CODE_BASE: <novo-commctl 检出路径>`（嵌套形态加在 `refs:` 下）即启用代码检索腿——来源与优先级见第 2 步。
+
 | 凭据 | 说明 |
 |---|---|
 | ZADIG_API_TOKEN | 长期有效。**不要**从浏览器开发者工具复制请求头 token——那是 dex 会话 token，约 1 小时过期 |
@@ -129,6 +131,7 @@ dsh web    # 打开 http://127.0.0.1:3080，开【新对话】（旧对话不含
 | evidence 报「endpoint 或凭据缺失」 | 键名拼错或没写进 `~/.dsh/.credentials.yaml`，逐字母对照第 3 步 |
 | evidence 报 `401` | 凭据值本身错了，链路是好的 |
 | 切环境被拒绝 | 目标环境凭据键没补齐，`use-env --list` 看缺哪个；键明明已填仍全量报缺 → 凭据在 dsh GUI 管理的 `refs:` 嵌套层，`git pull` 更新本仓库后重跑（校验已兼容两种形态） |
+| `sentry_search_code` 报「未配置任何代码仓库」 | `DSH_SENTRY_CODE_BASE` 三个来源（envs.yml / 环境变量 / 凭据库）都没设——regenerate 时的 ⚠ 警告说的就是这件事；按第 2 步写入凭据库后重跑 regenerate |
 | patch 改了不生效 | 在 dsh 运行期间对 profile 目录跑过 `pnpm install`？重启 dsh web |
 | `pnpm install` 后类型冲突 | 不要单独 pin `@deepseek-ai/dsh-*` 某个包版本，全仓库统一 `^0.1.0-rc.7` 范围 |
 
