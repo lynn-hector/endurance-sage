@@ -8,7 +8,8 @@
  * @module @dsh-sentry/env-matrix
  */
 
-import { stringify } from 'yaml'
+import { existsSync, readFileSync } from 'node:fs'
+import { parse, stringify } from 'yaml'
 
 export interface EnvLeg {
   endpoint?: string
@@ -75,6 +76,30 @@ export function requiredCredentialRefs(row: EnvRow): string[] {
     row.rocketmq.passwordRef,
     row.zadig.tokenRef,
   ].filter((ref): ref is string => typeof ref === 'string' && ref.length > 0)
+}
+
+/**
+ * Collect the credential key names the local credential provider would
+ * resolve from: the store file at `storePath` plus the process environment.
+ *
+ * The store accepts two shapes: hand-written flat files (credential keys at
+ * the top level, as documented in docs/guides/credentials.md) and the
+ * dsh-managed schema (`version`/`refs`/`records`) where the keys nest under
+ * `refs`. Reading only the top level misjudges every environment as missing
+ * its credentials on dsh-managed machines, so both layers are collected.
+ */
+export function knownCredentialKeys(storePath: string, env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const keys = new Set(Object.keys(env))
+  if (!existsSync(storePath)) return keys
+  const store = parse(readFileSync(storePath, 'utf8')) as Record<string, unknown> | null
+  if (store !== null && typeof store === 'object' && !Array.isArray(store)) {
+    for (const key of Object.keys(store)) keys.add(key)
+    const refs = store['refs']
+    if (refs !== null && typeof refs === 'object' && !Array.isArray(refs)) {
+      for (const key of Object.keys(refs as Record<string, unknown>)) keys.add(key)
+    }
+  }
+  return keys
 }
 
 export function renderEntries(row: EnvRow): Entry[] {

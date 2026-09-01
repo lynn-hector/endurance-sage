@@ -16,6 +16,13 @@ TAPD_TOKEN: <token>
 
 键名约定 `<SYSTEM>_<ENV>_<FIELD>`；平台级数据源（zadig、tapd）无环境段。每行环境引用哪些键，权威来源是 `apps/agent/envs.yml`（`use-env` 切换前会校验全部键就绪，缺一个拒绝切换）。
 
+凭据库有两种形态，就绪校验（`use-env` 与 `sentry_env_list` / `sentry_env_switch`，实现共享于 `@dsh-sentry/env-matrix`）对两种都识别：
+
+- **手工新建的平铺键**（如上例）；
+- **dsh GUI 管理的嵌套形态**（`version` / `refs` / `records`，凭据键在 `refs:` 之下）。
+
+往已有文件补键时保持该文件原有形态即可；历史事故：只读顶层键的旧版校验会把嵌套形态下的一切环境误判为缺凭据。
+
 ## 各数据源 token 获取方式
 
 ### Zadig（长期 OpenAPI token）

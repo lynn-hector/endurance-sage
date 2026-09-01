@@ -7,6 +7,7 @@ import {
   aliasesForEnv,
   extractCurrentEnv,
   type EnvRow,
+  knownCredentialKeys,
   type Matrix,
   renderIncludePatch,
   renderPatch,
@@ -94,21 +95,9 @@ export function readMatrix(path: string): Matrix {
   return parsed
 }
 
-export function knownCredentialKeys(path: string, env: NodeJS.ProcessEnv = process.env): Set<string> {
-  const keys = new Set(Object.keys(env))
-  if (!existsSync(path)) return keys
-  const store = parse(readFileSync(path, 'utf8')) as Record<string, unknown> | null
-  if (store !== null && typeof store === 'object' && !Array.isArray(store)) {
-    for (const key of Object.keys(store)) keys.add(key)
-    // 凭据库实际 schema：凭据嵌套在顶层 refs 映射下（version/refs/records），
-    // 仅读顶层键会把所有环境误判为缺凭据
-    const refs = store.refs
-    if (refs !== null && typeof refs === 'object' && !Array.isArray(refs)) {
-      for (const key of Object.keys(refs as Record<string, unknown>)) keys.add(key)
-    }
-  }
-  return keys
-}
+// Single implementation lives in @dsh-sentry/env-matrix (shared with the
+// use-env CLI) so the two readiness checks cannot drift apart again.
+export { knownCredentialKeys }
 
 export function listEnvironments(config: RuntimeConfig): ListResult {
   const matrix = readMatrix(config.envsPath)

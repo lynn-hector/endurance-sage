@@ -23,6 +23,7 @@ import { join } from 'node:path'
 import { parse } from 'yaml'
 import {
   extractCurrentEnv,
+  knownCredentialKeys,
   type Matrix,
   renderPatch,
   renderIncludePatch,
@@ -31,6 +32,7 @@ import {
 } from './render.ts'
 
 const AGENT_DIR = new URL('..', import.meta.url).pathname
+const CREDENTIAL_STORE = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), '.credentials.yaml')
 
 interface Args {
   env?: string
@@ -58,21 +60,6 @@ function parseArgs(argv: string[]): Args {
   return args
 }
 
-/** Read the credential key set the local provider would resolve from. */
-function knownCredentialKeys(): Set<string> {
-  const keys = new Set<string>()
-  const storePath = join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), '.credentials.yaml')
-  if (existsSync(storePath)) {
-    const store = parse(readFileSync(storePath, 'utf8')) as Record<string, unknown> | null
-    if (store && typeof store === 'object') {
-      for (const key of Object.keys(store)) keys.add(key)
-    }
-  }
-  // The provider's env layer: process env is always a valid answer.
-  for (const key of Object.keys(process.env)) keys.add(key)
-  return keys
-}
-
 function main(): void {
   const args = parseArgs(process.argv.slice(2))
   const matrix = parse(readFileSync(join(AGENT_DIR, 'envs.yml'), 'utf8')) as Matrix
@@ -93,8 +80,9 @@ function main(): void {
 
   if (args.list || args.env === undefined) {
     console.log('可用环境（envs.yml）:')
+    const known = knownCredentialKeys(CREDENTIAL_STORE)
     for (const [name, row] of Object.entries(matrix)) {
-      const missing = requiredCredentialRefs(row).filter((ref) => !knownCredentialKeys().has(ref))
+      const missing = requiredCredentialRefs(row).filter((ref) => !known.has(ref))
       const state = missing.length === 0 ? '就绪' : `缺凭据: ${missing.join(', ')}`
       console.log(`  ${name.padEnd(12)} ${row.envLabel.padEnd(12)} ${state}`)
     }
@@ -112,7 +100,7 @@ function main(): void {
     process.exit(2)
   }
 
-  const known = knownCredentialKeys()
+  const known = knownCredentialKeys(CREDENTIAL_STORE)
   const missing = requiredCredentialRefs(row).filter((ref) => !known.has(ref))
   if (missing.length > 0) {
     console.error(`✗ 环境 ${envName} 缺少凭据，拒绝切换:`)
