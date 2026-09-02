@@ -37,6 +37,8 @@ pnpm dsh --profile headless \
 
 ## 方式二：web（GUI 页面，适合交互排查）
 
+> 现行默认接入方式已改为**独立 sentry profile**（`pnpm run profile:link sentry` → `dsh --profile sentry --port 3090`），见 [onboarding.md](onboarding.md)。本节保留手工往 web profile 装插件的原始步骤，供调试加载机制时参考。
+
 ```bash
 cd /Users/yangfm/workspace/labs/deepseek-harness
 

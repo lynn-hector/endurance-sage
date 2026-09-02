@@ -8,7 +8,7 @@ dsh-sentry 支持在**一个不重启、不断会话**的 web GUI 里排查多�
 |---|---|---|
 | `apps/agent/envs.yml` | **唯一事实来源**：每环境一行（endpoint + 凭据键名 + 数据源 uid） | 会——加环境、改端点都在这 |
 | `apps/agent/src/{render,use-env}.ts` | 渲染器与切换器 | 不会 |
-| `~/.dsh/profiles/web/cordis.patch.yml` | 当前生效的生成物（被 dsh watch） | 不会——切环境自动覆盖 |
+| `~/.dsh/profiles/sentry/cordis.patch.yml` | 当前生效的生成物（被 dsh watch；符号链接 → 仓库 `apps/profile/cordis.patch.yml`） | 不会——切环境自动覆盖 |
 
 凭据值本身放 `~/.dsh/.credentials.yaml`（键名 = envs.yml 里的 `*Ref` 字段），永远不进 repo。
 
@@ -26,7 +26,7 @@ dsh-sentry 支持在**一个不重启、不断会话**的 web GUI 里排查多�
 
 工具不接受 endpoint 或输出路径参数。若当前 profile 是 include 桩，只写仓库内 `apps/profile/cordis.patch.yml` 与 `cordis.include.yml`；若当前 profile 已是直写 sentry 装配，则同步写入该 profile。两种模式都不会触碰个人插件。
 
-首次启用该工具属于新增插件包，需要一次停机接入：停止 dsh web → 仓库根目录执行 `pnpm run profile:link` → 在 `~/.dsh/profiles/web` 执行 `pnpm install` → 重启 dsh web。后续切环境不再需要安装或重启。
+首次启用该工具属于新增插件包，需要一次停机接入：停止 sentry 进程 → 仓库根目录执行 `pnpm run profile:link sentry` → 重启 `dsh --profile sentry --port 3090`（符号链接模式无需在 profile 目录跑 pnpm install；引入模式才需要）。后续切环境不再需要安装或重启。
 
 ## CLI 切换
 
@@ -34,7 +34,7 @@ dsh-sentry 支持在**一个不重启、不断会话**的 web GUI 里排查多�
 # 查看环境与就绪度（缺哪个凭据键一目了然）
 pnpm --filter @dsh-sentry/agent run use-env --list
 
-# 切换环境（写入 web profile，watcher 热重载；web 不重启、对话不中断）
+# 切换环境（写入当前 profile 的 patch，watcher 热重载；进程不重启、对话不中断）
 pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-0
 pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-1
 
@@ -98,7 +98,7 @@ pnpm --filter @dsh-sentry/agent run regenerate
 
 | 文件 | 变化 |
 |---|---|
-| `~/.dsh/profiles/web/cordis.patch.yml` | ✅ 全量覆盖为目标环境的 16 插件组装，尾部盖切换时间戳 |
+| `~/.dsh/profiles/sentry/cordis.patch.yml` | ✅ 全量覆盖为目标环境的 20 插件组装，尾部盖切换时间戳 |
 | repo（`envs.yml`、`sentry.cordis.patch.yml` 等）| ❌ 不动 |
 | `~/.dsh/.credentials.yaml` | ❌ 不动（凭据只在补键/换值时手工编辑）|
 
@@ -113,7 +113,7 @@ pnpm --filter @dsh-sentry/agent run regenerate
    pnpm --filter @dsh-sentry/agent run use-env --current
    # → profile web 当前部署环境: dev-platform-hosted-1（附切换时间戳）
    ```
-   或直接抽查 endpoint：`grep dbx ~/.dsh/profiles/web/cordis.patch.yml` 应出现 cn-1 域名。
+   或直接抽查 endpoint：`grep dbx ~/.dsh/profiles/sentry/cordis.patch.yml` 应出现 cn-1 域名。
 
 2. **模型层（真对话）**：在切换前的**原有对话**里问模型：
    > 查一下 commctl-config 最近 30 分钟的日志量，并告诉我 evidence 里的 env 标签
