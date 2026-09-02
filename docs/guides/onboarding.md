@@ -1,6 +1,6 @@
 # 新同事上手指南（本地接入 dsh-sentry）
 
-目标：本机跑起一个带全部 8 条证据腿的排查 GUI（http://127.0.0.1:3080），默认环境 `dev-platform-hosted-0`（DP0）。预计 30–60 分钟，主要花在申请凭据上。
+目标：本机跑起一个带全部 8 条证据腿的排查 GUI（http://127.0.0.1:3081），默认环境 `dev-platform-hosted-0`（DP0）。预计 30–60 分钟，主要花在申请凭据上。
 
 > 只读纪律：本工具集全部是只读查询，没有变更线上状态的能力。凭据只写本机 `~/.dsh/.credentials.yaml`，**永远不要**提交进任何仓库。
 
@@ -13,10 +13,9 @@ dsh web                       # 打开 http://127.0.0.1:3080 → 设置→模型
 git clone https://gitlab.yeastar.com/yeastar/infrastructure/golang/endurance/dsh-sentry.git ~/dsh-sentry
 cd ~/dsh-sentry && pnpm install
 pnpm --filter @dsh-sentry/agent run regenerate
-pnpm run profile:link
-cd ~/.dsh/profiles/web && pnpm install    # 必须在 dsh 停机状态下
+pnpm run profile:link sentry  # 独立 profile：~/.dsh/profiles/sentry → 仓库 apps/profile
 # 编辑 ~/.dsh/.credentials.yaml 填入凭据（见第 3 步）
-dsh web                       # 开【新对话】验证
+dsh --profile sentry --port 3081   # 打开 http://127.0.0.1:3081，开【新对话】验证
 ```
 
 任何一步报错了，回到下面对应编号的详细步骤。
@@ -51,7 +50,7 @@ GUI 里 **设置 → 模型**，二选一：
 
 在输入框的模型选择器选中该模型，**随便发一句话确认能正常回复**——不通则后面全白搭。报错自查：`MISSING_CREDENTIAL` = 密钥没配；`UNKNOWN_MODEL` = 模型 id 没加进提供方。
 
-然后 **Ctrl+C 停掉 dsh web**。先跑一次是为了建出 `~/.dsh/profiles/web` 真实目录——第 2 步的接入脚本看到真实目录会走「引入模式」，sentry 核心与你个人插件共存；目录不存在则走符号链接模式，以后 GUI 市场装的插件会污染仓库目录。
+然后 **Ctrl+C 停掉 dsh web**。先跑一次只为两件事：配好模型、建出 `~/.dsh` 宿主目录。模型配置存在 `$DSH_HOME` 级（`settings.yaml`），所有 profile 共享——后面 sentry 独立 profile 直接复用，不用再配。你的个人日常 GUI 随时可以用 `dsh web`（3080）启动，和 sentry profile（3081）互不干扰。
 
 ## 第 2 步：仓库 + 接入
 
@@ -60,11 +59,14 @@ git clone https://gitlab.yeastar.com/yeastar/infrastructure/golang/endurance/dsh
 cd ~/dsh-sentry
 pnpm install
 pnpm --filter @dsh-sentry/agent run regenerate   # 从 envs.yml 生成装配文件，默认 DP0
-pnpm run profile:link                            # 预期输出含「✓ 引入模式」
-cd ~/.dsh/profiles/web && pnpm install
+pnpm run profile:link sentry                     # 预期输出含「✓ 符号链接模式」
 ```
 
-**铁律：永远不要在 dsh 进程运行期间对 `~/.dsh/profiles/web` 跑 `pnpm install`**——会卡死 patch 热重载（有事故记录）。
+接入后是**独立 profile**：`~/.dsh/profiles/sentry` 是指向仓库 `apps/profile` 的符号链接，纯 sentry 核心，与个人 web profile 完全隔离（GUI 市场插件装不进来）。插件依赖已由仓库的 `pnpm install` 就绪，**不需要**再去 profile 目录 install。
+
+**铁律：永远不要在 dsh 进程运行期间对仓库跑 `pnpm install`**——符号链接模式下 profile 的 `node_modules` 就是仓库的 `apps/profile/node_modules`，运行中重装会卡死 patch 热重载（有事故记录）。更新一律先停进程，见文末「日常更新」。
+
+**备选——想和个人插件共存**：如果你希望 sentry 工具出现在自己的日常 `dsh web`（3080）里、和个人/市场插件并肩，改用引入模式：先 `dsh web` 跑一次建出 `~/.dsh/profiles/web` 真实目录，再 `pnpm run profile:link`（不带参数，默认 web），然后停机状态下 `cd ~/.dsh/profiles/web && pnpm install`。细节见 [deploy.md](deploy.md) 接入模式对照。
 
 **可选——代码检索腿**：`sentry_search_code` 需要本机有 novo-commctl 代码。未配置时 regenerate 会打 ⚠ 警告、该腿返回带启用方式的未配置提示，其余所有腿不受影响：
 
@@ -112,7 +114,7 @@ pnpm --filter @dsh-sentry/agent run use-env --list   # 缺哪个键一目了然
 ## 第 4 步：启动并验证
 
 ```bash
-dsh web    # 打开 http://127.0.0.1:3080，开【新对话】（旧对话不含新工具目录）
+dsh --profile sentry --port 3081    # 打开 http://127.0.0.1:3081，开【新对话】（旧对话不含新工具目录）
 ```
 
 新对话里依次发三句话：
@@ -121,40 +123,39 @@ dsh web    # 打开 http://127.0.0.1:3080，开【新对话】（旧对话不含
 2. 「列出近 30 分钟有日志的服务」→ 返回服务清单 = **凭据链路通**
 3. 「查一下 zadig 上 commctl-config 的最近部署」→ 返回部署详情 = **全腿可用**
 
-终端预检（不开 GUI）：`dsh --profile web --dump-config | grep sentry-` 应看到约 16 行 sentry-* 插件。
+终端预检（不开 GUI）：`dsh --profile sentry --dump-config | grep sentry-` 应看到约 22 行 sentry-* 插件。
 
 ## 常见坑速查
 
 | 症状 | 原因与处理 |
 |---|---|
-| 模型说没有 sentry 工具 | 对话是装插件前开的旧对话 → 开新对话；或装完没重启 dsh web |
+| 模型说没有 sentry 工具 | 对话是装插件前开的旧对话 → 开新对话；或装完没重启 sentry profile |
 | evidence 报「endpoint 或凭据缺失」 | 键名拼错或没写进 `~/.dsh/.credentials.yaml`，逐字母对照第 3 步 |
 | evidence 报 `401` | 凭据值本身错了，链路是好的 |
 | 切环境被拒绝 | 目标环境凭据键没补齐，`use-env --list` 看缺哪个；键明明已填仍全量报缺 → 凭据在 dsh GUI 管理的 `refs:` 嵌套层，`git pull` 更新本仓库后重跑（校验已兼容两种形态） |
 | `sentry_search_code` 报「未配置任何代码仓库」 | `DSH_SENTRY_CODE_BASE` 三个来源（envs.yml / 环境变量 / 凭据库）都没设——regenerate 时的 ⚠ 警告说的就是这件事；按第 2 步写入凭据库后重跑 regenerate |
-| patch 改了不生效 | 在 dsh 运行期间对 profile 目录跑过 `pnpm install`？重启 dsh web |
+| patch 改了不生效 | 在 dsh 运行期间对仓库跑过 `pnpm install`？停掉重启 sentry profile |
 | `pnpm install` 后类型冲突 | 不要单独 pin `@deepseek-ai/dsh-*` 某个包版本，全仓库统一 `^0.1.0-rc.7` 范围 |
 
 ## 日常更新（仓库有更新时）
 
 ```bash
-# 1. 停 dsh web
+# 1. 停 sentry 进程（Ctrl+C）
 cd ~/dsh-sentry && git pull && pnpm install
 # 2. commit 动过 apps/agent/envs.yml 时：
 pnpm --filter @dsh-sentry/agent run regenerate
-# 3. 插件包有增删时：
-pnpm run profile:link && (cd ~/.dsh/profiles/web && pnpm install)
-# 4. 重启 dsh web
+# 3. 重启：dsh --profile sentry --port 3081
 ```
 
-个人在 GUI 市场装的插件写入同一 profile，仓库更新永远不会碰它们。
+符号链接模式下 profile 即仓库 `apps/profile`，插件包增删也不需要重跑 `profile:link`
+（链接指向整个目录，自动生效）；只有符号链接本身被删了才需要重跑一次。
 
 ## 进阶阅读
 
 | 我想… | 看这里 |
 |---|---|
 | 对话内切换环境（不重启不断会话） | [env-switching.md](env-switching.md) |
-| 独立 profile + 独立端口（与个人 web 并存） | [deploy.md](deploy.md) 变体一节 |
+| 和个人 web 插件共存（引入模式） | 本文第 2 步备选 + [deploy.md](deploy.md) 接入模式对照 |
 | 换 token / 挂新插件包 | [credentials.md](credentials.md) |
 | headless 一次性任务模式 | [runbook.md](runbook.md) |
 | 排查方法论与各工具边界 | 对话里直接让模型加载对应 skill，或看 `packages/skills/` |

@@ -110,8 +110,8 @@ WantedBy=multi-user.target
 
 ## 变体：本地独立 profile（独立端口，2026-09-02 实测）
 
-不想和个人 web profile 混用时，可以把 sentry 接成独立 profile、独立端口，与
-个人 `dsh web`（3080）同时运行：
+本地新人上手的**默认模式**（见 onboarding.md）：sentry 接成独立 profile、独立端口，
+与个人 `dsh web`（3080）同时运行：
 
 ```bash
 # 1. 接入为独立 profile（~/.dsh/profiles/sentry 不存在 → 符号链接模式）
