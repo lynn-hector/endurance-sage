@@ -154,6 +154,7 @@ pnpm run profile:link && (cd ~/.dsh/profiles/web && pnpm install)
 | 我想… | 看这里 |
 |---|---|
 | 对话内切换环境（不重启不断会话） | [env-switching.md](env-switching.md) |
+| 独立 profile + 独立端口（与个人 web 并存） | [deploy.md](deploy.md) 变体一节 |
 | 换 token / 挂新插件包 | [credentials.md](credentials.md) |
 | headless 一次性任务模式 | [runbook.md](runbook.md) |
 | 排查方法论与各工具边界 | 对话里直接让模型加载对应 skill，或看 `packages/skills/` |

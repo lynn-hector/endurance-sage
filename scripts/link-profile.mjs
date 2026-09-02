@@ -122,5 +122,8 @@ if (existsSync(target) && !lstatSync(target).isSymbolicLink()) {
   try { if (lstatSync(target).isSymbolicLink()) rmSync(target) } catch { /* 不存在 */ }
   symlinkSync(source, target, 'dir')
   console.log(`✓ 符号链接模式：${target} -> ${source}`)
-  console.log('下一步：dsh web（插件依赖已由仓库 pnpm install 就绪）')
+  const bootHint = profileName === 'web'
+    ? 'dsh web'
+    : `dsh --profile ${profileName} --port 3081（或自选端口）`
+  console.log(`下一步：${bootHint}（插件依赖已由仓库 pnpm install 就绪）`)
 }

@@ -107,3 +107,27 @@ WantedBy=multi-user.target
   仓库更新后 `pnpm run profile:link` 重新同步，个人插件不受影响
 - 服务器（符号链接模式）：profile 即仓库 `apps/profile`，纯 sentry 核心，无个人插件；
   更新 = git pull + reinstall + 重启
+
+## 变体：本地独立 profile（独立端口，2026-09-02 实测）
+
+不想和个人 web profile 混用时，可以把 sentry 接成独立 profile、独立端口，与
+个人 `dsh web`（3080）同时运行：
+
+```bash
+# 1. 接入为独立 profile（~/.dsh/profiles/sentry 不存在 → 符号链接模式）
+pnpm run profile:link sentry        # 即 node scripts/link-profile.mjs sentry
+
+# 2. 独立端口启动（--port 是 dsh web app 原生参数）
+dsh --profile sentry --port 3081    # 打开 http://127.0.0.1:3081
+```
+
+特性与注意：
+
+- 凭据、模型配置在 `$DSH_HOME` 级共享（`.credentials.yaml` / `settings.yaml`），
+  新 profile 直接复用，不用重配。
+- profile 是仓库符号链接 → 纯 sentry 核心，GUI 市场插件装不进去（隔离即目的）。
+- 对话内切环境照常工作：切换写入仓库 `apps/profile/cordis.patch.yml`，经符号链接
+  即该 profile 的 patch 文件，watcher 热重载生效；web profile 的 include 桩不受影响。
+- 预检命令换成对应 profile 名：`dsh --profile sentry --dump-config | grep sentry-`。
+- 更新流程同服务器模式：停进程 → git pull → pnpm install →（插件增删时重跑
+  `pnpm run profile:link sentry`）→ 重启。

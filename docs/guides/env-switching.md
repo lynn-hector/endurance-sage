@@ -128,3 +128,6 @@ pnpm --filter @dsh-sentry/agent run regenerate
 - 切换是**运维动作**（你敲命令），不是模型动作：模型永远只能查当前部署的环境，无法在对话里跳环境。
 - 切换瞬间正在执行的工具调用可能撞上插件重建，重试即可。
 - `sentry.cordis.patch.yml` 是生成物，勿手改（改了也会被下次生成覆盖）；改动请进 `envs.yml`。
+- 独立 profile（如 `~/.dsh/profiles/sentry`，符号链接模式）下切换照常工作：写入仓库
+  `apps/profile/cordis.patch.yml` 经符号链接即该 profile 的 live patch，热重载生效；
+  web profile 的 include 桩不含直写装配，会被自动跳过、不受影响。
