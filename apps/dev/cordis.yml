@@ -37,7 +37,7 @@
   name: '@dsh-sentry/tool-trace-analyzer'
   config:
     env: local
-    datasourceUid: GreptimeDB-Jaeger
+    greptimedbJaegerDatasourceUid: GreptimeDB-Jaeger
 
 - id: sentry-prometheus
   name: '@dsh-sentry/service-prometheus'

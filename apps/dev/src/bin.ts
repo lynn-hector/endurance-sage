@@ -44,7 +44,7 @@ await root.plugin(TraceService, {
   usernameRef: 'GRAFANA_LOCAL_USERNAME',
   passwordRef: 'GRAFANA_LOCAL_PASSWORD',
 })
-await root.plugin(traceAnalyzer, { env: 'local', datasourceUid: 'GreptimeDB-Jaeger' })
+await root.plugin(traceAnalyzer, { env: 'local', greptimedbJaegerDatasourceUid: 'GreptimeDB-Jaeger' })
 await root.plugin(PrometheusService, { endpoint: 'http://prometheus.example.invalid' })
 await root.plugin(metricsInspector, { env: 'local' })
 await root.plugin(DbxService, {

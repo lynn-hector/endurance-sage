@@ -29,7 +29,7 @@ dev-platform-hosted-0:
     passwordRef: GREPTIMEDB_DP0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev.novo-one.com
-    datasourceUid: GreptimeDB-Jaeger
+    greptimedbJaegerDatasourceUid: GreptimeDB-Jaeger
     usernameRef: GRAFANA_DP0_USERNAME
     passwordRef: GRAFANA_DP0_PASSWORD
   prometheus:
@@ -56,7 +56,7 @@ dev-platform-hosted-1:
     passwordRef: GREPTIMEDB_DP1_PASSWORD
   grafana:
     endpoint: https://grafana.cn-1.dev.novo-one.com
-    datasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（DP0 恰为 GreptimeDB-Jaeger）
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（DP0 恰为 GreptimeDB-Jaeger）
     usernameRef: GRAFANA_DP1_USERNAME
     passwordRef: GRAFANA_DP1_PASSWORD        # 来自环境清单，已实测 200
   prometheus:
@@ -83,7 +83,7 @@ dev-client-hosted-0:
     passwordRef: GREPTIMEDB_DC0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev-byoi.novo-one.com
-    datasourceUid: bfo3r2zfv3mkgb   # 2026-09-02 经 /api/datasources 实测校准
+    greptimedbJaegerDatasourceUid: bfo3r2zfv3mkgb   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_DC0_USERNAME
     passwordRef: GRAFANA_DC0_PASSWORD        # 2026-09-02 实测有效（表单登录 200）；实例禁 basic auth
   prometheus:
@@ -110,7 +110,7 @@ tst-platform-hosted-0:
     passwordRef: GREPTIMEDB_TP0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.test.novo-one.com
-    datasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_TP0_USERNAME
     passwordRef: GRAFANA_TP0_PASSWORD
   prometheus:
@@ -137,7 +137,7 @@ tst-platform-hosted-1:
     passwordRef: GREPTIMEDB_TP1_PASSWORD
   grafana:
     endpoint: https://grafana.cn-1.test.novo-one.com
-    datasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_TP1_USERNAME
     passwordRef: GRAFANA_TP1_PASSWORD
   prometheus:
@@ -164,7 +164,7 @@ tst-client-hosted-0:
     passwordRef: GREPTIMEDB_TC0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.test-byoi.novo-one.com
-    datasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_TC0_USERNAME
     passwordRef: GRAFANA_TC0_PASSWORD
   prometheus:

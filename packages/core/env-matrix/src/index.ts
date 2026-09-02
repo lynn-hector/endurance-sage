@@ -16,7 +16,10 @@ import { parse, stringify } from 'yaml'
 export interface EnvLeg {
   endpoint?: string
   database?: string
+  /** Prometheus 数据源 uid（仅 prometheus 腿使用） */
   datasourceUid?: string
+  /** Grafana 内 GreptimeDB-Jaeger 数据源的 uid（仅 grafana 腿使用，uid 随环境漂移） */
+  greptimedbJaegerDatasourceUid?: string
   project?: string
   envName?: string
   usernameRef?: string
@@ -172,7 +175,7 @@ export function renderEntries(row: EnvRow): Entry[] {
     {
       id: 'sentry-tool-trace-analyzer',
       name: '@dsh-sentry/tool-trace-analyzer',
-      config: { env, datasourceUid: row.grafana.datasourceUid },
+      config: { env, greptimedbJaegerDatasourceUid: row.grafana.greptimedbJaegerDatasourceUid },
     },
     {
       id: 'sentry-prometheus',

@@ -33,15 +33,15 @@ export const inject = ['tools', 'trace']
 export interface Config {
   /** Environment label (`local` / `staging` / `production`); evidence metadata only. */
   env: string
-  /** Grafana Jaeger datasource uid (grafana-jaeger mode). */
-  datasourceUid?: string
+  /** Grafana 内 GreptimeDB-Jaeger 数据源 uid（grafana-jaeger 模式）。 */
+  greptimedbJaegerDatasourceUid?: string
   /** Grafana numeric datasource id (grafana-jaeger mode; from the original config, e.g. 6). */
   datasourceId?: number
 }
 
 export const Config: z<Config> = z.object({
   env: z.string().required().description('环境标识（local/staging/production），仅作为 evidence 元数据'),
-  datasourceUid: z.string().description('Grafana Jaeger 数据源 uid（grafana-jaeger 模式必填）'),
+  greptimedbJaegerDatasourceUid: z.string().description('Grafana 内 GreptimeDB-Jaeger 数据源 uid（grafana-jaeger 模式必填）'),
   datasourceId: z.number().step(1).description('Grafana 数据源数字 id（可选，原 config 为 6）'),
 })
 
@@ -55,7 +55,7 @@ function errorMessage(error: unknown): string {
 /** Register the trace fetch tool. */
 export function apply(ctx: Context, config: Config): void {
   const refs = [
-    `grafana:${config.datasourceUid ?? 'jaeger'}`,
+    `grafana:${config.greptimedbJaegerDatasourceUid ?? 'jaeger'}`,
     `env:${config.env}:traces`,
   ]
 
@@ -84,7 +84,7 @@ export function apply(ctx: Context, config: Config): void {
           ...args.end !== undefined ? { end: args.end } : {},
           ...args.service !== undefined ? { service: args.service } : {},
           ...args.operation !== undefined ? { operation: args.operation } : {},
-          ...config.datasourceUid !== undefined ? { datasourceUid: config.datasourceUid } : {},
+          ...config.greptimedbJaegerDatasourceUid !== undefined ? { datasourceUid: config.greptimedbJaegerDatasourceUid } : {},
           ...config.datasourceId !== undefined ? { datasourceId: config.datasourceId } : {},
         })
 
@@ -101,7 +101,7 @@ export function apply(ctx: Context, config: Config): void {
             env: config.env,
             trace_id: args.traceId,
             endpoint: ctx.trace.endpoint,
-            datasource_uid: config.datasourceUid ?? '',
+            datasource_uid: config.greptimedbJaegerDatasourceUid ?? '',
             frames_count: parsed.frames_count,
             duration_ms: parsed.duration_ms,
             status: parsed.status,

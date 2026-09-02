@@ -103,7 +103,7 @@ try {
     // 第四个参数可传真实 traceId 验证完整取数路径。
     const result = await ctx.trace.queryTrace({
       traceId: process.argv[4] ?? 'probe0000000000000000000000000000',
-      datasourceUid: row.grafana.datasourceUid ?? 'GreptimeDB-Jaeger',
+      datasourceUid: row.grafana.greptimedbJaegerDatasourceUid ?? 'GreptimeDB-Jaeger',
     })
     console.log('TRACE PROBE OK — response shape:')
     console.log(summarize(result))
@@ -153,7 +153,7 @@ try {
     }
   } else if (leg === 'grafana-datasources') {
     // 校准用：列出该环境 Grafana 的全部数据源（name/type/uid），
-    // 找 jaeger 类型的真实 uid 填回 envs.yml 的 grafana.datasourceUid。
+    // 找 jaeger 类型的真实 uid 填回 envs.yml 的 grafana.greptimedbJaegerDatasourceUid。
     // 认证走表单登录拿 session cookie（tst 实例禁用 basic auth，与 trace 服务同路径）。
     const username = row.grafana.usernameRef ? await resolveCredential(ctx, row.grafana.usernameRef) : undefined
     const password = row.grafana.passwordRef ? await resolveCredential(ctx, row.grafana.passwordRef) : undefined

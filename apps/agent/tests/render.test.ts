@@ -14,7 +14,7 @@ const fixture: EnvRow = {
   },
   grafana: {
     endpoint: 'https://grafana.cn-0.test.novo-one.com',
-    datasourceUid: 'GreptimeDB-Jaeger',
+    greptimedbJaegerDatasourceUid: 'GreptimeDB-Jaeger',
     usernameRef: 'GRAFANA_TEST_USERNAME',
     passwordRef: 'GRAFANA_TEST_PASSWORD',
   },

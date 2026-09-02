@@ -26,7 +26,7 @@
     name: '@dsh-sentry/tool-trace-analyzer'
     config:
       env: tst-platform-hosted-1
-      datasourceUid: PCD48328C06B18945
+      greptimedbJaegerDatasourceUid: PCD48328C06B18945
   - id: sentry-prometheus
     name: '@dsh-sentry/service-prometheus'
     config:
@@ -93,4 +93,4 @@
     name: '@dsh-sentry/sentry-skills'
   - id: sentry-git-guard
     name: '@dsh-sentry/guard-git'
-# 环境切换时间: 2026-09-02T12:56:03.664Z
+# 环境切换时间: 2026-09-02T13:48:12.597Z
