@@ -10,7 +10,7 @@ dsh-sentry 的插件通过 DSH **profile + patch 叠加层**机制加载。本�
 | bundle | profile 的基础插件组合（`dsh-base`、`dsh-web-app`、`dsh-headless` 等），按 `dsh.profile.bundles` 顺序叠加。 |
 | patch 层 | 在 bundle 之上的用户修改：`- id: <行id>` 覆盖已有行，`- insert: [...]` 追加新行。sentry 插件就是用 insert 加入的。 |
 | link 依赖 | `dsh plugin add <本地路径>` 安装的包是 pnpm link，指向 dsh-sentry 工作区。**改 dsh-sentry 代码后只需重启宿主即生效，不用重装。** |
-| 凭据 | `$DSH_HOME/.credentials.yaml`（优先）+ 进程环境变量。插件里写的是引用名（如 `GREPTIMEDB_LOCAL_USERNAME`），不是明文。 |
+| 凭据 | `$DSH_HOME/.credentials.yaml`（优先）+ 进程环境变量。插件里写的是引用名（如 `GREPTIMEDB_DP0_USERNAME`），不是明文。 |
 | 模型 | 沿用 `$DSH_HOME/settings.yaml`（当前 kimi/k3），sentry 插件不引入自己的模型配置。 |
 
 ## 方式一：headless（一次性任务，适合快速验证）
@@ -57,12 +57,12 @@ pnpm dsh plugin --profile web add \
       config:
         endpoint: https://greptimedb.cn-0.dev.novo-one.com
         database: public
-        usernameRef: GREPTIMEDB_LOCAL_USERNAME
-        passwordRef: GREPTIMEDB_LOCAL_PASSWORD
+        usernameRef: GREPTIMEDB_DP0_USERNAME
+        passwordRef: GREPTIMEDB_DP0_PASSWORD
     - id: sentry-tool-log-analyzer
       name: '@dsh-sentry/tool-log-analyzer'
       config:
-        env: local
+        env: dev-platform-hosted-0
 ```
 
 ```bash
@@ -80,11 +80,11 @@ pnpm dsh web
 真实查询需要把凭据写进 `$DSH_HOME/.credentials.yaml`（或运行前 export 同名环境变量）：
 
 ```yaml
-GREPTIMEDB_LOCAL_USERNAME: <用户名>
-GREPTIMEDB_LOCAL_PASSWORD: <密码>
+GREPTIMEDB_DP0_USERNAME: <用户名>
+GREPTIMEDB_DP0_PASSWORD: <密码>
 ```
 
-引用名与 `endurance-sentry/.env.example` 保持一致；endpoint 不同时改 patch 里的 `endpoint` 字段。
+引用名以 `apps/agent/envs.yml` 各环境行的 `*Ref` 字段为准（唯一事实来源）；endpoint 不同时改 `envs.yml` 对应行后重新生成。
 
 ## 改了 dsh-sentry 代码之后
 

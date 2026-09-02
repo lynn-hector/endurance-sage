@@ -1,78 +1,77 @@
-# dsh-sentry 组装（env: dev-platform-hosted-0，include 格式）——由 apps/agent/envs.yml 生成，勿手改。
+# dsh-sentry 组装（env: tst-platform-hosted-1，include 格式）——由 apps/agent/envs.yml 生成，勿手改。
 # 供 cordis-plugin-include 按路径引入（本地 profile 模式）；服务器符号链接模式用 cordis.patch.yml。
   - id: sentry-tool-env-switcher
     name: '@dsh-sentry/tool-env-switcher'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
   - id: sentry-greptimedb
     name: '@dsh-sentry/service-greptimedb'
     config:
-      endpoint: https://greptimedb.cn-0.dev.novo-one.com
+      endpoint: https://greptimedb.cn-1.test.novo-one.com
       database: public
-      usernameRef: GREPTIMEDB_DP0_USERNAME
-      passwordRef: GREPTIMEDB_DP0_PASSWORD
+      usernameRef: GREPTIMEDB_TP1_USERNAME
+      passwordRef: GREPTIMEDB_TP1_PASSWORD
   - id: sentry-tool-log-analyzer
     name: '@dsh-sentry/tool-log-analyzer'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
   - id: sentry-trace
     name: '@dsh-sentry/service-trace'
     config:
       mode: grafana-jaeger
-      endpoint: https://grafana.cn-0.dev.novo-one.com
-      usernameRef: GRAFANA_DP0_USERNAME
-      passwordRef: GRAFANA_DP0_PASSWORD
+      endpoint: https://grafana.cn-1.test.novo-one.com
+      usernameRef: GRAFANA_TP1_USERNAME
+      passwordRef: GRAFANA_TP1_PASSWORD
   - id: sentry-tool-trace-analyzer
     name: '@dsh-sentry/tool-trace-analyzer'
     config:
-      env: dev-platform-hosted-0
-      datasourceUid: GreptimeDB-Jaeger
+      env: tst-platform-hosted-1
+      datasourceUid: PCD48328C06B18945
   - id: sentry-prometheus
     name: '@dsh-sentry/service-prometheus'
     config:
-      grafanaEndpoint: https://grafana.cn-0.dev.novo-one.com
+      grafanaEndpoint: https://grafana.cn-1.test.novo-one.com
       datasourceUid: prometheus
-      usernameRef: GRAFANA_DP0_USERNAME
-      passwordRef: GRAFANA_DP0_PASSWORD
+      tokenRef: PROMETHEUS_TP1_TOKEN
   - id: sentry-tool-metrics-inspector
     name: '@dsh-sentry/tool-metrics-inspector'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
   - id: sentry-dbx
     name: '@dsh-sentry/service-dbx'
     config:
-      endpoint: https://dbx.cn-0.dev.novo-one.com
-      passwordRef: DBX_DP0_PASSWORD
+      endpoint: https://dbx.cn-1.test.novo-one.com
+      passwordRef: DBX_TP1_PASSWORD
   - id: sentry-tool-db-inspector
     name: '@dsh-sentry/tool-db-inspector'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
       database: novo_commctl_config
   - id: sentry-tool-redis-inspector
     name: '@dsh-sentry/tool-redis-inspector'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
   - id: sentry-zadig
     name: '@dsh-sentry/service-zadig'
     config:
       endpoint: https://zadig.yeastardigital.com
       project: novo-one-helm-charts-project
-      envName: dev-platform-hosted-0
+      envName: tst-platform-hosted-1
       tokenRef: ZADIG_API_TOKEN
   - id: sentry-tool-zadig-inspector
     name: '@dsh-sentry/tool-zadig-inspector'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
   - id: sentry-service-rocketmq
     name: '@dsh-sentry/service-rocketmq'
     config:
-      endpoint: https://rocketmq.cn-0.dev.novo-one.com
-      usernameRef: ROCKETMQ_DP0_USERNAME
-      passwordRef: ROCKETMQ_DP0_PASSWORD
+      endpoint: https://rocketmq.cn-1.test.novo-one.com
+      usernameRef: ROCKETMQ_TP1_USERNAME
+      passwordRef: ROCKETMQ_TP1_PASSWORD
   - id: sentry-tool-mq-inspector
     name: '@dsh-sentry/tool-mq-inspector'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
   - id: sentry-tapd
     name: '@dsh-sentry/service-tapd'
     config:
@@ -81,11 +80,11 @@
   - id: sentry-tool-tapd-inspector
     name: '@dsh-sentry/tool-tapd-inspector'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
   - id: sentry-tool-code-repository
     name: '@dsh-sentry/tool-code-repository'
     config:
-      env: dev-platform-hosted-0
+      env: tst-platform-hosted-1
       baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
   - id: sentry-persona
     name: '@dsh-sentry/sentry-persona'
@@ -93,4 +92,4 @@
     name: '@dsh-sentry/sentry-skills'
   - id: sentry-git-guard
     name: '@dsh-sentry/guard-git'
-# 环境切换时间: 2026-09-01T05:34:57.555Z
+# 环境切换时间: 2026-09-02T06:40:26.891Z

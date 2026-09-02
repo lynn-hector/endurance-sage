@@ -75,6 +75,7 @@ export function requiredCredentialRefs(row: EnvRow): string[] {
     row.rocketmq.usernameRef,
     row.rocketmq.passwordRef,
     row.zadig.tokenRef,
+    row.prometheus.tokenRef,
   ].filter((ref): ref is string => typeof ref === 'string' && ref.length > 0)
 }
 
@@ -179,8 +180,11 @@ export function renderEntries(row: EnvRow): Entry[] {
       config: {
         grafanaEndpoint: row.grafana.endpoint,
         datasourceUid: row.prometheus.datasourceUid,
-        usernameRef: row.grafana.usernameRef,
-        passwordRef: row.grafana.passwordRef,
+        // 实例禁用 basic auth 时（如 tst 三环境、DC0）用 service account
+        // Bearer token——service 端 Bearer 优先于 Basic
+        ...(row.prometheus.tokenRef !== undefined
+          ? { tokenRef: row.prometheus.tokenRef }
+          : { usernameRef: row.grafana.usernameRef, passwordRef: row.grafana.passwordRef }),
       },
     },
     { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector', config: { env } },

@@ -135,6 +135,12 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: ^0.1.0-rc.7
         version: 0.1.0-rc.7(a82b8abf74c7bffecdcd6d61d381e4b7)
+      '@dsh-sentry/datasource':
+        specifier: workspace:*
+        version: link:../../packages/core/datasource
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../packages/core/env-matrix
       '@dsh-sentry/sentry-persona':
         specifier: workspace:*
         version: link:../../packages/skills/sentry-persona
@@ -150,6 +156,9 @@ importers:
       '@dsh-sentry/service-prometheus':
         specifier: workspace:*
         version: link:../../packages/services/prometheus
+      '@dsh-sentry/service-rocketmq':
+        specifier: workspace:*
+        version: link:../../packages/services/rocketmq
       '@dsh-sentry/service-trace':
         specifier: workspace:*
         version: link:../../packages/services/trace
@@ -180,6 +189,9 @@ importers:
       '@dsh-sentry/tool-zadig-inspector':
         specifier: workspace:*
         version: link:../../packages/tools/tool-zadig-inspector
+      yaml:
+        specifier: ^2.8.0
+        version: 2.9.0
     devDependencies:
       tsx:
         specifier: ^4.20.0

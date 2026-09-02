@@ -12,9 +12,10 @@
 # - tst-platform-hosted-0/1  测试-平台托管 cn-0/cn-1.test.novo-one.com
 # - tst-client-hosted-0      测试-客户自托管 cn-0.test-byoi.novo-one.com
 #
-# 已实测的凭据事实：
+# 已实测的凭据事实（tst 三环境 2026-09-02 全腿 probe 通过）：
 # - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_DP0_USERNAME/PASSWORD），CSV 中该块为陈旧值
-# - grafana 每环境独立密码（admin）；DP0/DP1 已验证，DC0 密码未确证（键未入库）
+# - grafana 每环境独立密码（admin）；tst 三实例禁用 basic auth：trace 走表单登录+cookie 不受影响，
+#   prometheus 走 service account Bearer token（prometheus.tokenRef = PROMETHEUS_<TP0|TP1|TC0>_TOKEN）
 # - dbx / rocketmq：每环境独立 endpoint 与凭据键
 # - zadig 为平台级（唯一）
 # - zadig 用长期 OpenAPI token（ZADIG_API_TOKEN，Zadig 个人设置创建，不过期）；不要用浏览器复制的 dex 会话 token（约 1h 过期）
@@ -109,11 +110,12 @@ tst-platform-hosted-0:
     passwordRef: GREPTIMEDB_TP0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.test.novo-one.com
-    datasourceUid: GreptimeDB-Jaeger   # 默认值，接入后以实例实际 Jaeger UID 校准
+    datasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_TP0_USERNAME
     passwordRef: GRAFANA_TP0_PASSWORD
   prometheus:
     datasourceUid: prometheus
+    tokenRef: PROMETHEUS_TP0_TOKEN
   dbx:
     endpoint: https://dbx.cn-0.test.novo-one.com
     passwordRef: DBX_TP0_PASSWORD
@@ -136,11 +138,12 @@ tst-platform-hosted-1:
     passwordRef: GREPTIMEDB_TP1_PASSWORD
   grafana:
     endpoint: https://grafana.cn-1.test.novo-one.com
-    datasourceUid: GreptimeDB-Jaeger   # 默认值，接入后以实例实际 Jaeger UID 校准
+    datasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_TP1_USERNAME
     passwordRef: GRAFANA_TP1_PASSWORD
   prometheus:
     datasourceUid: prometheus
+    tokenRef: PROMETHEUS_TP1_TOKEN
   dbx:
     endpoint: https://dbx.cn-1.test.novo-one.com
     passwordRef: DBX_TP1_PASSWORD
@@ -163,11 +166,12 @@ tst-client-hosted-0:
     passwordRef: GREPTIMEDB_TC0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.test-byoi.novo-one.com
-    datasourceUid: GreptimeDB-Jaeger   # 默认值，接入后以实例实际 Jaeger UID 校准
+    datasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_TC0_USERNAME
     passwordRef: GRAFANA_TC0_PASSWORD
   prometheus:
     datasourceUid: prometheus
+    tokenRef: PROMETHEUS_TC0_TOKEN
   dbx:
     endpoint: https://dbx.cn-0.test-byoi.novo-one.com
     passwordRef: DBX_TC0_PASSWORD

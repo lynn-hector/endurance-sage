@@ -27,11 +27,14 @@
     "@deepseek-ai/dsh-skill": "^0.1.0-rc.7",
     "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.7",
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.7",
+    "@dsh-sentry/datasource": "workspace:*",
+    "@dsh-sentry/env-matrix": "workspace:*",
     "@dsh-sentry/sentry-persona": "workspace:*",
     "@dsh-sentry/sentry-skills": "workspace:*",
     "@dsh-sentry/service-dbx": "workspace:*",
     "@dsh-sentry/service-greptimedb": "workspace:*",
     "@dsh-sentry/service-prometheus": "workspace:*",
+    "@dsh-sentry/service-rocketmq": "workspace:*",
     "@dsh-sentry/service-trace": "workspace:*",
     "@dsh-sentry/service-zadig": "workspace:*",
     "@dsh-sentry/tool-code-repository": "workspace:*",
@@ -41,7 +44,8 @@
     "@dsh-sentry/tool-metrics-inspector": "workspace:*",
     "@dsh-sentry/tool-redis-inspector": "workspace:*",
     "@dsh-sentry/tool-trace-analyzer": "workspace:*",
-    "@dsh-sentry/tool-zadig-inspector": "workspace:*"
+    "@dsh-sentry/tool-zadig-inspector": "workspace:*",
+    "yaml": "^2.8.0"
   },
   "devDependencies": {
     "tsx": "^4.20.0",
