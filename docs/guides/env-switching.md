@@ -51,12 +51,14 @@ pnpm --filter @dsh-sentry/agent run regenerate
 
 | 环境 | 域名族 | 状态 | 备注 |
 |---|---|---|---|
-| `dev-platform-hosted-0` | cn-0.dev.novo-one.com | ✅ 就绪 | 七条腿全实测 |
-| `dev-platform-hosted-1` | cn-1.dev.novo-one.com | ✅ 就绪 | 五条腿全实测 |
-| `dev-client-hosted-0` | cn-0.dev-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02）；basic auth 禁用，prometheus 走 service account token |
+| `dev-platform-hosted-0` | cn-0.dev.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
+| `dev-platform-hosted-1` | cn-1.dev.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
+| `dev-client-hosted-0` | cn-0.dev-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `tst-platform-hosted-0` | cn-0.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `tst-platform-hosted-1` | cn-1.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `tst-client-hosted-0` | cn-0.test-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
+
+「腿」的口径统一为 probe 覆盖的六个随环境切换的数据源：greptimedb（日志）、trace（链路）、prometheus（指标）、dbx（数据库）、rocketmq（MQ）、zadig（CI/CD）。不计入的三条：TAPD 是平台级唯一来源、不随环境切换；Redis 经 dbx 平台中转（dbx 通即通）；代码检索读本机目录、与环境无关。
 
 联调方法（2026-09-02）：`pnpm --filter @dsh-sentry/dev exec tsx src/probe.ts <腿> <环境>`，腿 = greptimedb/trace/prometheus/dbx/rocketmq/zadig/grafana-datasources，环境支持短码。注意：probe 通过临时摊平文件兼容新版凭据库（`version: 1` + `refs:` 嵌套）与 rc.8 provider 的格式差异，见 probe.ts 注释。
 
