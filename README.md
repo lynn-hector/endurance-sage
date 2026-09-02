@@ -8,7 +8,7 @@
 |---|---|---|
 | 日志 | `sentry_query_logs` / `sentry_list_log_services` | GreptimeDB k8s 容器日志，异常模式提取 |
 | 链路 | `sentry_fetch_trace` | Grafana Jaeger 按 traceId 追踪，慢/错调用识别 |
-| 指标 | `sentry_query_metrics` / `sentry_list_alerts` | Prometheus 曲线与 firing 告警 |
+| 指标 | `sentry_query_metrics` / `sentry_list_metrics` / `sentry_list_alerts` | Prometheus 曲线、可用指标名清单（写原生 PromQL 前自查）、firing 告警 |
 | 数据库 | `sentry_query_db` | PostgreSQL 只读 SQL（dbx 平台） |
 | Redis | `sentry_query_redis` | key 值 / TTL / 类型查询 |
 | MQ | `sentry_query_mq` | RocketMQ 消息列表与消费轨迹 |

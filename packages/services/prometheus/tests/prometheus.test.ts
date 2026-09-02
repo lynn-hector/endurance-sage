@@ -213,6 +213,55 @@ describe('PrometheusService error paths — original Chinese wording', () => {
   })
 })
 
+describe('PrometheusService.labelValues — metric discovery', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('direct mode: GETs /api/v1/label/__name__/values with window params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      status: 'success',
+      data: ['up', 'go_goroutines', 'http_server_requests_seconds_count'],
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const service = new PrometheusService(new Context(), { endpoint: 'http://localhost:9090' })
+    const names = await service.labelValues('__name__', { windowMinutes: 30, limit: 100 })
+
+    const [url] = lastCall(fetchMock)
+    expect(url).toMatch(/^http:\/\/localhost:9090\/api\/v1\/label\/__name__\/values\?start=\d+&end=\d+&limit=100$/)
+    const start = Number(new URL(url).searchParams.get('start'))
+    const end = Number(new URL(url).searchParams.get('end'))
+    expect(end - start).toBe(30 * 60)
+    // Sorted alphabetically by the service.
+    expect(names).toEqual(['go_goroutines', 'http_server_requests_seconds_count', 'up'])
+  })
+
+  it('proxy mode: goes through the Grafana datasource resources passthrough', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: 'success', data: ['up'] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const service = new PrometheusService(new Context(), {
+      grafanaEndpoint: 'https://grafana.example.com',
+      datasourceUid: 'prometheus',
+    })
+    const names = await service.labelValues('__name__')
+
+    const [url] = lastCall(fetchMock)
+    expect(url).toMatch(
+      /^https:\/\/grafana\.example\.com\/api\/datasources\/uid\/prometheus\/resources\/api\/v1\/label\/__name__\/values\?/,
+    )
+    expect(names).toEqual(['up'])
+  })
+
+  it('rejects malformed payloads with the standard wording', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ unexpected: true })))
+    const service = new PrometheusService(new Context(), { endpoint: 'http://localhost:9090' })
+    await expect(service.labelValues('__name__')).rejects.toThrow('label values 返回的数据格式无法解析')
+  })
+})
+
 describe('formatPyFloat', () => {
   it('keeps a trailing .0 on integral values, like Python str(float)', () => {
     expect(formatPyFloat(1784714400)).toBe('1784714400.0')

@@ -280,6 +280,112 @@ export function apply(ctx: Context, config: Config): void {
   }))
 
   ctx.tools.register(defineTool({
+    name: 'sentry_list_metrics',
+    description:
+      'List metric names active on this cluster within a recent time window '
+      + '(Prometheus label values of __name__). Read-only. Use before writing raw PromQL: '
+      + 'check which metrics actually exist, optionally narrowed by `match` substring '
+      + '(e.g. "http", "go_", a service keyword). The built-in short names of '
+      + 'sentry_query_metrics (qps/latency_p99/error_rate/...) cover common RED triage; '
+      + 'this tool is the escape hatch for everything else.',
+    parameters: {
+      match: { type: 'string', description: 'Case-insensitive substring filter on metric names.' },
+      windowMinutes: { type: 'number', default: 60, description: 'Look-back window; only metrics with samples in it are listed. Defaults to 60.' },
+      limit: { type: 'number', default: 40000, description: 'Server-side cap on returned names. Defaults to 40000.' },
+      demo: { type: 'boolean', default: false, description: 'Return fixed demo data without connecting to Prometheus.' },
+      dryRun: { type: 'boolean', default: false, description: 'Only return the constructed request, do not send.' },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute(args, _exec) {
+      const match = typeof args.match === 'string' && args.match.length > 0 ? args.match.toLowerCase() : null
+      const windowMinutes = typeof args.windowMinutes === 'number' && args.windowMinutes > 0 ? args.windowMinutes : 60
+      const limit = typeof args.limit === 'number' && args.limit > 0 ? args.limit : 40000
+
+      if (args.dryRun === true) {
+        const built = ctx.prometheus.buildLabelValuesRequest('__name__', windowMinutes, limit)
+        return buildEvidence({
+          source: SOURCE,
+          type: TYPE_METRIC,
+          data: { dry_run: true, method: 'GET', url: built.url, params: built.params },
+          summary: `[dry-run] 构造指标名清单查询请求（窗口 ${windowMinutes} 分钟），未发送。`,
+          confidence: 1.0,
+          refs: refs(),
+        }) as unknown as JsonValue
+      }
+
+      if (args.demo === true) {
+        const demoNames = [
+          'go_goroutines',
+          'http_server_requests_seconds_bucket',
+          'http_server_requests_seconds_count',
+          'http_server_requests_seconds_sum',
+          'process_cpu_seconds_total',
+          'process_resident_memory_bytes',
+          'up',
+        ]
+        return listMetricsEvidence(config.env, envRef, demoNames, match, windowMinutes, true, undefined)
+      }
+
+      try {
+        const names = await ctx.prometheus.labelValues('__name__', { windowMinutes, limit })
+        return listMetricsEvidence(config.env, envRef, names, match, windowMinutes, false, undefined)
+      } catch (error) {
+        return listMetricsEvidence(config.env, envRef, [], match, windowMinutes, false, errorMessage(error))
+      }
+    },
+  }))
+
+  /** Metric-list evidence envelope: sorted names, optional substring filter, prefix histogram. */
+  function listMetricsEvidence(
+    env: string,
+    envRef: string,
+    names: string[],
+    match: string | null,
+    windowMinutes: number,
+    demo: boolean,
+    error: string | undefined,
+  ): JsonValue {
+    const filtered = match === null ? names : names.filter(n => n.toLowerCase().includes(match))
+    const prefixes: Record<string, number> = {}
+    for (const n of filtered) {
+      const prefix = n.split('_')[0] ?? n
+      prefixes[prefix] = (prefixes[prefix] ?? 0) + 1
+    }
+
+    let summary: string
+    let confidence: number
+    if (error !== undefined) {
+      summary = `指标名清单查询失败: ${error}`
+      confidence = 0.0
+    } else {
+      summary = `env=${env} 最近 ${windowMinutes} 分钟内共 ${filtered.length} 个指标`
+      if (match !== null) summary += `（match 过滤: "${match}"，过滤前 ${names.length} 个）`
+      confidence = demo ? 0.5 : 0.95
+    }
+
+    return buildEvidence({
+      source: SOURCE,
+      type: TYPE_METRIC,
+      data: {
+        env,
+        window_minutes: windowMinutes,
+        match,
+        metric_count: filtered.length,
+        prefix_histogram: prefixes,
+        metrics: filtered,
+        demo,
+        error: error ?? null,
+      },
+      summary,
+      confidence,
+      refs: [envRef],
+    }) as unknown as JsonValue
+  }
+
+  ctx.tools.register(defineTool({
     name: 'sentry_list_alerts',
     description:
       'List currently firing Prometheus alerts via /api/v1/rules, optionally filtered by service label. '

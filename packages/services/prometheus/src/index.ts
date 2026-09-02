@@ -134,6 +134,11 @@ export class PrometheusService extends Service {
     if (this.endpoint.length === 0) {
       throw new Error('endpoint 未配置，请检查插件配置')
     }
+    return this.getJsonUrl(url)
+  }
+
+  /** GET JSON against any absolute URL (used by proxy-mode requests whose base is the Grafana endpoint). */
+  private async getJsonUrl(url: string): Promise<unknown> {
     const headers: Record<string, string> = {
       accept: 'application/json',
       ...await this.authHeaders(),
@@ -239,6 +244,52 @@ export class PrometheusService extends Service {
     }
     return this.getJson(`${this.endpoint}/api/v1/rules`)
   }
+
+  /**
+   * Constructed label-values request, for dry-run evidence. Proxied mode
+   * goes through Grafana's datasource resources passthrough
+   * (`/api/datasources/uid/<uid>/resources/api/v1/...`), which forwards the
+   * Prometheus envelope unchanged.
+   */
+  buildLabelValuesRequest(label: string, windowMinutes: number, limit: number): { url: string; params: Record<string, string> } {
+    const base = this.proxied
+      ? `${this.grafanaEndpoint}/api/datasources/uid/${this.config.datasourceUid ?? 'prometheus'}/resources/api/v1`
+      : `${this.endpoint}/api/v1`
+    return {
+      url: `${base}/label/${encodeURIComponent(label)}/values`,
+      params: {
+        start: String(Math.floor(Date.now() / 1000) - windowMinutes * 60),
+        end: String(Math.floor(Date.now() / 1000)),
+        limit: String(limit),
+      },
+    }
+  }
+
+  /**
+   * Label values (e.g. `__name__` = every metric name active in the window).
+   * Works in both modes; returns the names sorted.
+   */
+  async labelValues(label: string, options?: { windowMinutes?: number; limit?: number }): Promise<string[]> {
+    const windowMinutes = options?.windowMinutes ?? 60
+    const limit = options?.limit ?? 40000
+    const { url, params } = this.buildLabelValuesRequest(label, windowMinutes, limit)
+    if (!this.proxied && this.endpoint.length === 0) {
+      throw new Error('endpoint 未配置，请检查插件配置')
+    }
+    const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')
+    const payload = await this.getJsonUrl(`${url}?${qs}`)
+    const data = isRecord(payload) ? payload['data'] : undefined
+    if (!Array.isArray(data)) {
+      throw new Error(
+        `Prometheus label values 返回的数据格式无法解析，原始响应：${JSON.stringify(payload).slice(0, 500)}`,
+      )
+    }
+    return data.filter((v): v is string => typeof v === 'string').sort()
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
