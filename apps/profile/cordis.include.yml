@@ -32,7 +32,8 @@
     config:
       grafanaEndpoint: https://grafana.cn-1.test.novo-one.com
       datasourceUid: prometheus
-      tokenRef: PROMETHEUS_TP1_TOKEN
+      usernameRef: GRAFANA_TP1_USERNAME
+      passwordRef: GRAFANA_TP1_PASSWORD
   - id: sentry-tool-metrics-inspector
     name: '@dsh-sentry/tool-metrics-inspector'
     config:
@@ -92,4 +93,4 @@
     name: '@dsh-sentry/sentry-skills'
   - id: sentry-git-guard
     name: '@dsh-sentry/guard-git'
-# 环境切换时间: 2026-09-02T06:40:26.891Z
+# 环境切换时间: 2026-09-02T12:56:03.664Z
