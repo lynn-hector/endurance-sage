@@ -119,6 +119,25 @@ export function listEnvironments(config: RuntimeConfig): ListResult {
   }
 }
 
+/**
+ * Report the current environment state.
+ *
+ * Detection semantics (post live-label mitigation):
+ * - `current` is the env the assembly files declare — the value
+ *   `sentry_env_switch` last wrote; the single source of truth.
+ * - `loadedEnv` is this plugin's own config. This plugin injects no data
+ *   source service, so a service config swap cannot strand it on boot-time
+ *   config; it follows hot reloads reliably.
+ * - `hotReloadPending` compares the two. `true` means the reload has not
+ *   reached even this plugin — e.g. the patch watcher is dead or a reload
+ *   is still in flight. `false` does NOT certify that every plugin instance
+ *   has restarted: service-injected tools can stay frozen on boot-time
+ *   config (cordis `Fiber.update`'s non-active branch stashes the new
+ *   config silently). That freeze is mitigated where it matters — evidence
+ *   `env` labels and env-bound tool knobs resolve from the assembly files
+ *   at call time (`liveAssemblyEnv` in @dsh-sentry/env-matrix), and the
+ *   service plugins themselves hot-reload correctly.
+ */
 export function currentEnvironment(config: RuntimeConfig): CurrentResult {
   let sourcePath: string | null = config.includePath
   let current: string | null = null

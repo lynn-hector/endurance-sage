@@ -29,6 +29,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import { RocketMqService } from '@dsh-sentry/service-rocketmq'
 import type {} from '@dsh-sentry/service-rocketmq'
 
@@ -191,6 +192,11 @@ export function listEvidence(
 
 /** Register the MQ query tool. */
 export function apply(ctx: Context, config: Config): void {
+  // Env label resolves per call from the assembly files: this plugin injects a
+  // service, so a service config swap can leave this instance frozen on
+  // boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+
   ctx.tools.register(defineTool({
     name: 'sentry_query_mq',
     description:
@@ -229,7 +235,7 @@ export function apply(ctx: Context, config: Config): void {
           return asEvidence(buildEvidence({
             source: SOURCE,
             type: TYPE,
-            data: { env: config.env, dry_run: true, request },
+            data: { env: liveEnv(), dry_run: true, request },
             summary: 'DRY-RUN：只构造请求，不发送',
             confidence: 0.5,
             refs: refs(ctx),
@@ -238,19 +244,19 @@ export function apply(ctx: Context, config: Config): void {
 
         if (args.msgId !== undefined) {
           const result = await ctx.rocketmq.queryMessageDetail(args.topic, args.msgId)
-          return detailEvidence(config.env, args.topic, args.msgId, result)
+          return detailEvidence(liveEnv(), args.topic, args.msgId, result)
         }
 
         const result = await ctx.rocketmq.queryMessages({
           topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword,
         })
-        return listEvidence(config.env, { topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword }, result)
+        return listEvidence(liveEnv(), { topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword }, result)
       } catch (error) {
         return asEvidence(buildEvidence({
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             topic: args.topic,
             msg_id: args.msgId ?? null,
             error: errorMessage(error),

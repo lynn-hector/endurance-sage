@@ -25,6 +25,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv, liveAssemblyEntryConfig } from '@dsh-sentry/env-matrix'
 import type {} from '@dsh-sentry/service-dbx'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -61,9 +62,19 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+const DB_INSPECTOR_ENTRY_ID = 'sentry-tool-db-inspector'
+
 /** Register the SQL query tool. */
 export function apply(ctx: Context, config: Config): void {
-  const refs = (): string[] => [`dbx:${ctx.dbx.endpoint}`, `env:${config.env}:db`]
+  // Env label resolves per call from the assembly files: this plugin injects a
+  // service, so a service config swap can leave this instance frozen on
+  // boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const liveDatabase = (): string | undefined => {
+    const fromAssembly = liveAssemblyEntryConfig(DB_INSPECTOR_ENTRY_ID)?.database
+    return typeof fromAssembly === 'string' && fromAssembly.length > 0 ? fromAssembly : undefined
+  }
+  const refs = (): string[] => [`dbx:${ctx.dbx.endpoint}`, `env:${liveEnv()}:db`]
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_db',
@@ -83,12 +94,12 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, _exec) {
       // Original `_get_database`: CLI param wins, then db.database/db.schema.
-      const database = args.database ?? config.database ?? ''
+      const database = args.database ?? liveDatabase() ?? config.database ?? ''
       if (database.length === 0) {
         return buildEvidenceError({
           source: SOURCE,
           type: TYPE,
-          error: `config/${config.env}.yml 中 db.database 或 db.schema 缺失，也可通过 database 参数指定`,
+          error: `config/${liveEnv()}.yml 中 db.database 或 db.schema 缺失，也可通过 database 参数指定`,
           summary: '缺少数据库名配置',
           refs: refs(),
         }) as unknown as JsonValue
@@ -103,7 +114,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             dry_run: true,
             url: `${ctx.dbx.endpoint}/api/query/execute-multi`,
             headers: { cookie: 'dbx_session=...', 'content-type': 'application/json' },
@@ -115,7 +126,7 @@ export function apply(ctx: Context, config: Config): void {
               fetchSize: maxRows,
             },
           },
-          summary: `[dry-run] env=${config.env} 构造 SQL 查询请求，未发送。`,
+          summary: `[dry-run] env=${liveEnv()} 构造 SQL 查询请求，未发送。`,
           confidence: 1.0,
           refs: refs(),
         }) as unknown as JsonValue
@@ -154,7 +165,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             sql: args.sql,
             database,
             connection_id: connectionId,

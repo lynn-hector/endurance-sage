@@ -10,7 +10,8 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parse, stringify } from 'yaml'
 
 export interface EnvLeg {
@@ -266,6 +267,107 @@ export function renderIncludePatch(row: EnvRow): string {
 
 export function extractCurrentEnv(text: string): string | undefined {
   return /^# dsh-sentry 组装（env: (.+?)(?:，include 格式)?）/m.exec(text)?.[1]
+}
+
+// ---------------------------------------------------------------------------
+// Live assembly reading — call-time truth for evidence labels and env-bound
+// tool config.
+//
+// Why this exists: replacing a service plugin's config does not restart the
+// tool plugins that inject that service (cordis `Fiber.update`'s non-active
+// branch stashes the new config silently, with no log). A tool plugin frozen
+// this way keeps answering with its boot-time config, so anything
+// environment-bound in `Config` — the `env` evidence label, the Jaeger
+// datasource uid, the postgres database — can go stale after
+// `sentry_env_switch`. The assembly files are the single source of truth the
+// switcher rewrites atomically, so tools read them per call and fall back to
+// plugin config only when the files are unreachable.
+// ---------------------------------------------------------------------------
+
+/** Locations of the two generated assembly files, checked in this order. */
+export interface AssemblyPaths {
+  /** Include-format assembly (`cordis.include.yml`), preferred source. */
+  include: string
+  /** Direct-write patch assembly (`cordis.patch.yml`). */
+  patch: string
+}
+
+/** Repo-relative default assembly locations (`apps/profile/*`), or `$DSH_SENTRY_ASSEMBLY_DIR` when set. */
+export function defaultAssemblyPaths(): AssemblyPaths {
+  const override = process.env.DSH_SENTRY_ASSEMBLY_DIR
+  if (override !== undefined && override.length > 0) {
+    return {
+      include: join(override, 'cordis.include.yml'),
+      patch: join(override, 'cordis.patch.yml'),
+    }
+  }
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+  return {
+    include: join(repoRoot, 'apps/profile/cordis.include.yml'),
+    patch: join(repoRoot, 'apps/profile/cordis.patch.yml'),
+  }
+}
+
+/** Assembly entries flattened from either file format (bare list or `- insert:`). */
+function assemblyEntries(parsed: unknown): Entry[] | undefined {
+  if (!Array.isArray(parsed)) return undefined
+  const entries: Entry[] = []
+  for (const item of parsed) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+    const insert = (item as { insert?: unknown }).insert
+    if (Array.isArray(insert)) {
+      for (const entry of insert) {
+        if (isEntry(entry)) entries.push(entry)
+      }
+      continue
+    }
+    if (isEntry(item)) entries.push(item)
+  }
+  return entries.length > 0 ? entries : undefined
+}
+
+function isEntry(value: unknown): value is Entry {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && typeof (value as Entry).id === 'string'
+}
+
+/**
+ * The environment the assembly files currently declare — the value
+ * `sentry_env_switch` last wrote. Returns `undefined` when neither file is
+ * readable or parseable; callers fall back to plugin config.
+ */
+export function liveAssemblyEnv(paths: AssemblyPaths = defaultAssemblyPaths()): string | undefined {
+  for (const file of [paths.include, paths.patch]) {
+    try {
+      const env = extractCurrentEnv(readFileSync(file, 'utf8'))
+      if (env !== undefined) return env
+    } catch {
+      // unreadable file — try the next source
+    }
+  }
+  return undefined
+}
+
+/**
+ * One plugin entry's config from the current assembly files. Tools use this
+ * to resolve env-bound knobs (e.g. the Jaeger datasource uid) at call time
+ * instead of trusting their possibly-frozen plugin config.
+ */
+export function liveAssemblyEntryConfig(
+  entryId: string,
+  paths: AssemblyPaths = defaultAssemblyPaths(),
+): Record<string, unknown> | undefined {
+  for (const file of [paths.include, paths.patch]) {
+    try {
+      const entries = assemblyEntries(parse(readFileSync(file, 'utf8')))
+      if (entries === undefined) continue
+      const hit = entries.find((entry) => entry.id === entryId)
+      if (hit !== undefined && hit.config !== undefined) return hit.config
+    } catch {
+      // unparsable file — try the next source
+    }
+  }
+  return undefined
 }
 
 function stringifyEntries(entries: Entry[], indent = '    '): string {

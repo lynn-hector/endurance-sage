@@ -26,9 +26,9 @@
 
 无参数。返回：
 
-- `current`：从 `cordis.include.yml`/`cordis.patch.yml` 文件头读取的环境。
-- `loadedEnv`：当前插件实例加载时的环境。
-- `hotReloadPending`：文件已切换但运行时插件尚未重载时为 `true`。
+- `current`：从 `cordis.include.yml`/`cordis.patch.yml` 文件头读取的环境——唯一事实源。
+- `loadedEnv`：本插件自身 config 的环境。本插件不注入数据源 service，热重载必然到达它。
+- `hotReloadPending`：`true` 表示重载连本插件都没到达（patch watcher 死亡或重载在途），需重启 dsh web 兜底。`false` 不代表所有插件实例都已重启——注入 service 的工具实例可能仍冻结在启动 config（cordis 静默分支），但其 evidence `env` 标签与环境相关参数已改为调用时读装配文件，不受冻结影响；service 插件本身热重载正确。
 
 ### sentry_env_switch — 切换环境
 
@@ -55,7 +55,7 @@
 3. 切换前工具会校验该环境全部凭据引用；缺任何一个会拒绝写入并返回缺失键名。
 4. 切换成功只表示配置文件已更新；随后依赖 dsh patch watcher 热重载，不需要重启。
 5. 调用 `sentry_env_switch` 后，用 `sentry_env_current` 确认文件环境；若 `hotReloadPending` 持续为 `true`，提示用户重启 dsh web 兜底。
-6. 切换后首次日志/指标查询返回的 `env` 或 evidence 标签应与目标环境一致；不一致时不要继续下结论，先处理热重载。
+6. 切换后抽查一次查询的 evidence `env` 标签，应与目标环境一致（标签按调用时读装配文件解析，正常必然一致）；若不一致，说明装配文件不可读，先修复文件再继续。
 7. 工具会识别当前 profile 形态：include 桩只更新仓库装配；直写 sentry 装配会同步更新 profile patch。不要手工改路径。
 
 ## 输出话术

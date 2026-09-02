@@ -21,6 +21,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv, liveAssemblyEntryConfig } from '@dsh-sentry/env-matrix'
 import type {} from '@dsh-sentry/service-trace'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -52,11 +53,23 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+const TRACE_ANALYZER_ENTRY_ID = 'sentry-tool-trace-analyzer'
+
 /** Register the trace fetch tool. */
 export function apply(ctx: Context, config: Config): void {
-  const refs = [
-    `grafana:${config.greptimedbJaegerDatasourceUid ?? 'jaeger'}`,
-    `env:${config.env}:traces`,
+  // Env-bound values resolve per call from the assembly files: this plugin
+  // injects the trace service, so a service config swap can leave this
+  // instance frozen on boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const liveJaegerUid = (): string | undefined => {
+    const fromAssembly = liveAssemblyEntryConfig(TRACE_ANALYZER_ENTRY_ID)?.greptimedbJaegerDatasourceUid
+    return typeof fromAssembly === 'string' && fromAssembly.length > 0
+      ? fromAssembly
+      : config.greptimedbJaegerDatasourceUid
+  }
+  const refs = (): string[] => [
+    `grafana:${liveJaegerUid() ?? 'jaeger'}`,
+    `env:${liveEnv()}:traces`,
   ]
 
   ctx.tools.register(defineTool({
@@ -78,13 +91,14 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, _exec) {
       try {
+        const datasourceUid = liveJaegerUid()
         const parsed = await ctx.trace.queryTrace({
           traceId: args.traceId,
           ...args.start !== undefined ? { start: args.start } : {},
           ...args.end !== undefined ? { end: args.end } : {},
           ...args.service !== undefined ? { service: args.service } : {},
           ...args.operation !== undefined ? { operation: args.operation } : {},
-          ...config.greptimedbJaegerDatasourceUid !== undefined ? { datasourceUid: config.greptimedbJaegerDatasourceUid } : {},
+          ...datasourceUid !== undefined ? { datasourceUid } : {},
           ...config.datasourceId !== undefined ? { datasourceId: config.datasourceId } : {},
         })
 
@@ -98,10 +112,10 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             trace_id: args.traceId,
             endpoint: ctx.trace.endpoint,
-            datasource_uid: config.greptimedbJaegerDatasourceUid ?? '',
+            datasource_uid: datasourceUid ?? '',
             frames_count: parsed.frames_count,
             duration_ms: parsed.duration_ms,
             status: parsed.status,
@@ -113,20 +127,20 @@ export function apply(ctx: Context, config: Config): void {
           },
           summary: summaryParts.join('，'),
           confidence: parsed.spans.length > 0 ? 0.9 : 0.5,
-          refs,
+          refs: refs(),
         }) as unknown as JsonValue
       } catch (error) {
         return buildEvidence({
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             trace_id: args.traceId,
             error: errorMessage(error),
           },
           summary: `查询失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs,
+          refs: refs(),
         }) as unknown as JsonValue
       }
     },

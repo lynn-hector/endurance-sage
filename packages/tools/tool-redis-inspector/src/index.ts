@@ -28,6 +28,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type {} from '@dsh-sentry/service-dbx'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -99,7 +100,11 @@ export function decodeContent(content: Record<string, unknown> | undefined): {
 
 /** Register the Redis query tool. */
 export function apply(ctx: Context, config: Config): void {
-  const refs = (): string[] => [`dbx:${ctx.dbx.endpoint}`, `env:${config.env}:redis`]
+  // Env label resolves per call from the assembly files: this plugin injects a
+  // service, so a service config swap can leave this instance frozen on
+  // boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const refs = (): string[] => [`dbx:${ctx.dbx.endpoint}`, `env:${liveEnv()}:redis`]
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_redis',
@@ -130,7 +135,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             dry_run: true,
             url: `${ctx.dbx.endpoint}/api/redis/get-value`,
             headers: { cookie: 'dbx_session=...', 'content-type': 'application/json' },
@@ -140,7 +145,7 @@ export function apply(ctx: Context, config: Config): void {
               keyRaw,
             },
           },
-          summary: `[dry-run] env=${config.env} 构造 Redis 查询请求，未发送。`,
+          summary: `[dry-run] env=${liveEnv()} 构造 Redis 查询请求，未发送。`,
           confidence: 1.0,
           refs: refs(),
         }) as unknown as JsonValue
@@ -169,7 +174,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             key: args.key,
             key_display: keyDisplay ?? null,
             key_raw: response['key_raw'] ?? null,

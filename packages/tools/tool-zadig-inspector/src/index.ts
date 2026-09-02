@@ -27,6 +27,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import { parseImageTag, type ZadigServiceRow, type ZadigWorkflowTask } from '@dsh-sentry/service-zadig'
 import type {} from '@dsh-sentry/service-zadig'
 
@@ -176,6 +177,11 @@ export function demoLatestDeployment(service: string): Record<string, unknown> {
 
 /** Register the Zadig query tool. */
 export function apply(ctx: Context, config: Config): void {
+  // Env label resolves per call from the assembly files: this plugin injects a
+  // service, so a service config swap can leave this instance frozen on
+  // boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+
   ctx.tools.register(defineTool({
     name: 'sentry_query_zadig',
     description:
@@ -235,34 +241,34 @@ export function apply(ctx: Context, config: Config): void {
 
       if (args.demo === true) {
         if (workflowQuery !== undefined) {
-          return workflowEvidence(config.env, ctx, workflow as string, workflowQuery.project, demoWorkflowTasks(workflow as string), true, undefined)
+          return workflowEvidence(liveEnv(), ctx, workflow as string, workflowQuery.project, demoWorkflowTasks(workflow as string), true, undefined)
         }
         if (detailService !== undefined) {
-          return detailEvidence(config.env, ctx, detailService, demoLatestDeployment(detailService), true, undefined)
+          return detailEvidence(liveEnv(), ctx, detailService, demoLatestDeployment(detailService), true, undefined)
         }
-        return listEvidence(config.env, ctx, demoServices(), true, undefined)
+        return listEvidence(liveEnv(), ctx, demoServices(), true, undefined)
       }
 
       try {
         if (workflowQuery !== undefined) {
           const tasks = await ctx.zadig.fetchWorkflowTasks(workflowQuery)
-          return workflowEvidence(config.env, ctx, workflow as string, workflowQuery.project, tasks, false, undefined)
+          return workflowEvidence(liveEnv(), ctx, workflow as string, workflowQuery.project, tasks, false, undefined)
         }
         if (detailService !== undefined) {
           const deployment = await ctx.zadig.fetchServiceDetail(detailService)
-          return detailEvidence(config.env, ctx, detailService, deployment, false, undefined)
+          return detailEvidence(liveEnv(), ctx, detailService, deployment, false, undefined)
         }
         const services = await ctx.zadig.fetchServices()
-        return listEvidence(config.env, ctx, services, false, undefined)
+        return listEvidence(liveEnv(), ctx, services, false, undefined)
       } catch (error) {
         const message = errorMessage(error)
         if (workflowQuery !== undefined) {
-          return workflowEvidence(config.env, ctx, workflow as string, workflowQuery.project, [], false, message)
+          return workflowEvidence(liveEnv(), ctx, workflow as string, workflowQuery.project, [], false, message)
         }
         if (detailService !== undefined) {
-          return detailEvidence(config.env, ctx, detailService, {}, false, message)
+          return detailEvidence(liveEnv(), ctx, detailService, {}, false, message)
         }
-        return listEvidence(config.env, ctx, [], false, message)
+        return listEvidence(liveEnv(), ctx, [], false, message)
       }
     },
   }))

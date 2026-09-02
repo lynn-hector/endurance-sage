@@ -39,6 +39,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError, nowIso } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type {} from '@dsh-sentry/service-prometheus'
 import {
   buildPromql,
@@ -87,12 +88,16 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 /** Register the two metrics-inspector tools. */
 export function apply(ctx: Context, config: Config): void {
-  const envRef = `env:${config.env}`
+  // Env label resolves per call from the assembly files: this plugin injects a
+  // service, so a service config swap can leave this instance frozen on
+  // boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const envRef = (): string => `env:${liveEnv()}`
 
   /** Evidence refs in the original's two-element shape: datasource ref + endpoint. */
   const refs = (): string[] => {
     const endpoint = ctx.prometheus.endpoint
-    return endpoint.length > 0 ? [envRef, endpoint] : [envRef]
+    return endpoint.length > 0 ? [envRef(), endpoint] : [envRef()]
   }
 
   /** Original endpoint guard, shared by both scripts, original wording kept. */
@@ -100,9 +105,9 @@ export function apply(ctx: Context, config: Config): void {
     buildEvidenceError({
       source: SOURCE,
       type,
-      error: `config/${config.env}.yml 中 datasources.metrics.endpoint 未配置`,
-      summary: `缺少 metrics 数据源配置：config/${config.env}.yml:metrics.endpoint`,
-      refs: [envRef],
+      error: `config/${liveEnv()}.yml 中 datasources.metrics.endpoint 未配置`,
+      summary: `缺少 metrics 数据源配置：config/${liveEnv()}.yml:metrics.endpoint`,
+      refs: [envRef()],
     }) as unknown as JsonValue
 
   ctx.tools.register(defineTool({
@@ -163,16 +168,16 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE_METRIC,
           data: {
-            env: config.env,
+            env: liveEnv(),
             service: service ?? null,
             start: args.start,
             end: args.end,
             demo: true,
             metrics: metricResults,
           },
-          summary: `[demo] env=${config.env} service=${svc} 查询 ${metricNames.length} 个指标，返回演示数据。`,
+          summary: `[demo] env=${liveEnv()} service=${svc} 查询 ${metricNames.length} 个指标，返回演示数据。`,
           confidence: 1.0,
-          refs: [envRef],
+          refs: [envRef()],
         }) as unknown as JsonValue
       }
 
@@ -187,7 +192,7 @@ export function apply(ctx: Context, config: Config): void {
           type: TYPE_METRIC,
           error: `时间格式错误: ${errorMessage(error)}`,
           summary: '--start 或 --end 不是合法的 ISO8601 时间',
-          refs: [envRef],
+          refs: [envRef()],
         }) as unknown as JsonValue
       }
 
@@ -212,7 +217,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE_METRIC,
           data: {
-            env: config.env,
+            env: liveEnv(),
             service: service ?? null,
             start: args.start,
             end: args.end,
@@ -220,7 +225,7 @@ export function apply(ctx: Context, config: Config): void {
             dry_run: true,
             requests,
           },
-          summary: `[dry-run] env=${config.env} service=${serviceLabel} 构造 ${metricNames.length} 个查询请求，未发送。`,
+          summary: `[dry-run] env=${liveEnv()} service=${serviceLabel} 构造 ${metricNames.length} 个查询请求，未发送。`,
           confidence: 1.0,
           refs: refs(),
         }) as unknown as JsonValue
@@ -257,7 +262,7 @@ export function apply(ctx: Context, config: Config): void {
         }
       }
 
-      let summary = `env=${config.env} service=${serviceLabel} 查询 ${metricNames.length} 个指标`
+      let summary = `env=${liveEnv()} service=${serviceLabel} 查询 ${metricNames.length} 个指标`
       summary += errors.length > 0
         ? `，${errors.length} 个失败：${errors.join('; ')}`
         : '，全部成功'
@@ -265,7 +270,7 @@ export function apply(ctx: Context, config: Config): void {
         source: SOURCE,
         type: TYPE_METRIC,
         data: {
-          env: config.env,
+          env: liveEnv(),
           service: service ?? null,
           start: args.start,
           end: args.end,
@@ -326,14 +331,14 @@ export function apply(ctx: Context, config: Config): void {
           'process_resident_memory_bytes',
           'up',
         ]
-        return listMetricsEvidence(config.env, envRef, demoNames, match, windowMinutes, true, undefined)
+        return listMetricsEvidence(liveEnv(), envRef(), demoNames, match, windowMinutes, true, undefined)
       }
 
       try {
         const names = await ctx.prometheus.labelValues('__name__', { windowMinutes, limit })
-        return listMetricsEvidence(config.env, envRef, names, match, windowMinutes, false, undefined)
+        return listMetricsEvidence(liveEnv(), envRef(), names, match, windowMinutes, false, undefined)
       } catch (error) {
-        return listMetricsEvidence(config.env, envRef, [], match, windowMinutes, false, errorMessage(error))
+        return listMetricsEvidence(liveEnv(), envRef(), [], match, windowMinutes, false, errorMessage(error))
       }
     },
   }))
@@ -413,10 +418,10 @@ export function apply(ctx: Context, config: Config): void {
       if (ctx.prometheus.proxied) {
         return buildEvidence({
           source: SOURCE, type: TYPE_ALERT,
-          data: { env: config.env, alerts: [], error: '告警查询需要直连 Prometheus /api/v1/rules；当前为 grafana 代理模式，告警接口不可达' },
+          data: { env: liveEnv(), alerts: [], error: '告警查询需要直连 Prometheus /api/v1/rules；当前为 grafana 代理模式，告警接口不可达' },
           summary: '告警查询在 grafana 代理模式下不可用',
           confidence: 0,
-          refs: [`env:${config.env}:prometheus`],
+          refs: [`env:${liveEnv()}:prometheus`],
         }) as unknown as JsonValue
       }
       if (ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_ALERT)
@@ -427,7 +432,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE_ALERT,
           data: {
-            env: config.env,
+            env: liveEnv(),
             service: service ?? null,
             demo: true,
             alerts: [
@@ -442,9 +447,9 @@ export function apply(ctx: Context, config: Config): void {
               },
             ],
           },
-          summary: `[demo] env=${config.env} service=${svc} 发现 1 个 firing 告警。`,
+          summary: `[demo] env=${liveEnv()} service=${svc} 发现 1 个 firing 告警。`,
           confidence: 1.0,
-          refs: [envRef],
+          refs: [envRef()],
         }) as unknown as JsonValue
       }
 
@@ -455,11 +460,11 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE_ALERT,
           data: {
-            env: config.env,
+            env: liveEnv(),
             service: service ?? null,
             alerts,
           },
-          summary: `env=${config.env} service=${service || 'all'} 发现 ${alerts.length} 个 firing 告警`,
+          summary: `env=${liveEnv()} service=${service || 'all'} 发现 ${alerts.length} 个 firing 告警`,
           confidence: 0.95,
           refs: refs(),
         }) as unknown as JsonValue

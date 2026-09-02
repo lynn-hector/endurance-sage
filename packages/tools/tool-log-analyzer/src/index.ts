@@ -21,6 +21,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type {} from '@dsh-sentry/service-greptimedb'
 import { extractLogPatterns } from './patterns.ts'
 import { ALLOWED_LOG_FIELDS, buildListServicesSql, buildLogQuerySql } from './sql.ts'
@@ -79,10 +80,14 @@ function errorMessage(error: unknown): string {
 
 /** Register the two log tools. */
 export function apply(ctx: Context, config: Config): void {
+  // Env label resolves per call from the assembly files: this plugin injects a
+  // service, so a service config swap can leave this instance frozen on
+  // boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
   const schema = config.schema ?? 'public'
   const table = config.table ?? 'k8s_logs'
   const timestampCol = config.timestampCol ?? 'greptime_timestamp'
-  const evidenceRefs = [`env:${config.env}`, `greptimedb:${table}`]
+  const evidenceRefs = (): string[] => [`env:${liveEnv()}`, `greptimedb:${table}`]
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_logs',
@@ -148,7 +153,7 @@ export function apply(ctx: Context, config: Config): void {
           type: TYPE,
           error: `SQL 拼接失败: ${errorMessage(error)}`,
           summary: `查询失败: SQL 拼接失败: ${errorMessage(error)}`,
-          refs: evidenceRefs,
+          refs: evidenceRefs(),
         }) as unknown as JsonValue
       }
 
@@ -159,7 +164,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             service: serviceLabel,
             start: args.start,
             end: args.end,
@@ -168,17 +173,17 @@ export function apply(ctx: Context, config: Config): void {
             patterns,
           },
           summary:
-            `env=${config.env} service=${serviceLabel} 时间窗 [${args.start}, ${args.end}] `
+            `env=${liveEnv()} service=${serviceLabel} 时间窗 [${args.start}, ${args.end}] `
             + `返回 ${logs.length} 条日志，提取 ${patterns.length} 个模式。`,
           confidence: logs.length > 0 ? 0.8 : 0.4,
-          refs: evidenceRefs,
+          refs: evidenceRefs(),
         }) as unknown as JsonValue
       } catch (error) {
         return buildEvidence({
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             service: serviceLabel,
             start: args.start,
             end: args.end,
@@ -187,7 +192,7 @@ export function apply(ctx: Context, config: Config): void {
           },
           summary: `查询失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs: evidenceRefs,
+          refs: evidenceRefs(),
         }) as unknown as JsonValue
       }
     },
@@ -225,19 +230,19 @@ export function apply(ctx: Context, config: Config): void {
         return buildEvidence({
           source: SOURCE,
           type: TYPE,
-          data: { env: config.env, log_type: logType, sql, services },
-          summary: `env=${config.env} log_type=${logType} 近 ${lookbackMinutes} 分钟发现 ${services.length} 个 workload_name`,
+          data: { env: liveEnv(), log_type: logType, sql, services },
+          summary: `env=${liveEnv()} log_type=${logType} 近 ${lookbackMinutes} 分钟发现 ${services.length} 个 workload_name`,
           confidence: 0.9,
-          refs: evidenceRefs,
+          refs: evidenceRefs(),
         }) as unknown as JsonValue
       } catch (error) {
         return buildEvidence({
           source: SOURCE,
           type: TYPE,
-          data: { env: config.env, log_type: logType, sql, error: errorMessage(error) },
+          data: { env: liveEnv(), log_type: logType, sql, error: errorMessage(error) },
           summary: `查询失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs: evidenceRefs,
+          refs: evidenceRefs(),
         }) as unknown as JsonValue
       }
     },

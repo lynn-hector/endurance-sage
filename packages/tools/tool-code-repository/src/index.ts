@@ -36,6 +36,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
+import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import {
   buildRgSnippets,
   buildSearchSummary,
@@ -271,6 +272,11 @@ export async function runRgQuery(
 
 /** Register the search and read tools. */
 export function apply(ctx: Context, config: Config): void {
+  // Env label resolves per call from the assembly files: this plugin injects a
+  // service, so a service config swap can leave this instance frozen on
+  // boot-time config (see @dsh-sentry/env-matrix).
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+
   const discover = (repoFilter?: string): RepoRef[] =>
     iterRepos(config, repoFilter).filter(repo => existsSync(repo.path))
 
@@ -300,14 +306,14 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             query: args.query,
             results: [],
             error: '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。',
           },
           summary: '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。',
           confidence: 0,
-          refs: [`env:${config.env}:code`],
+          refs: [`env:${liveEnv()}:code`],
         }))
       }
 
@@ -332,22 +338,22 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             query: args.query,
             results: final,
           },
           summary: buildSearchSummary(final, args.query, repos.length),
           confidence: final.length > 0 ? 0.9 : 0.4,
-          refs: [`env:${config.env}:code`],
+          refs: [`env:${liveEnv()}:code`],
         }))
       } catch (error) {
         return asEvidence(buildEvidence({
           source: SOURCE,
           type: TYPE,
-          data: { env: config.env, query: args.query, results: [], error: errorMessage(error) },
+          data: { env: liveEnv(), query: args.query, results: [], error: errorMessage(error) },
           summary: `代码搜索失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs: [`env:${config.env}:code`],
+          refs: [`env:${liveEnv()}:code`],
         }))
       }
     },
@@ -369,14 +375,14 @@ export function apply(ctx: Context, config: Config): void {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
     async execute(args, _exec) {
-      const refs = (): string[] => [`env:${config.env}:code`]
+      const refs = (): string[] => [`env:${liveEnv()}:code`]
       try {
         const repo = discover(args.repo)[0]
         if (repo === undefined) {
           return asEvidence(buildEvidence({
             source: SOURCE,
             type: TYPE,
-            data: { env: config.env, repo: args.repo, file: args.file, error: `仓库 ${args.repo} 未配置或不存在` },
+            data: { env: liveEnv(), repo: args.repo, file: args.file, error: `仓库 ${args.repo} 未配置或不存在` },
             summary: `仓库 ${args.repo} 未配置或不存在`,
             confidence: 0,
             refs: refs(),
@@ -396,7 +402,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: config.env,
+            env: liveEnv(),
             repo: repo.name,
             file: args.file,
             line_start: start,
@@ -413,7 +419,7 @@ export function apply(ctx: Context, config: Config): void {
         return asEvidence(buildEvidence({
           source: SOURCE,
           type: TYPE,
-          data: { env: config.env, repo: args.repo, file: args.file, error: errorMessage(error) },
+          data: { env: liveEnv(), repo: args.repo, file: args.file, error: errorMessage(error) },
           summary: `读取文件失败: ${errorMessage(error)}`,
           confidence: 0,
           refs: refs(),
