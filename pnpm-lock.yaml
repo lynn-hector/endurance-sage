@@ -56,9 +56,6 @@ importers:
       '@dsh-sentry/tool-env-switcher':
         specifier: workspace:*
         version: link:packages/tools/tool-env-switcher
-      '@dsh-sentry/tool-hello':
-        specifier: workspace:*
-        version: link:packages/tools/tool-hello
       '@dsh-sentry/tool-log-analyzer':
         specifier: workspace:*
         version: link:packages/tools/tool-log-analyzer
@@ -171,9 +168,6 @@ importers:
       '@dsh-sentry/tool-db-inspector':
         specifier: workspace:*
         version: link:../../packages/tools/tool-db-inspector
-      '@dsh-sentry/tool-hello':
-        specifier: workspace:*
-        version: link:../../packages/tools/tool-hello
       '@dsh-sentry/tool-log-analyzer':
         specifier: workspace:*
         version: link:../../packages/tools/tool-log-analyzer
@@ -599,25 +593,6 @@ importers:
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
-
-  packages/tools/tool-hello:
-    dependencies:
-      '@deepseek-ai/cordis':
-        specifier: ^4.0.1
-        version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
-      '@deepseek-ai/dsh-skill':
-        specifier: ^0.1.0-rc.7
-        version: 0.1.0-rc.7(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-llm@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-attachment@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-brand@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-timeout@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1))))(@deepseek-ai/dsh-scope@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.0-rc.8(@deepseek-ai/cordis@4.0.1)))
-      '@deepseek-ai/dsh-tools':
-        specifier: ^0.1.0-rc.7
-        version: 0.1.0-rc.7(a82b8abf74c7bffecdcd6d61d381e4b7)
-      '@deepseek-ai/schemastery':
-        specifier: ^3.18.1
-        version: 3.18.1
-    devDependencies:
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
 
   packages/tools/tool-log-analyzer:
     dependencies:

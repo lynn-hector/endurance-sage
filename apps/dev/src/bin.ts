@@ -17,7 +17,6 @@ import PrometheusService from '@dsh-sentry/service-prometheus'
 import TraceService from '@dsh-sentry/service-trace'
 import ZadigService from '@dsh-sentry/service-zadig'
 import * as dbInspector from '@dsh-sentry/tool-db-inspector'
-import * as hello from '@dsh-sentry/tool-hello'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
 import * as metricsInspector from '@dsh-sentry/tool-metrics-inspector'
 import * as redisInspector from '@dsh-sentry/tool-redis-inspector'
@@ -34,7 +33,6 @@ const root = new Context()
 await root.plugin(SystemPrompt)
 await root.plugin(ToolRuntime)
 await root.plugin(SkillRegistry)
-await root.plugin(hello)
 await root.plugin(GreptimeDbService, {
   endpoint: 'https://greptimedb.example.invalid',
   usernameRef: 'GREPTIMEDB_LOCAL_USERNAME',
@@ -67,11 +65,6 @@ await root.plugin(mqInspector, { env: 'local' })
 await root.plugin(sentrySkills)
 await root.plugin(sentryPersona)
 
-const tool = root.tools.get('sentry_hello')
-if (tool === undefined) {
-  throw new Error('FAIL: tool "sentry_hello" was not registered')
-}
-
 for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_query_mq']) {
   if (root.tools.get(name) === undefined) {
     throw new Error(`FAIL: tool "${name}" was not registered`)
@@ -84,15 +77,14 @@ if (!assembly.sections.some(section => section.name === 'sentry-persona')) {
 }
 
 const skills = await root.skills.list()
-for (const expected of ['sentry-hello', 'log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
+for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
   if (!skills.some(skill => skill.name === expected)) {
     throw new Error(`FAIL: skill "${expected}" was not registered`)
   }
 }
 
 console.log('Phase 0 OK')
-console.log('tool parameters:', JSON.stringify(tool.parameters))
-console.log('tools:', ['sentry_hello', 'sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_query_mq'].join(', '))
+console.log('tools:', ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_query_mq'].join(', '))
 console.log('skills:', skills.map(skill => skill.name).join(', '))
 
 await root.fiber.dispose()

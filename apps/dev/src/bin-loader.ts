@@ -25,8 +25,7 @@ const deadline = Date.now() + 10_000
 let ready = false
 while (Date.now() < deadline) {
   const tools = ctx.get('tools')
-  ready = tools?.get('sentry_hello') !== undefined
-    && tools.get('sentry_query_logs') !== undefined
+  ready = tools?.get('sentry_query_logs') !== undefined
     && tools.get('sentry_list_log_services') !== undefined
     && tools.get('sentry_fetch_trace') !== undefined
     && tools.get('sentry_query_metrics') !== undefined
@@ -44,7 +43,7 @@ if (!ready) {
 }
 
 const skills = await ctx.skills.list()
-for (const expected of ['sentry-hello', 'log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
+for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
   if (!skills.some(skill => skill.name === expected)) {
     throw new Error(`FAIL: skill "${expected}" was not registered via cordis.yml`)
   }

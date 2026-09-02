@@ -11,11 +11,6 @@
 - id: skills
   name: '@deepseek-ai/dsh-skill'
 
-- id: sentry-hello
-  name: '@dsh-sentry/tool-hello'
-  config:
-    greeting: 'hello from cordis.yml'
-
 # Placeholder endpoint: the dev host verifies registration only, it never
 # queries. Real environments override via settings or an env-specific patch.
 - id: sentry-greptimedb
