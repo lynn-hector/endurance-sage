@@ -1,6 +1,6 @@
 # 新同事上手指南（本地接入 dsh-sentry）
 
-目标：本机跑起一个带全部 8 条证据腿的排查 GUI（http://127.0.0.1:3081），默认环境 `dev-platform-hosted-0`（DP0）。预计 30–60 分钟，主要花在申请凭据上。
+目标：本机跑起一个带全部 8 条证据腿的排查 GUI（http://127.0.0.1:3090），默认环境 `dev-platform-hosted-0`（DP0）。预计 30–60 分钟，主要花在申请凭据上。
 
 > 只读纪律：本工具集全部是只读查询，没有变更线上状态的能力。凭据只写本机 `~/.dsh/.credentials.yaml`，**永远不要**提交进任何仓库。
 
@@ -15,7 +15,7 @@ cd ~/dsh-sentry && pnpm install
 pnpm --filter @dsh-sentry/agent run regenerate
 pnpm run profile:link sentry  # 独立 profile：~/.dsh/profiles/sentry → 仓库 apps/profile
 # 编辑 ~/.dsh/.credentials.yaml 填入凭据（见第 3 步）
-dsh --profile sentry --port 3081   # 打开 http://127.0.0.1:3081，开【新对话】验证
+dsh --profile sentry --port 3090   # 打开 http://127.0.0.1:3090，开【新对话】验证
 ```
 
 任何一步报错了，回到下面对应编号的详细步骤。
@@ -50,7 +50,7 @@ GUI 里 **设置 → 模型**，二选一：
 
 在输入框的模型选择器选中该模型，**随便发一句话确认能正常回复**——不通则后面全白搭。报错自查：`MISSING_CREDENTIAL` = 密钥没配；`UNKNOWN_MODEL` = 模型 id 没加进提供方。
 
-然后 **Ctrl+C 停掉 dsh web**。先跑一次只为两件事：配好模型、建出 `~/.dsh` 宿主目录。模型配置存在 `$DSH_HOME` 级（`settings.yaml`），所有 profile 共享——后面 sentry 独立 profile 直接复用，不用再配。你的个人日常 GUI 随时可以用 `dsh web`（3080）启动，和 sentry profile（3081）互不干扰。
+然后 **Ctrl+C 停掉 dsh web**。先跑一次只为两件事：配好模型、建出 `~/.dsh` 宿主目录。模型配置存在 `$DSH_HOME` 级（`settings.yaml`），所有 profile 共享——后面 sentry 独立 profile 直接复用，不用再配。你的个人日常 GUI 随时可以用 `dsh web`（3080）启动，和 sentry profile（3090）互不干扰。
 
 ## 第 2 步：仓库 + 接入
 
@@ -114,7 +114,7 @@ pnpm --filter @dsh-sentry/agent run use-env --list   # 缺哪个键一目了然
 ## 第 4 步：启动并验证
 
 ```bash
-dsh --profile sentry --port 3081    # 打开 http://127.0.0.1:3081，开【新对话】（旧对话不含新工具目录）
+dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090，开【新对话】（旧对话不含新工具目录）
 ```
 
 新对话里依次发三句话：
@@ -144,7 +144,7 @@ dsh --profile sentry --port 3081    # 打开 http://127.0.0.1:3081，开【新�
 cd ~/dsh-sentry && git pull && pnpm install
 # 2. commit 动过 apps/agent/envs.yml 时：
 pnpm --filter @dsh-sentry/agent run regenerate
-# 3. 重启：dsh --profile sentry --port 3081
+# 3. 重启：dsh --profile sentry --port 3090
 ```
 
 符号链接模式下 profile 即仓库 `apps/profile`，插件包增删也不需要重跑 `profile:link`

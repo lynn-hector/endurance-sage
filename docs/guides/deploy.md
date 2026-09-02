@@ -118,7 +118,7 @@ WantedBy=multi-user.target
 pnpm run profile:link sentry        # 即 node scripts/link-profile.mjs sentry
 
 # 2. 独立端口启动（--port 是 dsh web app 原生参数）
-dsh --profile sentry --port 3081    # 打开 http://127.0.0.1:3081
+dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090
 ```
 
 特性与注意：

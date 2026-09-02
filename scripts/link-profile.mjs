@@ -124,6 +124,6 @@ if (existsSync(target) && !lstatSync(target).isSymbolicLink()) {
   console.log(`✓ 符号链接模式：${target} -> ${source}`)
   const bootHint = profileName === 'web'
     ? 'dsh web'
-    : `dsh --profile ${profileName} --port 3081（或自选端口）`
+    : `dsh --profile ${profileName} --port 3090（或自选端口）`
   console.log(`下一步：${bootHint}（插件依赖已由仓库 pnpm install 就绪）`)
 }
