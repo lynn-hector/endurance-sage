@@ -83,11 +83,12 @@ dev-client-hosted-0:
     passwordRef: GREPTIMEDB_DC0_PASSWORD
   grafana:
     endpoint: https://grafana.cn-0.dev-byoi.novo-one.com
-    datasourceUid: GreptimeDB-Jaeger
+    datasourceUid: bfo3r2zfv3mkgb   # 2026-09-02 经 /api/datasources 实测校准
     usernameRef: GRAFANA_DC0_USERNAME
-    passwordRef: GRAFANA_DC0_PASSWORD        # [待补] 环境清单中的值实测 401，真实密码未确证
+    passwordRef: GRAFANA_DC0_PASSWORD        # 2026-09-02 实测有效（表单登录 200）；实例禁 basic auth
   prometheus:
     datasourceUid: prometheus
+    tokenRef: PROMETHEUS_DC0_TOKEN     # 该实例禁用 basic auth，走 service account Bearer token
   dbx:
     endpoint: https://dbx.cn-0.dev-byoi.novo-one.com
     passwordRef: DBX_DC0_PASSWORD

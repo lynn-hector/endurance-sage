@@ -53,7 +53,7 @@ pnpm --filter @dsh-sentry/agent run regenerate
 |---|---|---|---|
 | `dev-platform-hosted-0` | cn-0.dev.novo-one.com | ✅ 就绪 | 七条腿全实测 |
 | `dev-platform-hosted-1` | cn-1.dev.novo-one.com | ✅ 就绪 | 五条腿全实测 |
-| `dev-client-hosted-0` | cn-0.dev-byoi.novo-one.com | 🔶 凭据已入库 | `GRAFANA_CH0_PASSWORD` 已就位；该实例曾禁用 basic auth，待实测确认 |
+| `dev-client-hosted-0` | cn-0.dev-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02）；basic auth 禁用，prometheus 走 service account token |
 | `tst-platform-hosted-0` | cn-0.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `tst-platform-hosted-1` | cn-1.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `tst-client-hosted-0` | cn-0.test-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
@@ -63,7 +63,7 @@ pnpm --filter @dsh-sentry/agent run regenerate
 跨环境共享的凭据事实（实测）：
 - greptimedb 各环境用各自键名（`GREPTIMEDB_<DP0|DP1|DC0|TP0|TP1|TC0>_USERNAME/PASSWORD`），tst 三环境已于 2026-09-02 probe 实测通过
 - dbx / rocketmq / zadig 凭据跨环境复用（tst 三环境 2026-09-02 实测通过）
-- grafana 每环境独立密码（admin）；**tst 三环境实例禁用了 basic auth**——trace 腿走表单登录 + cookie 不受影响，prometheus 腿改用 service account Bearer token（键 `PROMETHEUS_TP0/TP1/TC0_TOKEN`，2026-09-02 创建，Viewer 角色，不过期）
+- grafana 每环境独立密码（admin）；**tst 三环境与 DC0 的实例禁用了 basic auth**——trace 腿走表单登录 + cookie 不受影响，prometheus 腿改用 service account Bearer token（键 `PROMETHEUS_<TP0|TP1|TC0|DC0>_TOKEN`，2026-09-02 创建，Viewer 角色，不过期；DC0 复用已有 `dsh-sentry` 账号）
 - Jaeger 数据源 uid 随环境漂移（PH0 是 `GreptimeDB-Jaeger`，PH1 与 tst 三环境都是 `PCD48328C06B18945`）——矩阵里是每环境字段，校准用 `probe grafana-datasources <环境>`（走 cookie 登录，basic 不可用的实例也能用）
 - zadig 用长期 OpenAPI token（`ZADIG_API_TOKEN`，Zadig 个人设置创建，不会过期）；不要用浏览器复制的 dex 会话 token（约 1 小时过期）。详见 [incidents/2026-08-25-zadig-token.md](../incidents/2026-08-25-zadig-token.md)
 
