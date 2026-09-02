@@ -12,7 +12,7 @@
 | 数据库 | `sentry_query_db` | PostgreSQL 只读 SQL（dbx 平台） |
 | Redis | `sentry_query_redis` | key 值 / TTL / 类型查询 |
 | MQ | `sentry_query_mq` | RocketMQ 消息列表与消费轨迹 |
-| CI/CD | `sentry_query_zadig` | Zadig 服务状态、镜像版本、最近部署 |
+| CI/CD | `sentry_query_zadig` | Zadig 服务状态、镜像版本、最近部署、工作流任务历史（发版时间线 + commit 证据 + 部署目标环境） |
 | 缺陷单 | `sentry_query_tapd` | TAPD 缺陷单，「现象 × 已知缺陷」对账 |
 | 代码 | `sentry_search_code` / `sentry_read_code` | 跨仓代码检索，作为交叉验证证据 |
 

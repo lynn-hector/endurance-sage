@@ -37,6 +37,7 @@ import {
 
 const WORKLOADS_PATH = '/api/aslan/environment/environments/{env_name}/workloads'
 const SERVICE_DETAIL_PATH = '/api/aslan/environment/environments/{env_name}/services/{service_name}'
+const WORKFLOW_TASKS_PATH = '/api/aslan/workflow/v4/workflowtask'
 const IMAGE_TAG_RE = /^\d{14}$/
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
@@ -100,6 +101,62 @@ export interface ZadigPod {
   containers: Record<string, unknown>[]
 }
 
+/** Query for {@link ZadigService.fetchWorkflowTasks}. */
+export interface WorkflowTasksQuery {
+  /** Workflow name, e.g. `static-code-scanning-and-build-deploy`. */
+  workflowName: string
+  /** Project override; defaults to the configured project. */
+  project?: string
+  pageNum?: number
+  pageSize?: number
+}
+
+/** Code provenance of one build job, compressed from `service_modules[].code_info[]`. */
+export interface ZadigWorkflowCodeInfo {
+  repo_name: string | null
+  branch: string | null
+  commit_id: string | null
+  /** First line of the commit message (full messages bloat the envelope). */
+  commit_title: string | null
+  author_name: string | null
+}
+
+/** One job inside a workflow stage, compressed. */
+export interface ZadigWorkflowJob {
+  name: unknown
+  type: unknown
+  status: unknown
+  error: unknown
+  /** Deploy jobs only: target environment (matches envs.yml envName). */
+  deploy_env_name?: string | null
+  /** Deploy jobs only: environment alias, e.g. `研发-DP0`. */
+  deploy_env_alias?: string | null
+  /** `service/module` pairs the job builds or deploys. */
+  service_modules: string[]
+  /** Build jobs only: deduped code provenance across service modules. */
+  code_infos: ZadigWorkflowCodeInfo[]
+}
+
+/** One workflow task (pipeline run), compressed from the workflowtask API. */
+export interface ZadigWorkflowTask {
+  task_id: unknown
+  task_creator: unknown
+  workflow_name: unknown
+  workflow_display_name: unknown
+  status: unknown
+  reverted: unknown
+  create_time: unknown
+  create_time_iso: string | null
+  start_time: unknown
+  start_time_iso: string | null
+  stages: {
+    name: unknown
+    status: unknown
+    error: unknown
+    jobs: ZadigWorkflowJob[]
+  }[]
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -118,6 +175,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 function orNull<T>(value: T | undefined): T | null {
   return value === undefined ? null : value
+}
+
+/** String-narrowing variant of {@link orNull} for fields typed `string | null`. */
+function strOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
 }
 
 /**
@@ -430,6 +492,112 @@ export class ZadigService extends Service {
       pipeline_url: buildWebUiUrl(this.endpoint, this.config.project, this.envName, service),
     }
   }
+
+  /** Constructed workflow-tasks request, for dry-run evidence. */
+  buildWorkflowTasksRequest(query: WorkflowTasksQuery): { url: string; params: Record<string, string> } {
+    return {
+      url: `${this.endpoint}${WORKFLOW_TASKS_PATH}`,
+      params: {
+        workflow_name: query.workflowName,
+        page_num: String(query.pageNum ?? 1),
+        page_size: String(query.pageSize ?? 20),
+        projectName: query.project ?? this.config.project,
+        queryType: '',
+        filters: '',
+        jobName: '',
+      },
+    }
+  }
+
+  /**
+   * List recent runs of one workflow (pipeline history). Raw tasks are
+   * compressed: identical `code_info` blocks repeat per service module in the
+   * API response, so they are deduped by repo+branch+commit; deploy jobs keep
+   * only their target environment.
+   */
+  async fetchWorkflowTasks(query: WorkflowTasksQuery): Promise<ZadigWorkflowTask[]> {
+    const { url, params } = this.buildWorkflowTasksRequest(query)
+    const headers = await this.requestHeaders()
+    const project = query.project ?? this.config.project
+    headers['referer'] = `${this.endpoint}/v1/projects/detail/${encodeURIComponent(project)}/pipelines/custom/${encodeURIComponent(query.workflowName)}`
+    const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')
+
+    const payload = await this.getJson(`${url}?${qs}`, headers)
+    const tasks = isRecord(payload) ? payload['workflow_list'] : undefined
+    if (!Array.isArray(tasks)) {
+      throw new Error(
+        `Zadig workflowtask 返回的数据格式无法解析，原始响应：${JSON.stringify(payload).slice(0, 500)}`,
+      )
+    }
+
+    return tasks.filter(isRecord).map(task => ({
+      task_id: orNull(task['task_id']),
+      task_creator: orNull(task['task_creator']),
+      workflow_name: orNull(task['workflow_name']),
+      workflow_display_name: orNull(task['workflow_display_name']),
+      status: orNull(task['status']),
+      reverted: orNull(task['reverted']),
+      create_time: orNull(task['create_time']),
+      create_time_iso: formatTs(task['create_time']),
+      start_time: orNull(task['start_time']),
+      start_time_iso: formatTs(task['start_time']),
+      stages: (Array.isArray(task['stages']) ? task['stages'] : [])
+        .filter(isRecord)
+        .map(stage => ({
+          name: orNull(stage['name']),
+          status: orNull(stage['status']),
+          error: orNull(stage['error']),
+          jobs: (Array.isArray(stage['jobs']) ? stage['jobs'] : [])
+            .filter(isRecord)
+            .map(job => compressWorkflowJob(job)),
+        })),
+    }))
+  }
+}
+
+/** Compress one workflow job; see {@link ZadigService.fetchWorkflowTasks}. */
+function compressWorkflowJob(job: Record<string, unknown>): ZadigWorkflowJob {
+  const result: ZadigWorkflowJob = {
+    name: orNull(job['name']),
+    type: orNull(job['type']),
+    status: orNull(job['status']),
+    error: orNull(job['error']),
+    service_modules: [],
+    code_infos: [],
+  }
+
+  const envs = isRecord(job['envs']) ? job['envs'] : undefined
+  if (envs !== undefined) {
+    result.deploy_env_name = strOrNull(envs['env_name'])
+    result.deploy_env_alias = strOrNull(envs['env_alias'])
+  }
+
+  const seenCode = new Set<string>()
+  for (const mod of Array.isArray(job['service_modules']) ? job['service_modules'] : []) {
+    if (!isRecord(mod)) continue
+    const pair = [mod['service_name'], mod['service_module']]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+      .join('/')
+    if (pair.length > 0) result.service_modules.push(pair)
+    for (const info of Array.isArray(mod['code_info']) ? mod['code_info'] : []) {
+      if (!isRecord(info)) continue
+      const compressed: ZadigWorkflowCodeInfo = {
+        repo_name: strOrNull(info['repo_name']),
+        branch: strOrNull(info['branch']),
+        commit_id: strOrNull(info['commit_id']),
+        commit_title: typeof info['commit_message'] === 'string'
+          ? (info['commit_message'].split('\n')[0] ?? null)
+          : null,
+        author_name: strOrNull(info['author_name']),
+      }
+      const key = `${compressed.repo_name}@${compressed.branch}#${compressed.commit_id}`
+      if (!seenCode.has(key)) {
+        seenCode.add(key)
+        result.code_infos.push(compressed)
+      }
+    }
+  }
+  return result
 }
 
 declare module '@deepseek-ai/cordis' {

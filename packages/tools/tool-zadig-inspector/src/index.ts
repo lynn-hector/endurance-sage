@@ -27,7 +27,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { parseImageTag, type ZadigServiceRow } from '@dsh-sentry/service-zadig'
+import { parseImageTag, type ZadigServiceRow, type ZadigWorkflowTask } from '@dsh-sentry/service-zadig'
 import type {} from '@dsh-sentry/service-zadig'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -79,6 +79,66 @@ export function demoServices(): ZadigServiceRow[] {
   ]
 }
 
+/** Static demo rows for the workflow-history mode (mirrors the live compressed shape). */
+export function demoWorkflowTasks(workflow: string): ZadigWorkflowTask[] {
+  return [
+    {
+      task_id: 4776,
+      task_creator: '张亮-6845',
+      workflow_name: workflow,
+      workflow_display_name: '构建部署',
+      status: 'passed',
+      reverted: false,
+      create_time: 1788334627,
+      create_time_iso: '2026-09-02T07:37:07Z',
+      start_time: 1788334632,
+      start_time_iso: '2026-09-02T07:37:12Z',
+      stages: [
+        {
+          name: '构建',
+          status: 'passed',
+          error: '',
+          jobs: [
+            {
+              name: '构建',
+              type: 'zadig-build',
+              status: 'passed',
+              error: '',
+              service_modules: ['novo-one/platform', 'novo-one/infrastructure'],
+              code_infos: [
+                {
+                  repo_name: 'novo-platform-backend',
+                  branch: '263.0.2.1/build/build_dev',
+                  commit_id: 'c5d3ce6d5680b373a5586676a69342c86c86b67e',
+                  commit_title: "Merge branch '263.0.2.1/fix/zl' into '263.0.2.1/build/build_dev'",
+                  author_name: '张亮',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          name: '部署',
+          status: 'passed',
+          error: '',
+          jobs: [
+            {
+              name: '部署-研发环境平台托管0',
+              type: 'zadig-deploy',
+              status: 'passed',
+              error: '',
+              deploy_env_name: 'dev-platform-hosted-0',
+              deploy_env_alias: '研发-DP0',
+              service_modules: ['novo-one/platform', 'novo-one/infrastructure'],
+              code_infos: [],
+            },
+          ],
+        },
+      ],
+    },
+  ]
+}
+
 /** Port of `_demo_latest_deployment`: the script's static demo detail. */
 export function demoLatestDeployment(service: string): Record<string, unknown> {
   const image = `hub.yeastardigital.com/novo-one/${service}:20260727155647-3325-263.0.2.1-dev`
@@ -119,11 +179,16 @@ export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'sentry_query_zadig',
     description:
-      'Inspect the Zadig CI/CD environment: without `service`, list all workloads with running status, '
-      + 'image version and readiness; with `service`, fetch its latest deployment (pods, images, build '
-      + 'time/branch/version). Read-only; never triggers builds or rollbacks.',
+      'Inspect Zadig CI/CD. Default (no params): list all workloads of the current environment with running '
+      + 'status, image version and readiness. With `service`: fetch its latest deployment (pods, images, build '
+      + 'time/branch/version). With `workflow`: list recent runs of that workflow (pipeline history: task id, '
+      + 'creator, status, timing, built branch/commit, deploy target environments). Read-only; never triggers '
+      + 'builds or rollbacks.',
     parameters: {
       service: { type: 'string', description: 'Service name: fetches its latest deployment detail. Omit to list all services.' },
+      workflow: { type: 'string', description: 'Workflow name (e.g. static-code-scanning-and-build-deploy): lists its recent task history. Overrides `service` mode.' },
+      project: { type: 'string', description: 'Project override for workflow history; defaults to the assembled project.' },
+      pageSize: { type: 'number', default: 20, description: 'Workflow history page size (max 50).' },
       demo: { type: 'boolean', default: false, description: 'Return fixed demo data without connecting to Zadig.' },
       dryRun: { type: 'boolean', default: false, description: 'Only return the constructed request, do not send.' },
     },
@@ -133,12 +198,26 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, _exec) {
       const service = args.service
-      const isDetail = service !== undefined && service.length > 0
+      const workflow = args.workflow
+      const isWorkflow = workflow !== undefined && workflow.length > 0
+      const pageSize = Math.min(Math.max(Number(args.pageSize) || 20, 1), 50)
+      const workflowQuery = isWorkflow
+        ? {
+            workflowName: workflow as string,
+            project: typeof args.project === 'string' && args.project.length > 0 ? args.project : undefined,
+            pageSize,
+          }
+        : undefined
+      const detailService = workflowQuery === undefined && typeof service === 'string' && service.length > 0
+        ? service
+        : undefined
 
       if (args.dryRun === true) {
-        const built = isDetail
-          ? ctx.zadig.buildServiceDetailRequest(service)
-          : ctx.zadig.buildWorkloadsRequest()
+        const built = workflowQuery !== undefined
+          ? ctx.zadig.buildWorkflowTasksRequest(workflowQuery)
+          : detailService !== undefined
+            ? ctx.zadig.buildServiceDetailRequest(detailService)
+            : ctx.zadig.buildWorkloadsRequest()
         return buildEvidence({
           source: SOURCE,
           type: TYPE,
@@ -148,35 +227,89 @@ export function apply(ctx: Context, config: Config): void {
             url: built.url,
             params: built.params,
           },
-          summary: `[dry-run] 构造 Zadig ${isDetail ? `服务 ${service} 详情` : '环境服务列表'}查询请求，未发送。`,
+          summary: `[dry-run] 构造 Zadig ${workflowQuery !== undefined ? `工作流 ${String(workflow)} 历史` : detailService !== undefined ? `服务 ${detailService} 详情` : '环境服务列表'}查询请求，未发送。`,
           confidence: 1.0,
           refs: [`zadig-inspector: ${ctx.zadig.endpoint}`],
         }) as unknown as JsonValue
       }
 
       if (args.demo === true) {
-        if (isDetail) {
-          return detailEvidence(config.env, ctx, service, demoLatestDeployment(service), true, undefined)
+        if (workflowQuery !== undefined) {
+          return workflowEvidence(config.env, ctx, workflow as string, workflowQuery.project, demoWorkflowTasks(workflow as string), true, undefined)
+        }
+        if (detailService !== undefined) {
+          return detailEvidence(config.env, ctx, detailService, demoLatestDeployment(detailService), true, undefined)
         }
         return listEvidence(config.env, ctx, demoServices(), true, undefined)
       }
 
       try {
-        if (isDetail) {
-          const deployment = await ctx.zadig.fetchServiceDetail(service)
-          return detailEvidence(config.env, ctx, service, deployment, false, undefined)
+        if (workflowQuery !== undefined) {
+          const tasks = await ctx.zadig.fetchWorkflowTasks(workflowQuery)
+          return workflowEvidence(config.env, ctx, workflow as string, workflowQuery.project, tasks, false, undefined)
+        }
+        if (detailService !== undefined) {
+          const deployment = await ctx.zadig.fetchServiceDetail(detailService)
+          return detailEvidence(config.env, ctx, detailService, deployment, false, undefined)
         }
         const services = await ctx.zadig.fetchServices()
         return listEvidence(config.env, ctx, services, false, undefined)
       } catch (error) {
         const message = errorMessage(error)
-        if (isDetail) {
-          return detailEvidence(config.env, ctx, service, {}, false, message)
+        if (workflowQuery !== undefined) {
+          return workflowEvidence(config.env, ctx, workflow as string, workflowQuery.project, [], false, message)
+        }
+        if (detailService !== undefined) {
+          return detailEvidence(config.env, ctx, detailService, {}, false, message)
         }
         return listEvidence(config.env, ctx, [], false, message)
       }
     },
   }))
+
+  /** Workflow-history evidence envelope. */
+  function workflowEvidence(
+    env: string,
+    ctx: Context,
+    workflow: string,
+    projectOverride: string | undefined,
+    tasks: ZadigWorkflowTask[],
+    demo: boolean,
+    error: string | undefined,
+  ): JsonValue {
+    const project = projectOverride ?? ctx.zadig.project
+    let summary: string
+    let confidence: number
+    if (error !== undefined) {
+      summary = `工作流 ${workflow} 历史查询失败: ${error}`
+      confidence = 0.0
+    } else {
+      const latest = tasks[0]
+      summary = `工作流 ${workflow} 最近 ${tasks.length} 次任务`
+      if (latest !== undefined) {
+        summary += `，最新 #${String(latest.task_id)}(${String(latest.status)})`
+          + ` 由 ${String(latest.task_creator)} 发起于 ${latest.create_time_iso ?? '未知时间'}`
+      }
+      confidence = demo ? 0.5 : 0.95
+    }
+
+    return buildEvidence({
+      source: SOURCE,
+      type: TYPE,
+      data: {
+        env,
+        project,
+        workflow,
+        task_count: tasks.length,
+        tasks,
+        demo,
+        error: error ?? null,
+      },
+      summary,
+      confidence,
+      refs: [`zadig-inspector: ${ctx.zadig.endpoint}/v1/projects/detail/${project}/pipelines/custom/${workflow}`],
+    }) as unknown as JsonValue
+  }
 
   /** Port of `_build_list_evidence`. */
   function listEvidence(
