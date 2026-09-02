@@ -145,10 +145,9 @@ describe('envs.yml contract', () => {
       expect(row.envLabel, `${name}.envLabel`).toBe(name)
       expect(row.greptimedb.usernameRef, `${name}.greptimedb.usernameRef`).toMatch(/^[A-Z0-9_]+$/)
       expect(row.zadig.tokenRef, `${name}.zadig.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
-      // 8 条必备引用；实例禁用 basic auth 的环境（tst 三环境）prometheus 腿
-      // 另有 tokenRef，共 9 条
-      const expectedRefs = row.prometheus.tokenRef !== undefined ? 9 : 8
-      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(expectedRefs)
+      // 8 条必备引用：prometheus 腿统一走表单登录（grafana 账号密码），
+      // 不再为禁 basic auth 的实例配 service account token
+      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(8)
     }
   })
 })

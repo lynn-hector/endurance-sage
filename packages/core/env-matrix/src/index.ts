@@ -180,8 +180,9 @@ export function renderEntries(row: EnvRow): Entry[] {
       config: {
         grafanaEndpoint: row.grafana.endpoint,
         datasourceUid: row.prometheus.datasourceUid,
-        // 实例禁用 basic auth 时（如 tst 三环境、DC0）用 service account
-        // Bearer token——service 端 Bearer 优先于 Basic
+        // 默认走 grafana 账号密码的表单登录+session（service 端实现，禁
+        // basic auth 的实例也可用）；显式配 tokenRef 时 Bearer 优先——保留为
+        // 单环境覆盖的逃生口，当前 envs.yml 没有环境使用
         ...(row.prometheus.tokenRef !== undefined
           ? { tokenRef: row.prometheus.tokenRef }
           : { usernameRef: row.grafana.usernameRef, passwordRef: row.grafana.passwordRef }),

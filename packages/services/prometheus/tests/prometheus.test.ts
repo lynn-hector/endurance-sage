@@ -262,6 +262,161 @@ describe('PrometheusService.labelValues — metric discovery', () => {
   })
 })
 
+describe('PrometheusService session auth — grafana proxy mode form login', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  /** Login response carrying (or omitting) the grafana_session Set-Cookie. */
+  function loginResponse(session: string | undefined, status = 200): Response {
+    const headers = new Headers()
+    if (session !== undefined) {
+      headers.append('set-cookie', `grafana_session=${session}; Path=/; HttpOnly; SameSite=Lax`)
+    }
+    return new Response('{"message":"Logged in"}', { status, headers })
+  }
+
+  function sessionService(): PrometheusService {
+    vi.stubEnv('GRAFANA_USER', 'admin')
+    vi.stubEnv('GRAFANA_PASS', 's3cret')
+    return new PrometheusService(new Context(), {
+      grafanaEndpoint: 'https://grafana.example.com',
+      datasourceUid: 'prometheus',
+      usernameRef: 'GRAFANA_USER',
+      passwordRef: 'GRAFANA_PASS',
+    })
+  }
+
+  it('logs in via /login and sends the session cookie on proxied queries', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginResponse('SESSION123'))
+      .mockResolvedValue(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchMock)
+    const service = sessionService()
+
+    await service.queryRange('up', 1784714400, 1784716200, '15s')
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [loginUrl, loginInit] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(loginUrl).toBe('https://grafana.example.com/login')
+    expect(loginInit.method).toBe('POST')
+    expect(JSON.parse(loginInit.body as string)).toEqual({ user: 'admin', password: 's3cret' })
+
+    const [queryUrl, queryInit] = lastCall(fetchMock)
+    expect(queryUrl).toBe('https://grafana.example.com/api/ds/query')
+    expect((queryInit.headers as Record<string, string>)['cookie']).toBe('grafana_session=SESSION123')
+  })
+
+  it('reuses the cached session across calls without a second login', async () => {
+    // Fresh Response per call: a Response body can only be read once.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginResponse('S1'))
+      .mockImplementation((url) => Promise.resolve(String(url).includes('/api/ds/query')
+        ? jsonResponse({})
+        : jsonResponse({ status: 'success', data: ['up'] })))
+    vi.stubGlobal('fetch', fetchMock)
+    const service = sessionService()
+
+    await service.queryRange('up', 1784714400, 1784716200, '15s')
+    await service.labelValues('__name__')
+
+    // 1 login + 2 queries; the label-values passthrough carries the cookie too.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/login'))).toHaveLength(1)
+    expect((lastCall(fetchMock)[1].headers as Record<string, string>)['cookie']).toBe('grafana_session=S1')
+  })
+
+  it('shares one in-flight login across concurrent first queries', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginResponse('S1'))
+      .mockImplementation(() => Promise.resolve(jsonResponse({})))
+    vi.stubGlobal('fetch', fetchMock)
+    const service = sessionService()
+
+    await Promise.all([
+      service.queryRange('up', 1784714400, 1784716200, '15s'),
+      service.queryRange('up', 1784714400, 1784716200, '15s'),
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/login'))).toHaveLength(1)
+  })
+
+  it('re-logins when the cached session TTL expired', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginResponse('S1'))
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(loginResponse('S2'))
+      .mockResolvedValue(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubEnv('GRAFANA_USER', 'admin')
+    vi.stubEnv('GRAFANA_PASS', 's3cret')
+    const service = new PrometheusService(new Context(), {
+      grafanaEndpoint: 'https://grafana.example.com',
+      usernameRef: 'GRAFANA_USER',
+      passwordRef: 'GRAFANA_PASS',
+      sessionTtlMs: 1,
+    })
+
+    await service.queryRange('up', 1784714400, 1784716200, '15s')
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await service.queryRange('up', 1784714400, 1784716200, '15s')
+
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/login'))).toHaveLength(2)
+    expect((lastCall(fetchMock)[1].headers as Record<string, string>)['cookie']).toBe('grafana_session=S2')
+  })
+
+  it('drops a rejected session, re-logins once, and retries the query on 401', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginResponse('S-OLD'))
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+      .mockResolvedValueOnce(loginResponse('S-NEW'))
+      .mockResolvedValueOnce(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchMock)
+    const service = sessionService()
+
+    await service.queryRange('up', 1784714400, 1784716200, '15s')
+
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect((lastCall(fetchMock)[1].headers as Record<string, string>)['cookie']).toBe('grafana_session=S-NEW')
+  })
+
+  it('a Bearer token still wins over session login when configured', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubEnv('PROM_TOKEN', 'tok-abc')
+    vi.stubEnv('GRAFANA_USER', 'admin')
+    vi.stubEnv('GRAFANA_PASS', 's3cret')
+    const service = new PrometheusService(new Context(), {
+      grafanaEndpoint: 'https://grafana.example.com',
+      tokenRef: 'PROM_TOKEN',
+      usernameRef: 'GRAFANA_USER',
+      passwordRef: 'GRAFANA_PASS',
+    })
+
+    await service.queryRange('up', 1784714400, 1784716200, '15s')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const headers = lastCall(fetchMock)[1].headers as Record<string, string>
+    expect(headers['authorization']).toBe('Bearer tok-abc')
+    expect(headers['cookie']).toBeUndefined()
+  })
+
+  it('wraps login HTTP errors with the service-trace wording', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(loginResponse(undefined, 401)))
+    const service = sessionService()
+    await expect(service.queryRange('up', 0, 1, '15s')).rejects.toThrow('Grafana 登录失败 HTTP 401')
+  })
+
+  it('fails when the login response carries no grafana_session cookie', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(loginResponse(undefined, 200)))
+    const service = sessionService()
+    await expect(service.queryRange('up', 0, 1, '15s'))
+      .rejects.toThrow('登录成功但未返回 grafana_session cookie')
+  })
+})
+
 describe('formatPyFloat', () => {
   it('keeps a trailing .0 on integral values, like Python str(float)', () => {
     expect(formatPyFloat(1784714400)).toBe('1784714400.0')
