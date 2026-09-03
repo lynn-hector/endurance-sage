@@ -8,7 +8,8 @@
     "profile": {
       "bundles": [
         "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app"
+        "@deepseek-ai/dsh-web-app",
+        "@xmanrui/dsh-im"
       ]
     }
   },
@@ -35,6 +36,7 @@
     "@dsh-sentry/tool-redis-inspector": "workspace:*",
     "@dsh-sentry/tool-tapd-inspector": "workspace:*",
     "@dsh-sentry/tool-trace-analyzer": "workspace:*",
-    "@dsh-sentry/tool-zadig-inspector": "workspace:*"
+    "@dsh-sentry/tool-zadig-inspector": "workspace:*",
+    "@xmanrui/dsh-im": "^4.7.0"
   }
 }
