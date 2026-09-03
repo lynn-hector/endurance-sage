@@ -9,7 +9,8 @@
       "bundles": [
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
-        "@xmanrui/dsh-im"
+        "@xmanrui/dsh-im",
+        "dsh-context"
       ]
     }
   },
@@ -37,6 +38,7 @@
     "@dsh-sentry/tool-tapd-inspector": "workspace:*",
     "@dsh-sentry/tool-trace-analyzer": "workspace:*",
     "@dsh-sentry/tool-zadig-inspector": "workspace:*",
-    "@xmanrui/dsh-im": "^4.7.0"
+    "@xmanrui/dsh-im": "^4.7.0",
+    "dsh-context": "^0.40.1"
   }
 }
