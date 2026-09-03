@@ -49,6 +49,6 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 
 ## 给 profile 挂新插件包
 
-单一事实来源：[onboarding.md](onboarding.md) 的「给 sentry profile 加插件（SOP）」一节。要点：先看插件包带不带自带 `cordis.patch.yml`——第三方插件装依赖即自动装配（**不要**再手工注册条目，会 `duplicate loader entry id` 启动失败）；自研 `@dsh-sentry/*` 包才走 renderEntries + regenerate 全流程。凭据相关的 `*Ref` 引用配置见本文上文。
+单一事实来源：[onboarding.md](onboarding.md) 的「给 sentry profile 加插件（SOP）」一节。要点：先看插件包带不带自带 `cordis.patch.yml`——第三方插件 = 依赖 + `dsh.profile.bundles` 列表双注册（**不要**再进 renderEntries，会 `duplicate loader entry id` 启动失败）；自研 `@dsh-sentry/*` 包才走 renderEntries + regenerate 全流程。凭据相关的 `*Ref` 引用配置见本文上文。
 
 部署全流程见 [deploy.md](deploy.md)。

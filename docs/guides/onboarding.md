@@ -137,6 +137,7 @@ dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090，开【新�
 | patch 改了不生效 | 在 dsh 运行期间对仓库跑过 `pnpm install`？停掉重启 sentry profile |
 | `pnpm install` 后类型冲突 | 不要单独 pin `@deepseek-ai/dsh-*` 某个包版本，全仓库统一 `^0.1.0-rc.7` 范围 |
 | 启动报 `duplicate loader entry id: <插件id>` | 自带 `cordis.patch.yml` 的第三方插件又被手工注册了一遍（`renderEntries()` 或手改 patch）→ 删掉手工条目重新 regenerate，只留依赖声明（2026-09-03 dsh-im 实测） |
+| 装了第三方插件但不生效 | 只装了依赖、包名没进 `dsh.profile.bundles`（dsh 不扫描 node_modules）→ 追加进数组重启，验证见「给 sentry profile 加插件（SOP）」（2026-09-03 dsh-context 实测） |
 
 ## 日常更新（仓库有更新时）
 
@@ -161,23 +162,25 @@ sentry profile 是团队共享装配，加插件一律改仓库——**不要**�
 ls apps/profile/node_modules/<包名>/cordis.patch.yml   # 装完后看；装前可在 npm 仓库页面看包内容
 ```
 
-带 → 走**情形 A**（装上依赖 dsh 就自动装配它一层）；不带 → 走**情形 B**（必须走生成器注册）。
+带（即 manifest 声明 `dsh.bundle`）→ 走**情形 A**（依赖 + bundles 列表，双注册缺一不可）；不带 → 走**情形 B**（必须走生成器注册）。
 
-### 情形 A：第三方/市场插件（包内自带 cordis.patch.yml）
+### 情形 A：第三方/市场插件（包声明 dsh.bundle / 自带 cordis.patch.yml）
 
-如 `@xmanrui/dsh-im`。装依赖即完成全部注册，三步：
+如 `@xmanrui/dsh-im`、`dsh-context`。**注册 = 两件事**：依赖装进 profile 包 + 包名进 `apps/profile/package.json` 的 `dsh.profile.bundles` 数组——dsh 只按这个列表逐层叠加装配，**不扫描 node_modules**，只装依赖不进列表等于没装。四步：
 
 ```bash
 # 1. 停 sentry 进程（铁律见第 2 步）
 # 2. 依赖装进 profile 包（不是仓库根！）：
 pnpm --filter @dsh-sentry/profile add <包名>
-# 3. 重启：dsh --profile sentry --port 3090
+# 3. 手动把 "<包名>" 追加进 apps/profile/package.json 的 dsh.profile.bundles 数组
+# 4. 重启：dsh --profile sentry --port 3090
 ```
 
 commit 只涉及 `apps/profile/package.json` + `pnpm-lock.yaml` 两个文件。
 
+- **为什么 bundles 要手动加**：`dsh plugin add` 本会在装依赖后自动 reconcile bundles 列表，但它在本 workspace 用不了——其 pnpm 在 profile 子目录执行会被 workspace 强制 `-w`，依赖落到仓库根（2026-09-03 dsh-im 实测：bundles 注册成功、依赖装错位置，两头对不齐）。
 - **不要**再往 `renderEntries()`（`packages/core/env-matrix/src/index.ts`）加条目——插件自带的 patch 已注册同一个 id，再加一条启动即报 `duplicate loader entry id`（2026-09-03 dsh-im 实测事故，见常见坑速查）。
-- **不要**用 `dsh plugin add`：它只是 profile 目录里 `pnpm add` 的包装，只装包、不写装配；更不要带 `-w`（那是"装到 workspace 根"，依赖会落到仓库根 `package.json`，profile 解析不到——命令显示 Done 但插件永远不生效）。
+- **peer 警告**：`pnpm add` 报 `[WARN] Issues with peer dependencies` 说明插件期望的 `@deepseek-ai/dsh-*` 版本与 bundles 提供的有偏差（如 rc.7 vs rc.8）。装完照常重启实测；功能异常时优先怀疑该偏差，可降级插件版本或等 bundles 升级。
 
 ### 情形 B：仓库自研插件（`@dsh-sentry/*`，包内无 cordis.patch.yml）
 
