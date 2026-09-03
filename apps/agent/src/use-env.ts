@@ -17,7 +17,7 @@
  * @module @dsh-sentry/agent/use-env
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from 'yaml'
@@ -87,10 +87,9 @@ function main(): void {
       process.exit(1)
     }
     const text = readFileSync(target, 'utf8')
-    const env = extractCurrentEnv(text) ?? '未知（文件头无环境标记）'
-    const written = text.match(/^环境切换时间.*$/m)?.[0] ?? ''
+    const env = extractCurrentEnv(text) ?? '未知（装配文件无环境标记）'
     console.log(`profile ${args.profile} 当前部署环境: ${env}`)
-    if (written) console.log(`  ${written}`)
+    console.log(`  装配文件最后写入: ${statSync(target).mtime.toISOString()}`)
     return
   }
 
@@ -126,8 +125,6 @@ function main(): void {
   }
 
   const patch = renderPatch(row)
-    + `# 环境切换时间: ${new Date().toISOString()}
-`
   warnCodeLeg(row)
   if (args.dryRun) {
     console.log(patch)
@@ -140,9 +137,7 @@ function main(): void {
   // 同步生成 include 格式（本地 profile「引入」模式消费），与 patch 同目录
   const includeTarget = target.replace(/cordis\.patch\.yml$/, 'cordis.include.yml')
   if (includeTarget !== target) {
-    writeFileSync(includeTarget, renderIncludePatch(row)
-      + `# 环境切换时间: ${new Date().toISOString()}
-`)
+    writeFileSync(includeTarget, renderIncludePatch(row))
     console.log(`✓ include 格式 → ${includeTarget}`)
   }
   console.log('  dsh 的 patch watcher 会自动热重载；无需重启，对话不中断。')

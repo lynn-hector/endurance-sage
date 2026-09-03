@@ -143,7 +143,10 @@ describe('environment tools', () => {
   it('switches by canonical name and reports pending hot reload', () => {
     const result = switchEnvironment('dev-platform-hosted-0', config, { now: () => '2026-08-27T00:00:00.000Z' })
     expect(result).toMatchObject({ ok: true, environment: 'dev-platform-hosted-0', aliases: ['DP0'] })
-    expect(readFileSync(config.includePath, 'utf8')).toContain('# 环境切换时间: 2026-08-27T00:00:00.000Z')
+    // Assembly files are a pure function of envs.yml — no timestamp comment.
+    const written = readFileSync(config.includePath, 'utf8')
+    expect(written).not.toContain('环境切换时间')
+    expect(written).toContain('env: dev-platform-hosted-0')
     expect(currentEnvironment(config)).toMatchObject({
       current: 'dev-platform-hosted-0',
       loadedEnv: 'dev-platform-hosted-0',

@@ -57,6 +57,9 @@ const DEFAULT_DB_DATABASE = 'novo_commctl_config'
 
 type Entry = { id: string; name: string; config?: Record<string, unknown> }
 
+/** Anchors env detection: present in every assembly, always carries `config.env`. */
+const ENV_SWITCHER_ENTRY_ID = 'sentry-tool-env-switcher'
+
 export function resolveEnvName(input: string, matrix: Matrix): string | undefined {
   if (Object.hasOwn(matrix, input)) return input
   const canonical = ENV_ALIASES[input.toUpperCase()]
@@ -148,7 +151,7 @@ export function renderEntries(row: EnvRow): Entry[] {
   const codeBaseDir = resolveCodeBaseDir(row)
   return [
     {
-      id: 'sentry-tool-env-switcher',
+      id: ENV_SWITCHER_ENTRY_ID,
       name: '@dsh-sentry/tool-env-switcher',
       config: { env },
     },
@@ -162,7 +165,7 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.greptimedb.passwordRef,
       },
     },
-    { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer', config: { env } },
+    { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },
     {
       id: 'sentry-trace',
       name: '@dsh-sentry/service-trace',
@@ -176,7 +179,7 @@ export function renderEntries(row: EnvRow): Entry[] {
     {
       id: 'sentry-tool-trace-analyzer',
       name: '@dsh-sentry/tool-trace-analyzer',
-      config: { env, greptimedbJaegerDatasourceUid: row.grafana.greptimedbJaegerDatasourceUid },
+      config: { greptimedbJaegerDatasourceUid: row.grafana.greptimedbJaegerDatasourceUid },
     },
     {
       id: 'sentry-prometheus',
@@ -192,7 +195,7 @@ export function renderEntries(row: EnvRow): Entry[] {
           : { usernameRef: row.grafana.usernameRef, passwordRef: row.grafana.passwordRef }),
       },
     },
-    { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector', config: { env } },
+    { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector' },
     {
       id: 'sentry-dbx',
       name: '@dsh-sentry/service-dbx',
@@ -204,9 +207,9 @@ export function renderEntries(row: EnvRow): Entry[] {
     {
       id: 'sentry-tool-db-inspector',
       name: '@dsh-sentry/tool-db-inspector',
-      config: { env, database: row.db?.database ?? DEFAULT_DB_DATABASE },
+      config: { database: row.db?.database ?? DEFAULT_DB_DATABASE },
     },
-    { id: 'sentry-tool-redis-inspector', name: '@dsh-sentry/tool-redis-inspector', config: { env } },
+    { id: 'sentry-tool-redis-inspector', name: '@dsh-sentry/tool-redis-inspector' },
     {
       id: 'sentry-zadig',
       name: '@dsh-sentry/service-zadig',
@@ -217,7 +220,7 @@ export function renderEntries(row: EnvRow): Entry[] {
         tokenRef: row.zadig.tokenRef,
       },
     },
-    { id: 'sentry-tool-zadig-inspector', name: '@dsh-sentry/tool-zadig-inspector', config: { env } },
+    { id: 'sentry-tool-zadig-inspector', name: '@dsh-sentry/tool-zadig-inspector' },
     {
       id: 'sentry-service-rocketmq',
       name: '@dsh-sentry/service-rocketmq',
@@ -227,7 +230,7 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.rocketmq.passwordRef,
       },
     },
-    { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector', config: { env } },
+    { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector' },
     {
       id: 'sentry-tapd',
       name: '@dsh-sentry/service-tapd',
@@ -236,11 +239,11 @@ export function renderEntries(row: EnvRow): Entry[] {
         tokenRef: 'TAPD_TOKEN',
       },
     },
-    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector', config: { env } },
+    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector' },
     {
       id: 'sentry-tool-code-repository',
       name: '@dsh-sentry/tool-code-repository',
-      config: codeBaseDir === undefined ? { env } : { env, baseDir: codeBaseDir },
+      config: codeBaseDir === undefined ? undefined : { baseDir: codeBaseDir },
     },
     { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
     { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
@@ -248,11 +251,13 @@ export function renderEntries(row: EnvRow): Entry[] {
   ]
 }
 
+/** Regeneration pointer shared by both assembly headers: don't hand-edit, change the source. */
+const REGEN_NOTE = '# 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate'
+
 export function renderPatch(row: EnvRow): string {
   const header = [
     `# dsh-sentry 组装（env: ${row.envLabel}）——由 apps/agent/envs.yml 生成，勿手改。`,
-    '# 手工维护入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate',
-    '# 顺序即依赖顺序：数据源 service 先于其 tool；凭据全部走引用，不出现明文密码。',
+    REGEN_NOTE,
   ].join('\n')
   return `${header}\n\n- insert:\n${stringifyEntries(renderEntries(row))}\n`
 }
@@ -260,12 +265,27 @@ export function renderPatch(row: EnvRow): string {
 export function renderIncludePatch(row: EnvRow): string {
   const header = [
     `# dsh-sentry 组装（env: ${row.envLabel}，include 格式）——由 apps/agent/envs.yml 生成，勿手改。`,
-    '# 供 cordis-plugin-include 按路径引入（本地 profile 模式）；服务器符号链接模式用 cordis.patch.yml。',
+    REGEN_NOTE,
   ].join('\n')
   return `${header}\n${stringifyEntries(renderEntries(row), '  ')}\n`
 }
 
+/**
+ * The environment an assembly text declares.
+ *
+ * Structural source first: the env-switcher entry's `config.env` — real YAML
+ * the renderer emits and the loader consumes; editing or losing the comment
+ * header cannot desync it. The header comment remains the human summary and
+ * the legacy fallback for assemblies written before this convention.
+ */
 export function extractCurrentEnv(text: string): string | undefined {
+  try {
+    const entry = assemblyEntries(parse(text))?.find(item => item.id === ENV_SWITCHER_ENTRY_ID)
+    const env = entry?.config?.['env']
+    if (typeof env === 'string' && env.length > 0) return env
+  } catch {
+    // unparseable text — the header fallback below still gets a chance
+  }
   return /^# dsh-sentry 组装（env: (.+?)(?:，include 格式)?）/m.exec(text)?.[1]
 }
 

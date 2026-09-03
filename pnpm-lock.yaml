@@ -524,6 +524,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -549,6 +552,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -608,6 +614,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -636,6 +645,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -664,6 +676,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -692,6 +707,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -720,6 +738,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -748,6 +769,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -776,6 +800,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence

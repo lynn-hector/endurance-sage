@@ -61,9 +61,12 @@ describe('renderEntries', () => {
     ])
   })
 
-  it('every tool config carries the env label', () => {
-    const tools = entries.filter((e) => e.name.includes('tool-'))
-    for (const tool of tools) expect(tool.config?.['env']).toBe('test')
+  it('only the env-switcher entry carries env — the single assembly anchor', () => {
+    const switcher = entries.find((e) => e.id === 'sentry-tool-env-switcher')
+    expect(switcher?.config?.['env']).toBe('test')
+    for (const entry of entries.filter((e) => e.id !== 'sentry-tool-env-switcher')) {
+      expect(entry.config?.['env'], entry.id).toBeUndefined()
+    }
   })
 
   it('prometheus goes through the grafana proxy of this env', () => {
@@ -100,23 +103,23 @@ describe('requiredCredentialRefs', () => {
 describe('code leg baseDir', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it('omits baseDir entirely when no source configures it', () => {
+  it('omits the entry entirely when no source configures it', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '')
     const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
-    expect(entry?.config).toEqual({ env: 'test' })
+    expect(entry?.config).toBeUndefined()
   })
 
   it('bakes DSH_SENTRY_CODE_BASE into baseDir when set', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/novo-commctl')
     const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
-    expect(entry?.config).toEqual({ env: 'test', baseDir: '/tmp/novo-commctl' })
+    expect(entry?.config).toEqual({ baseDir: '/tmp/novo-commctl' })
   })
 
   it('envs.yml codeRepository.baseDir wins over the environment variable', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/from-env')
     const row: EnvRow = { ...fixture, codeRepository: { baseDir: '/tmp/from-matrix' } }
     const entry = renderEntries(row).find((e) => e.id === 'sentry-tool-code-repository')
-    expect(entry?.config).toEqual({ env: 'test', baseDir: '/tmp/from-matrix' })
+    expect(entry?.config).toEqual({ baseDir: '/tmp/from-matrix' })
   })
 })
 
@@ -135,6 +138,13 @@ describe('renderPatch', () => {
     // Number-like strings must survive the round trip as strings.
     const tapd = parsed[0]!.insert.find((e) => e.id === 'sentry-tapd')
     expect(tapd?.config?.['workspaceId']).toBe('63822673')
+  })
+
+  it('keeps the header minimal: env marker + regen pointer, no inline commentary', () => {
+    const patch = renderPatch(fixture)
+    expect(patch).toContain('# dsh-sentry 组装（env: test）——由 apps/agent/envs.yml 生成，勿手改。')
+    expect(patch).toContain('# 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate')
+    expect(patch).not.toMatch(/^    # /m)
   })
 })
 

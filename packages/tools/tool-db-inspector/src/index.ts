@@ -36,8 +36,8 @@ export const inject = ['tools', 'dbx']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
-  /** Environment label (`local` / `staging` / `production`); evidence metadata only. */
-  env: string
+  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
+  env?: string
   /**
    * Default database name, from the original `db.database` / `db.schema`
    * config fields. Calls may override it per query.
@@ -48,7 +48,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().required().description('环境标识（local/staging/production），仅作为 evidence 元数据'),
+  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
   database: z.string().description('默认数据库名（原 db.database / db.schema）'),
   connectionId: z.string().description('优先使用的 postgres 连接 ID（原 db.connection_id）'),
 })
@@ -69,7 +69,7 @@ export function apply(ctx: Context, config: Config): void {
   // Env label resolves per call from the assembly files: this plugin injects a
   // service, so a service config swap can leave this instance frozen on
   // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
   const liveDatabase = (): string | undefined => {
     const fromAssembly = liveAssemblyEntryConfig(DB_INSPECTOR_ENTRY_ID)?.database
     return typeof fromAssembly === 'string' && fromAssembly.length > 0 ? fromAssembly : undefined

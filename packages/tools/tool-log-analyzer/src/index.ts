@@ -35,11 +35,11 @@ export const inject = ['tools', 'greptimedb']
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
   /**
-   * Environment label (`local` / `staging` / `production`). Assembly-time
-   * metadata only: it lands in evidence summaries and never switches anything
-   * at runtime — the loaded datasource config already is one environment.
+   * Env label fallback when the assembly files are unreadable (local dev
+   * hosts set it explicitly; matrix assemblies omit it). Evidence metadata
+   * only — the loaded datasource config already is one environment.
    */
-  env: string
+  env?: string
   /** GreptimeDB schema of the log table. Defaults to `public`. */
   schema?: string
   /** GreptimeDB log table. Defaults to `k8s_logs`. */
@@ -55,7 +55,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().required().description('环境标识（local/staging/production），仅作为 evidence 元数据'),
+  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
   schema: z.string().default('public').description('日志表所在 schema'),
   table: z.string().default('k8s_logs').description('日志表名'),
   timestampCol: z.string().default('greptime_timestamp').description('时间范围过滤列'),
@@ -83,7 +83,7 @@ export function apply(ctx: Context, config: Config): void {
   // Env label resolves per call from the assembly files: this plugin injects a
   // service, so a service config swap can leave this instance frozen on
   // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
   const schema = config.schema ?? 'public'
   const table = config.table ?? 'k8s_logs'
   const timestampCol = config.timestampCol ?? 'greptime_timestamp'

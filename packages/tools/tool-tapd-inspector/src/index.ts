@@ -26,12 +26,12 @@ export const name = 'tool-tapd-inspector'
 export const inject = ['tools', 'tapd']
 
 export interface Config {
-  /** Environment label; evidence metadata only (TAPD itself is platform-level). */
-  env: string
+  /** Env label fallback when the assembly files are unreadable; TAPD itself is platform-level, matrix assemblies omit it. */
+  env?: string
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().required().description('环境标识，仅作为 evidence 元数据'),
+  env: z.string().description('环境标签回退值：装配文件不可读时使用；TAPD 平台级，矩阵装配不设置'),
 })
 
 const SOURCE = 'tapd-inspector'
@@ -74,7 +74,7 @@ export function apply(ctx: Context, config: Config): void {
   // Env label resolves per call from the assembly files: this plugin injects a
   // service, so a service config swap can leave this instance frozen on
   // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_tapd',

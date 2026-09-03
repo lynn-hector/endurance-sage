@@ -204,9 +204,12 @@ export function switchEnvironment(
     }
   }
 
+  // Switch time is runtime info (returned below), never written into the
+  // assembly: the files stay a pure function of envs.yml, so regenerating
+  // the same environment is byte-identical (idempotent regenerate, no diff).
   const switchedAt = (options?.now ?? (() => new Date().toISOString()))()
-  const patch = `${renderPatch(row)}# 环境切换时间: ${switchedAt}\n`
-  const includePatch = `${renderIncludePatch(row)}# 环境切换时间: ${switchedAt}\n`
+  const patch = renderPatch(row)
+  const includePatch = renderIncludePatch(row)
   const writtenPaths = [config.patchPath, config.includePath]
   if (existsSync(config.profilePatchPath)
     && extractCurrentEnv(readFileSync(config.profilePatchPath, 'utf8')) !== undefined) {

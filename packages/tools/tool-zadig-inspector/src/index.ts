@@ -39,12 +39,12 @@ export const inject = ['tools', 'zadig']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
-  /** Environment label (`local` / `staging` / `production`); evidence metadata only. */
-  env: string
+  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
+  env?: string
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().required().description('环境标识（local/staging/production），仅作为 evidence 元数据'),
+  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
 })
 
 const SOURCE = 'zadig-inspector'
@@ -180,7 +180,7 @@ export function apply(ctx: Context, config: Config): void {
   // Env label resolves per call from the assembly files: this plugin injects a
   // service, so a service config swap can leave this instance frozen on
   // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env
+  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_zadig',

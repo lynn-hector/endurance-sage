@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { liveAssemblyEnv, liveAssemblyEntryConfig, type AssemblyPaths } from '../src/index.ts'
+import { liveAssemblyEnv, liveAssemblyEntryConfig, extractCurrentEnv, type AssemblyPaths } from '../src/index.ts'
 
 let dir: string
 
@@ -64,6 +64,38 @@ describe('liveAssemblyEnv', () => {
 
   it('returns undefined for files without a recognizable header', () => {
     expect(liveAssemblyEnv(paths('# some other file\n[]\n', undefined))).toBeUndefined()
+  })
+})
+
+describe('extractCurrentEnv', () => {
+  it('prefers the env-switcher entry config over the header comment', () => {
+    const text = [
+      '# dsh-sentry 组装（env: tst-platform-hosted-1）——由 apps/agent/envs.yml 生成，勿手改。',
+      '  - id: sentry-tool-env-switcher',
+      "    name: '@dsh-sentry/tool-env-switcher'",
+      '    config:',
+      '      env: dev-platform-hosted-0',
+    ].join('\n')
+    expect(extractCurrentEnv(text)).toBe('dev-platform-hosted-0')
+  })
+
+  it('reads the env from the entry config without any header comment', () => {
+    const text = [
+      '  - id: sentry-tool-env-switcher',
+      "    name: '@dsh-sentry/tool-env-switcher'",
+      '    config:',
+      '      env: tst-client-hosted-0',
+    ].join('\n')
+    expect(extractCurrentEnv(text)).toBe('tst-client-hosted-0')
+  })
+
+  it('falls back to the header comment when no env-switcher entry exists (legacy assemblies)', () => {
+    expect(extractCurrentEnv(PATCH_DP0)).toBe('dev-platform-hosted-0')
+  })
+
+  it('survives unparsable text via the header fallback', () => {
+    const text = '::: not yaml [\n# dsh-sentry 组装（env: dev-client-hosted-0）\n'
+    expect(extractCurrentEnv(text)).toBe('dev-client-hosted-0')
   })
 })
 

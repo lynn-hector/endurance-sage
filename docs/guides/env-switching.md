@@ -90,7 +90,7 @@ pnpm --filter @dsh-sentry/agent run regenerate
    ```
    同一个对话里再问一次，数据回到 cn-0。全程会话历史完好。
 
-一个识别当前环境的技巧：问模型「当前 evidence 里的 env 标签是什么」——它来自插件 config，跟着切换走，不会说谎。
+一个识别当前环境的技巧：问模型「当前 evidence 里的 env 标签是什么」——工具每次调用实时读取装配文件（环境切换器唯一重写的文件）里的环境标记，跟着切换走，不会说谎。
 
 ## 切换会改变什么（文件清单）
 
@@ -98,7 +98,7 @@ pnpm --filter @dsh-sentry/agent run regenerate
 
 | 文件 | 变化 |
 |---|---|
-| `~/.dsh/profiles/sentry/cordis.patch.yml` | ✅ 全量覆盖为目标环境的 20 插件组装，尾部盖切换时间戳 |
+| `~/.dsh/profiles/sentry/cordis.patch.yml` | ✅ 全量覆盖为目标环境的 20 插件组装（envs.yml 的纯函数：同一环境重复生成字节相同，切换时间看文件 mtime） |
 | repo（`envs.yml`、`sentry.cordis.patch.yml` 等）| ❌ 不动 |
 | `~/.dsh/.credentials.yaml` | ❌ 不动（凭据只在补键/换值时手工编辑）|
 
@@ -111,13 +111,13 @@ pnpm --filter @dsh-sentry/agent run regenerate
 1. **文件层（秒级，不开 web）**：确认 profile 里部署的确实是目标环境
    ```bash
    pnpm --filter @dsh-sentry/agent run use-env --current
-   # → profile web 当前部署环境: dev-platform-hosted-1（附切换时间戳）
+   # → profile web 当前部署环境: dev-platform-hosted-1（附装配文件最后写入时间，取自 mtime）
    ```
    或直接抽查 endpoint：`grep dbx ~/.dsh/profiles/sentry/cordis.patch.yml` 应出现 cn-1 域名。
 
 2. **模型层（真对话）**：在切换前的**原有对话**里问模型：
    > 查一下 commctl-config 最近 30 分钟的日志量，并告诉我 evidence 里的 env 标签
-   `env` 标签来自插件 config、跟随切换走——它是系统自己申报的环境，比人眼检查更可信。
+   `env` 标签实时读自装配文件、跟随切换走——它是系统自己申报的环境，比人眼检查更可信。
 
 3. **数据层（铁证）**：不同环境的流量特征不同。PH1 的 freeswitch-sig 30 分钟约 11.7 万行日志、PH0 明显更少；两边各查一次对比行数量级，即确认查的是不同集群。
 
