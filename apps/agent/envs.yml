@@ -12,7 +12,7 @@
 # - dev-client-hosted-0      研发-客户自托管 cn-0.dev-byoi.novo-one.com
 # - tst-platform-hosted-0/1  测试-平台托管 cn-0/cn-1.test.novo-one.com
 # - tst-client-hosted-0      测试-客户自托管 cn-0.test-byoi.novo-one.com
-# - sit-client-hosted-1/2    性能-客户自托管 cn-1/cn-2.sit-byoi.novo-one.com（2026-09-03 骨架录入，未实测）
+# - sit-client-hosted-1/2    性能-客户自托管 cn-1/cn-2.sit-byoi.novo-one.com（2026-09-03 骨架录入，rocketmq 已实测）
 #
 # 已实测的凭据事实（tst 三环境 2026-09-02 全腿 probe 通过）：
 # - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_DP0_USERNAME/PASSWORD），CSV 中该块为陈旧值
@@ -185,7 +185,7 @@ tst-client-hosted-0:
     tokenRef: ZADIG_API_TOKEN
 
 # sit 两环境 2026-09-03 骨架录入：endpoint 按域名族 {组件}.cn-{1,2}.sit-byoi.novo-one.com 推断，
-# 全部腿未实测——补齐凭据后逐腿 probe 校准（uid、rocketmq 是否复用平台 console、zadig envName 是否存在）。
+# rocketmq 两腿 2026-09-03 实测通过；其余腿未实测——补齐凭据后逐腿 probe 校准（uid、zadig envName 是否存在）。
 sit-client-hosted-1:
   envLabel: sit-client-hosted-1
   greptimedb:
@@ -204,7 +204,7 @@ sit-client-hosted-1:
     endpoint: https://dbx.cn-1.sit-byoi.novo-one.com
     passwordRef: DBX_SC1_PASSWORD
   rocketmq:
-    endpoint: https://rocketmq.cn-1.sit-byoi.novo-one.com   # 未实测；dev-client 有复用平台 console 的先例（见 DC0），若 sit 也复用则改此行
+    endpoint: https://rocketmq.cn-1.sit-byoi.novo-one.com   # 2026-09-03 实测通过（独立 console，不复用平台）
     usernameRef: ROCKETMQ_SC1_USERNAME
     passwordRef: ROCKETMQ_SC1_PASSWORD
   zadig:
@@ -231,7 +231,7 @@ sit-client-hosted-2:
     endpoint: https://dbx.cn-2.sit-byoi.novo-one.com
     passwordRef: DBX_SC2_PASSWORD
   rocketmq:
-    endpoint: https://rocketmq.cn-2.sit-byoi.novo-one.com   # 未实测；dev-client 有复用平台 console 的先例（见 DC0），若 sit 也复用则改此行
+    endpoint: https://rocketmq.cn-2.sit-byoi.novo-one.com   # 2026-09-03 实测通过（独立 console，不复用平台）
     usernameRef: ROCKETMQ_SC2_USERNAME
     passwordRef: ROCKETMQ_SC2_PASSWORD
   zadig:
