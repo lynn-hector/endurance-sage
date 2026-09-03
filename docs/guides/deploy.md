@@ -66,21 +66,101 @@ ssh -L 3080:localhost:3080 <user>@<server>
 # 然后本地浏览器打开 http://localhost:3080
 ```
 
-## 常驻运行（systemd 示例）
+## 常驻运行（systemd 服务，Ubuntu）
+
+把 sentry profile 做成系统服务：开机自启、崩溃自动重启、日志进 journald。
+**前置**：部署五步已完成，手工跑 `dsh --profile sentry --port 3090` 确认正常，
+且 `~/.dsh/.credentials.yaml` 已就位。
+
+### 1. 确认路径
+
+```bash
+which dsh        # 记下绝对路径，全局 npm 安装通常是 /usr/local/bin/dsh 或 /usr/bin/dsh
+which node       # dsh 是纯 Node CLI，systemd 的默认 PATH 里没有用户级 node（nvm 等）时需特别处理
+```
+
+### 2. 创建服务单元
+
+`sudoedit /etc/systemd/system/dsh-sentry.service`：
 
 ```ini
 [Unit]
-Description=dsh-sentry web
-After=network.target
+Description=dsh-sentry sentry profile (port 3090)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
+Type=simple
+User=<user>
+Environment=DSH_HOME=/home/<user>/.dsh
+Environment=DSH_TELEMETRY_DISABLED=1
 WorkingDirectory=/home/<user>/dsh-sentry
-ExecStart=/usr/bin/dsh web
-Restart=on-failure
+ExecStart=/usr/local/bin/dsh --profile sentry --port 3090
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+字段说明：
+
+| 字段 | 说明 |
+|---|---|
+| `User` | **必须**是部署时的普通用户——凭据在 `/home/<user>/.dsh/`，跑成 root 会读不到 |
+| `DSH_HOME` | 显式指向该用户的 `~/.dsh`，避免 systemd 环境下 `$HOME` 解析差异 |
+| `ExecStart` | `which dsh` 的实际输出；**不能用** `~` 或 `$HOME` |
+| `WorkingDirectory` | 约定非依赖：dsh 解析 profile/凭据全走 `DSH_HOME`，不用 cwd。写仓库目录只为与更新流程（git pull 所在处）对齐、给潜在的相对路径落盘一个可预期位置，改成 `/home/<user>` 亦可 |
+| `Restart=always` + `RestartSec=5` | 崩溃 5 秒后自动拉起；日常更新流程本身就要停进程，不受它干扰 |
+| `After/Wants=network-online.target` | 所有证据腿都是 HTTPS 出网调用，等网络就绪再启动 |
+
+**node 不在系统 PATH 的情况**（node 装在 nvm/fnm 等用户级目录时）：`dsh` shim 找不到 node 会直接退出、服务反复重启。改用显式 node 路径写 ExecStart：
+
+```ini
+ExecStart=/home/<user>/.nvm/versions/node/v24.x.x/bin/node /usr/local/lib/node_modules/@deepseek-ai/dsh/lib/bin.js --profile sentry --port 3090
+```
+
+### 3. 启用并验证
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now dsh-sentry     # 启动 + 开机自启
+systemctl status dsh-sentry                # active (running) 即成功
+journalctl -u dsh-sentry -f                # 实时日志（Ctrl+C 退出查看，不影响服务）
+curl -s localhost:3090 >/dev/null && echo ok   # 服务侧端口自查
+```
+
+### 4. 远程访问
+
+与手工启动相同——GUI 无认证层，只监听 localhost，用 SSH 隧道（注意端口换成 3090）：
+
+```bash
+ssh -L 3090:localhost:3090 <user>@<server>
+# 本地浏览器打开 http://localhost:3090
+```
+
+### 5. 日常更新（配合 systemd）
+
+更新流程不变，只是停/启换成 systemctl：
+
+```bash
+sudo systemctl stop dsh-sentry
+cd ~/dsh-sentry && git pull && pnpm install
+# envs.yml 有变动时：pnpm --filter @dsh-sentry/agent run regenerate
+sudo systemctl start dsh-sentry
+```
+
+`sudo systemctl restart dsh-sentry` 等价但会跳过上面 2、3 步，只用于改了 unit 文件
+（改完还需 `sudo systemctl daemon-reload`）。
+
+### 6. 排错
+
+| 症状 | 检查 |
+|---|---|
+| `systemctl status` 显示反复 restart | `journalctl -u dsh-sentry -n 50 --no-pager` 看退出原因；最常见是 node 路径问题（见上文） |
+| 服务起来了但插件全部凭据错误 | `User=` 或 `DSH_HOME=` 指向错了，`journalctl` 里确认读的是 `/home/<user>/.dsh/.credentials.yaml` |
+| 3090 端口被占用 | 有手工启动的 dsh 没停：`pgrep -af 'dsh.*3090'`，杀掉后 `systemctl restart dsh-sentry` |
+| 浏览器连不上 | 隧道端口打成了 3080——sentry profile 在 3090 |
 
 ## 升级流程（顺序不能乱）
 

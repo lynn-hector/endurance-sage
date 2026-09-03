@@ -208,6 +208,7 @@ dsh --profile sentry --dump-config | grep <插件id>   # 只读预检，不启�
 |---|---|
 | 给 sentry profile 加/换插件 | 本文「给 sentry profile 加插件（SOP）」一节 |
 | 对话内切换环境（不重启不断会话） | [env-switching.md](env-switching.md) |
+| IM 渠道（dsh-im）会话复用、/new、切工作区 | [dsh-im.md](dsh-im.md) |
 | 和个人 web 插件共存（引入模式） | 本文第 2 步备选 + [deploy.md](deploy.md) 接入模式对照 |
 | 换 token | [credentials.md](credentials.md) |
 | headless 一次性任务模式 | [runbook.md](runbook.md) |
