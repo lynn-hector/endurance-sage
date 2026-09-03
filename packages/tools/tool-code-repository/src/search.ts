@@ -81,18 +81,17 @@ function basename(path: string): string {
 }
 
 /**
- * Original `_iter_repos` + `_dedupe_repos`: explicit `repos` map wins, then
- * `baseDir` glob, then a single `repoPath`; results are deduped by resolved
- * absolute path keeping the first name.
+ * Original `_iter_repos` branches without filtering: explicit `repos` map,
+ * then `baseDir` glob, then a single `repoPath`.
  */
-export function iterRepos(config: RepoConfig, repoFilter?: string): RepoRef[] {
+function collectRepos(config: RepoConfig): RepoRef[] {
   let repos: RepoRef[] = []
 
   if (config.repos !== undefined && Object.keys(config.repos).length > 0) {
     for (const [name, raw] of Object.entries(config.repos)) {
       if (raw) repos.push({ name, path: raw })
     }
-    return dedupeRepos(applyFilter(repos, repoFilter))
+    return repos
   }
 
   if (config.baseDir !== undefined) {
@@ -104,13 +103,38 @@ export function iterRepos(config: RepoConfig, repoFilter?: string): RepoRef[] {
         }
       }
     }
-    return dedupeRepos(applyFilter(repos, repoFilter))
+    return repos
   }
 
   if (config.repoPath !== undefined) {
     repos = [{ name: basename(config.repoPath), path: config.repoPath }]
   }
-  return dedupeRepos(applyFilter(repos, repoFilter))
+  return repos
+}
+
+/**
+ * Original `_iter_repos` + `_dedupe_repos`: explicit `repos` map wins, then
+ * `baseDir` glob, then a single `repoPath`; results are deduped by resolved
+ * absolute path keeping the first name.
+ */
+export function iterRepos(config: RepoConfig, repoFilter?: string): RepoRef[] {
+  return dedupeRepos(applyFilter(collectRepos(config), repoFilter))
+}
+
+/**
+ * Sync-scoped variant of {@link iterRepos}: the filter only selects among
+ * repos that came from Config (name / configured path / basename) and never
+ * admits an arbitrary existing directory the way search's filter fallback
+ * does — `git pull` may only run where the operator pointed the plugin.
+ */
+export function iterConfiguredRepos(config: RepoConfig, repoFilter?: string): RepoRef[] {
+  const candidates = collectRepos(config)
+  if (!repoFilter) return dedupeRepos(candidates)
+  return dedupeRepos(
+    candidates.filter(
+      ({ name, path }) => name === repoFilter || path === repoFilter || basename(path) === repoFilter,
+    ),
+  )
 }
 
 function globMatch(pattern: string, name: string): boolean {
@@ -228,4 +252,18 @@ export function buildSearchSummary(results: CodeSnippet[], query: string, repoCo
   }
   const repoNames = [...new Set(results.map(r => r.repo))].sort()
   return `在 ${repoCount} 个仓库中搜索 '${query}'，返回 ${results.length} 处结果，涉及仓库：${repoNames.join(', ')}。`
+}
+
+/** CodeGraph index directory marker (see {@link codegraphAvailable}). */
+export const CODEGRAPH_DIR = '.codegraph'
+
+/** Original `_codegraph_available`: the index directory exists and is non-empty. */
+export function codegraphAvailable(repoPath: string): boolean {
+  const dir = resolve(repoPath, CODEGRAPH_DIR)
+  if (!existsSync(dir)) return false
+  try {
+    return readdirSync(dir).length > 0
+  } catch {
+    return false
+  }
 }

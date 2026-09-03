@@ -17,6 +17,10 @@
  * Deliberate deviations from the script era (recorded):
  * - `sentry_read_code` is NEW: the SKILL.md promised "读取指定文件或文件
  *   片段" but query.py had no such capability. The gap is closed here.
+ * - `sentry_sync_code` is NEW (not in the script era at all): `git pull
+ *   --ff-only` over the configured repos so code evidence can be refreshed
+ *   in-band; fixed argv + configured-repos-only keeps it inside the
+ *   guardrails git-guard usually enforces on bash (see ./sync.ts).
  * - Output uses the standard `{ evidence: ... }` envelope (the script
  *   printed bare `{query, results, summary}`, drifting from the project's
  *   own evidence contract; recorded drift like the other skills).
@@ -27,7 +31,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -40,11 +44,14 @@ import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import {
   buildRgSnippets,
   buildSearchSummary,
+  codegraphAvailable,
+  iterConfiguredRepos,
   languageGlobs,
   iterRepos,
   type CodeSnippet,
   type RepoRef,
 } from './search.ts'
+import { buildSyncSummary, inspectRepo, runGitPull, type SyncResult } from './sync.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-code-repository'
@@ -64,6 +71,8 @@ export interface Config {
   repoNamePattern?: string
   /** Single repository path (the original `repo_path`). */
   repoPath?: string
+  /** Enable sentry_sync_code: `git pull --ff-only` over the configured repos. Default on; the pull is fast-forward-only and never discards local work. */
+  syncEnabled?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -72,12 +81,16 @@ export const Config: z<Config> = z.object({
   baseDir: z.string().description('仓库根目录，配合 repoNamePattern 通配（原 base_dir）'),
   repoNamePattern: z.string().default('novo-*').description('baseDir 下的仓库目录通配符，默认 novo-*'),
   repoPath: z.string().description('单一仓库路径（原 repo_path）'),
+  syncEnabled: z.boolean().default(true).description('启用 sentry_sync_code（对配置仓库执行 git pull --ff-only）。默认启用；只快进、不合并、不丢弃本地改动。'),
 })
 
 const SOURCE = 'code-repository'
 const TYPE = 'code'
 const DEFAULT_MAX_RESULTS = 20
-const CODEGRAPH_DIR = '.codegraph'
+
+/** Shared activation hint for the unconfigured case (search and sync agree on wording). */
+const UNCONFIGURED_MSG =
+  '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。'
 
 const execFileAsync = promisify(execFile)
 
@@ -87,17 +100,6 @@ function errorMessage(error: unknown): string {
 
 function asEvidence(value: unknown): JsonValue {
   return value as JsonValue
-}
-
-/** Original `_codegraph_available`: the index directory exists and is non-empty. */
-function codegraphAvailable(repoPath: string): boolean {
-  const dir = resolve(repoPath, CODEGRAPH_DIR)
-  if (!existsSync(dir)) return false
-  try {
-    return readdirSync(dir).length > 0
-  } catch {
-    return false
-  }
 }
 
 function firstString(record: Record<string, unknown>, keys: string[]): string | undefined {
@@ -309,9 +311,9 @@ export function apply(ctx: Context, config: Config): void {
             env: liveEnv(),
             query: args.query,
             results: [],
-            error: '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。',
+            error: UNCONFIGURED_MSG,
           },
-          summary: '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。',
+          summary: UNCONFIGURED_MSG,
           confidence: 0,
           refs: [`env:${liveEnv()}:code`],
         }))
@@ -427,4 +429,84 @@ export function apply(ctx: Context, config: Config): void {
       }
     },
   }))
+
+  // Optional by config (default on). Fixed-argv `git pull --ff-only` over the
+  // configured repos only — see sync.ts for why this is safe without git-guard.
+  if (config.syncEnabled !== false) {
+    ctx.tools.register(defineTool({
+      name: 'sentry_sync_code',
+      description:
+        'Refresh the configured product repositories with git pull --ff-only, so code evidence matches the '
+        + 'latest remote. Fast-forward only: never merges, never rewrites history, never discards local '
+        + 'changes — a diverged or dirty repository returns its git error instead of being forced. '
+        + 'Runs only on repositories from plugin config.',
+      parameters: {
+        repo: { type: 'string', description: 'Restrict to one configured repository (name or configured path); omit to sync all.' },
+        dryRun: { type: 'boolean', default: false, description: 'List the target repositories with their current HEAD/branch without pulling.' },
+      },
+      output: {
+        schema: { type: 'json' },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+      },
+      async execute(args, _exec) {
+        const refs = (): string[] => [`env:${liveEnv()}:code`]
+        const configured = iterConfiguredRepos(config)
+        if (configured.length === 0) {
+          return asEvidence(buildEvidence({
+            source: SOURCE,
+            type: TYPE,
+            data: { env: liveEnv(), error: UNCONFIGURED_MSG },
+            summary: UNCONFIGURED_MSG,
+            confidence: 0,
+            refs: refs(),
+          }))
+        }
+
+        const repos = iterConfiguredRepos(config, args.repo).filter(repo => existsSync(repo.path))
+        if (repos.length === 0) {
+          const summary = `仓库 ${args.repo} 不在配置发现的仓库内（sync 只操作配置仓库：repos/baseDir/repoPath）。`
+          return asEvidence(buildEvidence({
+            source: SOURCE,
+            type: TYPE,
+            data: { env: liveEnv(), repo: args.repo, error: summary },
+            summary,
+            confidence: 0,
+            refs: refs(),
+          }))
+        }
+
+        try {
+          const results: SyncResult[] = []
+          for (const repo of repos) {
+            const result = args.dryRun ? await inspectRepo(repo) : await runGitPull(repo)
+            result.codegraph_index = codegraphAvailable(repo.path)
+            results.push(result)
+          }
+
+          const failed = results.filter(result => result.status === 'error').length
+          const summary = args.dryRun
+            ? `dry-run：目标 ${results.length} 个仓库——${results.map(r => `${r.repo}@${r.branch ?? '?'}@${r.head_before ?? '?'}`).join('、')}；未执行 pull。`
+            : buildSyncSummary(results)
+
+          return asEvidence(buildEvidence({
+            source: SOURCE,
+            type: TYPE,
+            data: { env: liveEnv(), dry_run: args.dryRun ?? false, results },
+            summary,
+            confidence: failed === 0 ? 1 : failed < results.length ? 0.5 : 0,
+            refs: refs(),
+          }))
+        } catch (error) {
+          return asEvidence(buildEvidence({
+            source: SOURCE,
+            type: TYPE,
+            data: { env: liveEnv(), error: errorMessage(error) },
+            summary: `同步仓库失败: ${errorMessage(error)}`,
+            confidence: 0,
+            refs: refs(),
+          }))
+        }
+      },
+    }))
+  }
 }

@@ -76,7 +76,7 @@ git clone <novo-commctl 仓库地址> ~/novo-commctl   # 里面应是 novo-* 各
 
 代码根目录键名 `DSH_SENTRY_CODE_BASE`，三种来源按优先级取第一个：`envs.yml codeRepository.baseDir` > 环境变量 > 凭据库。**推荐写进凭据库**——和凭据同一个文件一次配齐（在 `refs:` 下加 `DSH_SENTRY_CODE_BASE: ~/novo-commctl`；路径不是机密，dsh 只解析 `*Ref` 引用的键，多余键对它无影响）；服务器等已有环境变量注入的场合继续 `export` 也行。配好后重跑 regenerate。
 
-注意：代码检索腿的根目录（regenerate 时烘焙）与对话工作区是两个独立来源——排查会话**不要**把产品仓库选成会话工作区，两个检出的版本/行号可能漂移误导结论；代码事实以 `sentry_search_code` 证据为准。
+注意：代码检索腿的根目录（regenerate 时烘焙）与对话工作区是两个独立来源——排查会话**不要**把产品仓库选成会话工作区，两个检出的版本/行号可能漂移误导结论；代码事实以 `sentry_search_code` 证据为准。检出落后时可用 `sentry_sync_code` 就地刷新：它对配置发现的仓库执行 `git pull --ff-only`（只快进、不合并、不丢本地改动，分叉/脏仓库报错不强同步；可经插件配置 `syncEnabled: false` 关闭）。
 
 ## 第 3 步：凭据
 

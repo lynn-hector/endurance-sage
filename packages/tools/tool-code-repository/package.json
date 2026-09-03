@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Code repository tools: cross-repo search (codegraph index or ripgrep fallback) and file reading, as a controlled read-only bridge past the session sandbox.",
+  "description": "Code repository tools: cross-repo search (codegraph index or ripgrep fallback), file reading, and ff-only repo sync (git pull --ff-only on configured repos), as a controlled bridge past the session sandbox.",
   "exports": {
     ".": {
       "types": "./src/index.ts",

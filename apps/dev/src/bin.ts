@@ -65,7 +65,7 @@ await root.plugin(mqInspector, { env: 'local' })
 await root.plugin(sentrySkills)
 await root.plugin(sentryPersona)
 
-for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_query_mq']) {
+for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq']) {
   if (root.tools.get(name) === undefined) {
     throw new Error(`FAIL: tool "${name}" was not registered`)
   }
@@ -84,7 +84,7 @@ for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service
 }
 
 console.log('Phase 0 OK')
-console.log('tools:', ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_query_mq'].join(', '))
+console.log('tools:', ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq'].join(', '))
 console.log('skills:', skills.map(skill => skill.name).join(', '))
 
 await root.fiber.dispose()
