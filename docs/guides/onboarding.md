@@ -102,7 +102,7 @@ TAPD_TOKEN: <TAPD 网页 → 我的设置 → 个人访问令牌>
 | TAPD_TOKEN | 权限跟你的项目角色走，不需要管理员审批；细节见 [../integrations/tapd-integration.md](../integrations/tapd-integration.md) |
 | 其余四项 | 找环境管理员；GreptimeDB 三环境（DP0/DP1/DC0）实测同凭据，Grafana 每环境独立 |
 
-启用其他环境（DP1/DC0/TP0/TP1/TC0）：把键名里的 `DP0` 换成对应短码补进凭据库即可，**补齐凭据 = 启用环境**，矩阵不用改。
+启用其他环境（DP1/DC0/TP0/TP1/TC0/SC1/SC2）：把键名里的 `DP0` 换成对应短码补进凭据库即可，**补齐凭据 = 启用环境**，矩阵不用改。
 
 验证就绪度（不用启动 dsh）：
 

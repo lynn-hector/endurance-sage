@@ -51,6 +51,8 @@ export const ENV_ALIASES: Readonly<Record<string, string>> = {
   TP0: 'tst-platform-hosted-0',
   TP1: 'tst-platform-hosted-1',
   TC0: 'tst-client-hosted-0',
+  SC1: 'sit-client-hosted-1',
+  SC2: 'sit-client-hosted-2',
 }
 
 const DEFAULT_DB_DATABASE = 'novo_commctl_config'

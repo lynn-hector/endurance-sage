@@ -3,7 +3,7 @@
  *   pnpm --filter @dsh-sentry/dev exec tsx src/probe.ts <腿> [环境]
  *
  * 腿：greptimedb | trace | prometheus | dbx | rocketmq | zadig | grafana-datasources
- * 环境：envs.yml 行名或短码（DP0/DP1/DC0/TP0/TP1/TC0），缺省 dev-platform-hosted-0。
+ * 环境：envs.yml 行名或短码（DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2），缺省 dev-platform-hosted-0。
  *
  * Boots the real credentials plane ($DSH_HOME/.credentials.yaml) plus the
  * target service and performs one harmless read call. Secrets are resolved
@@ -41,7 +41,7 @@ const matrix = parse(readFileSync(ENVS_YML, 'utf8')) as Matrix
 const envName = resolveEnvName(envInput, matrix)
 const row = envName === undefined ? undefined : matrix[envName]
 if (envName === undefined || row === undefined) {
-  console.error(`未知环境: ${envInput}（envs.yml 中没有这一行，支持 DP0/DP1/DC0/TP0/TP1/TC0 短码）`)
+  console.error(`未知环境: ${envInput}（envs.yml 中没有这一行，支持 DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2 短码）`)
   process.exit(2)
 }
 console.log(` probing ${leg} @ ${envName}`)

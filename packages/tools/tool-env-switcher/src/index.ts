@@ -90,7 +90,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'sentry_env_switch',
     description:
-      'Switch the sentry assembly to another environment from envs.yml. Accepts canonical names or DP0/DP1/DC0/TP0/TP1/TC0 aliases; validates all credential refs before writing.',
+      'Switch the sentry assembly to another environment from envs.yml. Accepts canonical names or DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2 aliases; validates all credential refs before writing.',
     parameters: {
       env: { type: 'string', required: true, description: 'Canonical environment name or short alias, e.g. TP1.' },
       dryRun: { type: 'boolean', default: false, description: 'Return the rendered patch without writing files.' },
