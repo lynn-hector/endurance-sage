@@ -48,7 +48,7 @@ const SKILLS: SkillSpec[] = [
     file: 'env-switcher.md',
     name: 'env-switcher',
     description:
-      '列出、确认并热切换 dsh-sentry 环境（sentry_env_list / sentry_env_current / sentry_env_switch），支持 DP0/DP1/DC0/TP0/TP1/TC0 短名。',
+      '列出、确认并热切换 dsh-sentry 环境（sentry_env_list / sentry_env_current / sentry_env_switch），支持 DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2 短名。',
   },
   {
     file: 'log-analyzer.md',

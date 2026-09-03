@@ -111,7 +111,7 @@ function main(): void {
   const envName = resolveEnvName(args.env, matrix)
   const row = envName === undefined ? undefined : matrix[envName]
   if (envName === undefined || row === undefined) {
-    console.error(`未知环境: ${args.env}（envs.yml 中没有这一行；--list 查看全部，支持 DP0/DP1/DC0/TP0/TP1/TC0 短名）`)
+    console.error(`未知环境: ${args.env}（envs.yml 中没有这一行；--list 查看全部，支持 DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2 短名）`)
     process.exit(2)
   }
 

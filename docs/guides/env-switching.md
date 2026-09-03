@@ -22,7 +22,7 @@ dsh-sentry 支持在**一个不重启、不断会话**的 web GUI 里排查多�
 |---|---|
 | `sentry_env_list` | 列出环境、短名、当前环境与凭据就绪度 |
 | `sentry_env_current` | 读取当前装配环境，判断热重载是否 pending |
-| `sentry_env_switch` | 校验凭据并重写 repo 内 patch/include，支持 `DP0/DP1/DC0/TP0/TP1/TC0` |
+| `sentry_env_switch` | 校验凭据并重写 repo 内 patch/include，支持 `DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2` |
 
 工具不接受 endpoint 或输出路径参数。若当前 profile 是 include 桩，只写仓库内 `apps/profile/cordis.patch.yml` 与 `cordis.include.yml`；若当前 profile 已是直写 sentry 装配，则同步写入该 profile。两种模式都不会触碰个人插件。
 
@@ -57,6 +57,8 @@ pnpm --filter @dsh-sentry/agent run regenerate
 | `tst-platform-hosted-0` | cn-0.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `tst-platform-hosted-1` | cn-1.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `tst-client-hosted-0` | cn-0.test-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
+| `sit-client-hosted-1` | cn-1.sit-byoi.novo-one.com | ⬜ 骨架 | 矩阵已录入（SC1），endpoint 按域名族推断，未实测、凭据未补 |
+| `sit-client-hosted-2` | cn-2.sit-byoi.novo-one.com | ⬜ 骨架 | 矩阵已录入（SC2），endpoint 按域名族推断，未实测、凭据未补 |
 
 「腿」的口径统一为 probe 覆盖的六个随环境切换的数据源：greptimedb（日志）、trace（链路）、prometheus（指标）、dbx（数据库）、rocketmq（MQ）、zadig（CI/CD）。不计入的三条：TAPD 是平台级唯一来源、不随环境切换；Redis 经 dbx 平台中转（dbx 通即通）；代码检索读本机目录、与环境无关。
 
