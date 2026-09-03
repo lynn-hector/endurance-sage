@@ -4,14 +4,25 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { iterConfiguredRepos, iterRepos, codegraphAvailable, CODEGRAPH_DIR } from '../src/search.ts'
-import { buildSyncSummary, inspectRepo, runGitPull } from '../src/sync.ts'
+import { buildSyncSummary, inspectRepo, runGitPull, syncRepo } from '../src/sync.ts'
 
 /**
  * Sync tests against a REAL git fixture: one bare origin, one working clone
  * (the sync target) and one helper clone (pushes remote commits). Covers
  * the fast-forward / up-to-date / diverged / not-a-repo paths plus the
- * narrow repo-discovery boundary that separates sync from search.
+ * narrow repo-discovery boundary that separates sync from search. The
+ * codegraph reindex path runs against the real codegraph binary when it is
+ * on PATH, and is skipped otherwise.
  */
+
+const hasCodegraph = (() => {
+  try {
+    execFileSync('codegraph', ['--version'], { stdio: 'pipe' })
+    return true
+  } catch {
+    return false
+  }
+})()
 
 let base: string
 let origin: string
@@ -116,6 +127,50 @@ describe('inspectRepo (dry run)', () => {
   })
 })
 
+describe('syncRepo (pull + reindex composition)', () => {
+  it('skips the reindex on up_to_date and on repos without an index', async () => {
+    const plain = join(base, 'novo-noindex')
+    git(base, 'clone', 'origin.git', 'novo-noindex')
+
+    const result = await syncRepo({ name: 'novo-noindex', path: plain })
+    expect(result.status).toBe('up_to_date')
+    expect(result.codegraph_index).toBe(false)
+    expect(result.index_sync).toBeUndefined()
+
+    // update without an index: pull succeeds, still no reindex
+    commitFile(helper, 'c.txt', 'three\n', 'third')
+    git(helper, 'push', 'origin', 'main')
+    const updated = await syncRepo({ name: 'novo-noindex', path: plain })
+    expect(updated.status).toBe('updated')
+    expect(updated.index_sync).toBeUndefined()
+  })
+})
+
+describe.skipIf(!hasCodegraph)('codegraph reindex (real binary)', () => {
+  it('incrementally reindexes after a fast-forward update', async () => {
+    const indexed = join(base, 'novo-indexed')
+    git(base, 'clone', 'origin.git', 'novo-indexed')
+    writeFileSync(join(indexed, 'svc.go'), 'package main\n\nfunc Serve() int { return 1 }\n')
+    execFileSync('codegraph', ['init', indexed], { stdio: 'pipe' })
+    expect(codegraphAvailable(indexed)).toBe(true)
+
+    commitFile(helper, 'd.go', 'package helper\n\nfunc Bump() int { return 2 }\n', 'fourth')
+    git(helper, 'push', 'origin', 'main')
+
+    const result = await syncRepo({ name: 'novo-indexed', path: indexed })
+    expect(result.status).toBe('updated')
+    expect(result.codegraph_index).toBe(true)
+    expect(result.index_sync).toBe('ok')
+    expect(result.index_error).toBeUndefined()
+    expect(result.head_after).toBe(head(origin))
+
+    // up_to_date again: the reindex is skipped, index_sync stays absent
+    const again = await syncRepo({ name: 'novo-indexed', path: indexed })
+    expect(again.status).toBe('up_to_date')
+    expect(again.index_sync).toBeUndefined()
+  }, 120_000)
+})
+
 describe('sync repo discovery (iterConfiguredRepos)', () => {
   it('selects configured repos by name/path/basename like search', () => {
     expect(iterConfiguredRepos({ repos: { demo: work } }, 'demo')).toEqual([
@@ -168,11 +223,21 @@ describe('buildSyncSummary', () => {
     ).toBe('同步 2 个仓库：1 个已更新（a: 1111111→2222222）、1 个失败（b，详见 error）。')
   })
 
-  it('flags a stale codegraph index after an update', () => {
-    const summary = buildSyncSummary([
-      { repo: 'a', path: '/a', status: 'updated', head_before: '1', head_after: '2', codegraph_index: true },
+  it('reports reindex outcomes after an update', () => {
+    const ok = buildSyncSummary([
+      { repo: 'a', path: '/a', status: 'updated', head_before: '1', head_after: '2', codegraph_index: true, index_sync: 'ok' },
     ])
-    expect(summary).toContain('.codegraph 索引可能滞后')
-    expect(summary).toContain('回退 ripgrep')
+    expect(ok).toContain('codegraph 索引已随更新同步（a）')
+
+    const fail = buildSyncSummary([
+      { repo: 'a', path: '/a', status: 'updated', head_before: '1', head_after: '2', codegraph_index: true, index_sync: 'failed', index_error: 'boom' },
+    ])
+    expect(fail).toContain('codegraph 索引同步失败（a')
+    expect(fail).toContain('回退 ripgrep')
+
+    // updated repo without an index: no reindex, no note
+    expect(
+      buildSyncSummary([{ repo: 'a', path: '/a', status: 'updated', head_before: '1', head_after: '2', codegraph_index: false }]),
+    ).toBe('同步 1 个仓库：1 个已更新（a: 1→2）。')
   })
 })

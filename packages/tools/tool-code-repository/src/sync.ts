@@ -21,19 +21,24 @@
  *   output in evidence.
  *
  * "updated vs up_to_date" is decided by comparing HEAD before/after, never
- * by parsing git's (locale-dependent) messages.
+ * by parsing git's (locale-dependent) messages. After a real update on a
+ * repo carrying a `.codegraph/` index, {@link syncRepo} runs an incremental
+ * `codegraph sync --quiet` so search evidence stays fresh — the reindex is
+ * recorded (`index_sync`) and its failure never fails the pull.
  *
  * @module @dsh-sentry/tool-code-repository/sync
  */
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { RepoRef } from './search.ts'
+import { codegraphAvailable, type RepoRef } from './search.ts'
 
 const execFileAsync = promisify(execFile)
 
 /** Hard ceiling per git invocation (pull can hit the network). */
 const GIT_TIMEOUT_MS = 120_000
+/** Hard ceiling for the incremental codegraph reindex after an update. */
+const INDEX_TIMEOUT_MS = 180_000
 /** Cap on git output kept in evidence (characters, tail-kept). */
 const DETAIL_LIMIT = 2000
 
@@ -53,8 +58,12 @@ export interface SyncResult {
   detail?: string
   /** Combined git error output on failure. */
   error?: string
-  /** Whether the repo carries a .codegraph index (may go stale after an update). */
+  /** Whether the repo carries a .codegraph index. */
   codegraph_index?: boolean
+  /** Incremental reindex outcome after an update; absent when not attempted. */
+  index_sync?: 'ok' | 'failed'
+  /** codegraph sync's error output when the reindex failed. */
+  index_error?: string
 }
 
 /** Keep at most `limit` characters, tail-anchored, ellipsis-prefixed when cut. */
@@ -127,7 +136,46 @@ export async function inspectRepo(repo: RepoRef): Promise<SyncResult> {
   return peeked.head_before === undefined ? peeked : { ...peeked, status: 'dry_run' }
 }
 
-/** One-sentence summary per the evidence contract; flags stale codegraph indexes. */
+/**
+ * Incremental codegraph reindex after a fast-forward: `codegraph sync
+ * --quiet <path>`. Fixed argv like the git side; never throws. Failure here
+ * must NOT fail the pull result — it degrades search to the ripgrep
+ * fallback until someone re-indexes.
+ */
+export async function runCodegraphSync(repoPath: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await execFileAsync('codegraph', ['sync', '--quiet', repoPath], {
+      cwd: repoPath,
+      timeout: INDEX_TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+    })
+    return { ok: true }
+  } catch (error) {
+    const err = error as { stderr?: string; message?: string }
+    const parts = [err.stderr, err.message]
+      .filter((part): part is string => typeof part === 'string' && part.length > 0)
+      .map(part => part.trim())
+    return { ok: false, error: tail(parts.join('\n')) }
+  }
+}
+
+/**
+ * Pull one repo, then refresh its codegraph index when present. The reindex
+ * only runs on a real update — `up_to_date` means the tree did not change —
+ * and its outcome is recorded, never fatal.
+ */
+export async function syncRepo(repo: RepoRef): Promise<SyncResult> {
+  const result = await runGitPull(repo)
+  result.codegraph_index = codegraphAvailable(repo.path)
+  if (result.status === 'updated' && result.codegraph_index) {
+    const index = await runCodegraphSync(repo.path)
+    result.index_sync = index.ok ? 'ok' : 'failed'
+    if (!index.ok) result.index_error = index.error
+  }
+  return result
+}
+
+/** One-sentence summary per the evidence contract; reports reindex outcomes. */
 export function buildSyncSummary(results: SyncResult[]): string {
   if (results.length === 0) return '没有可同步的仓库。'
 
@@ -142,9 +190,13 @@ export function buildSyncSummary(results: SyncResult[]): string {
   if (upToDate.length > 0) parts.push(`${upToDate.length} 个已是最新`)
   if (failed.length > 0) parts.push(`${failed.length} 个失败（${failed.map(r => r.repo).join('、')}，详见 error）`)
 
-  const stale = updated.filter(r => r.codegraph_index)
-  const note = stale.length > 0
-    ? `；注意 ${stale.map(r => r.repo).join('、')} 的 .codegraph 索引可能滞后，codegraph 无结果时会回退 ripgrep。`
-    : '。'
+  const reindexFailed = updated.filter(r => r.index_sync === 'failed')
+  const reindexed = updated.filter(r => r.index_sync === 'ok')
+  let note = '。'
+  if (reindexFailed.length > 0) {
+    note = `；codegraph 索引同步失败（${reindexFailed.map(r => r.repo).join('、')}，详见 index_error），搜索无结果时会回退 ripgrep。`
+  } else if (reindexed.length > 0) {
+    note = `；codegraph 索引已随更新同步（${reindexed.map(r => r.repo).join('、')}）。`
+  }
   return `同步 ${results.length} 个仓库：${parts.join('、')}${note}`
 }

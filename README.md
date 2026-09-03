@@ -14,7 +14,7 @@
 | MQ | `sentry_query_mq` | RocketMQ 消息列表与消费轨迹 |
 | CI/CD | `sentry_query_zadig` | Zadig 服务状态、镜像版本、最近部署、工作流任务历史（发版时间线 + commit 证据 + 部署目标环境） |
 | 缺陷单 | `sentry_query_tapd` | TAPD 缺陷单，「现象 × 已知缺陷」对账 |
-| 代码 | `sentry_search_code` / `sentry_read_code` / `sentry_sync_code` | 跨仓代码检索与读取，作为交叉验证证据；`sentry_sync_code` 对配置仓库执行 `git pull --ff-only` 刷新检出（只快进、不合并、不丢本地改动） |
+| 代码 | `sentry_search_code` / `sentry_read_code` / `sentry_sync_code` | 跨仓代码检索与读取，作为交叉验证证据；`sentry_sync_code` 对配置仓库执行 `git pull --ff-only` 刷新检出（只快进、不合并、不丢本地改动；更新后自动增量重建 codegraph 索引） |
 
 另有：方法论 skill 集（10 步排查框架、各证据腿使用边界、结构化输出模板）、`git-guard` 危险 git 命令双层门禁（[docs/architecture/git-guard.md](docs/architecture/git-guard.md)）。
 

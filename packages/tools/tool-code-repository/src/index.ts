@@ -20,7 +20,9 @@
  * - `sentry_sync_code` is NEW (not in the script era at all): `git pull
  *   --ff-only` over the configured repos so code evidence can be refreshed
  *   in-band; fixed argv + configured-repos-only keeps it inside the
- *   guardrails git-guard usually enforces on bash (see ./sync.ts).
+ *   guardrails git-guard usually enforces on bash (see ./sync.ts). Updated
+ *   repos with a `.codegraph/` index get an incremental reindex in the same
+ *   call (`codegraph sync --quiet`, non-fatal on failure).
  * - Output uses the standard `{ evidence: ... }` envelope (the script
  *   printed bare `{query, results, summary}`, drifting from the project's
  *   own evidence contract; recorded drift like the other skills).
@@ -51,7 +53,7 @@ import {
   type CodeSnippet,
   type RepoRef,
 } from './search.ts'
-import { buildSyncSummary, inspectRepo, runGitPull, type SyncResult } from './sync.ts'
+import { buildSyncSummary, inspectRepo, syncRepo, type SyncResult } from './sync.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-code-repository'
@@ -439,7 +441,8 @@ export function apply(ctx: Context, config: Config): void {
         'Refresh the configured product repositories with git pull --ff-only, so code evidence matches the '
         + 'latest remote. Fast-forward only: never merges, never rewrites history, never discards local '
         + 'changes — a diverged or dirty repository returns its git error instead of being forced. '
-        + 'Runs only on repositories from plugin config.',
+        + 'Runs only on repositories from plugin config. When an updated repo carries a .codegraph index, '
+        + 'an incremental codegraph sync refreshes it automatically (per-repo, non-fatal on failure).',
       parameters: {
         repo: { type: 'string', description: 'Restrict to one configured repository (name or configured path); omit to sync all.' },
         dryRun: { type: 'boolean', default: false, description: 'List the target repositories with their current HEAD/branch without pulling.' },
@@ -478,8 +481,10 @@ export function apply(ctx: Context, config: Config): void {
         try {
           const results: SyncResult[] = []
           for (const repo of repos) {
-            const result = args.dryRun ? await inspectRepo(repo) : await runGitPull(repo)
-            result.codegraph_index = codegraphAvailable(repo.path)
+            const result = args.dryRun ? await inspectRepo(repo) : await syncRepo(repo)
+            if (result.codegraph_index === undefined) {
+              result.codegraph_index = codegraphAvailable(repo.path)
+            }
             results.push(result)
           }
 
