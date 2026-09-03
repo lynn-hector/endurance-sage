@@ -136,6 +136,7 @@ dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090，开【新�
 | `sentry_search_code` 报「未配置任何代码仓库」 | `DSH_SENTRY_CODE_BASE` 三个来源（envs.yml / 环境变量 / 凭据库）都没设——regenerate 时的 ⚠ 警告说的就是这件事；按第 2 步写入凭据库后重跑 regenerate |
 | patch 改了不生效 | 在 dsh 运行期间对仓库跑过 `pnpm install`？停掉重启 sentry profile |
 | `pnpm install` 后类型冲突 | 不要单独 pin `@deepseek-ai/dsh-*` 某个包版本，全仓库统一 `^0.1.0-rc.7` 范围 |
+| 启动报 `duplicate loader entry id: <插件id>` | 自带 `cordis.patch.yml` 的第三方插件又被手工注册了一遍（`renderEntries()` 或手改 patch）→ 删掉手工条目重新 regenerate，只留依赖声明（2026-09-03 dsh-im 实测） |
 
 ## 日常更新（仓库有更新时）
 
@@ -150,12 +151,61 @@ pnpm --filter @dsh-sentry/agent run regenerate
 符号链接模式下 profile 即仓库 `apps/profile`，插件包增删也不需要重跑 `profile:link`
 （链接指向整个目录，自动生效）；只有符号链接本身被删了才需要重跑一次。
 
+## 给 sentry profile 加插件（SOP）
+
+sentry profile 是团队共享装配，加插件一律改仓库——**不要**直接改 `~/.dsh/profiles/sentry` 下的文件：那是符号链接指向的仓库生成物，手改会在下次 regenerate 时被静默覆盖，团队也拿不到。
+
+**第一步先分型**：看插件包根目录带不带自带的 `cordis.patch.yml`：
+
+```bash
+ls apps/profile/node_modules/<包名>/cordis.patch.yml   # 装完后看；装前可在 npm 仓库页面看包内容
+```
+
+带 → 走**情形 A**（装上依赖 dsh 就自动装配它一层）；不带 → 走**情形 B**（必须走生成器注册）。
+
+### 情形 A：第三方/市场插件（包内自带 cordis.patch.yml）
+
+如 `@xmanrui/dsh-im`。装依赖即完成全部注册，三步：
+
+```bash
+# 1. 停 sentry 进程（铁律见第 2 步）
+# 2. 依赖装进 profile 包（不是仓库根！）：
+pnpm --filter @dsh-sentry/profile add <包名>
+# 3. 重启：dsh --profile sentry --port 3090
+```
+
+commit 只涉及 `apps/profile/package.json` + `pnpm-lock.yaml` 两个文件。
+
+- **不要**再往 `renderEntries()`（`packages/core/env-matrix/src/index.ts`）加条目——插件自带的 patch 已注册同一个 id，再加一条启动即报 `duplicate loader entry id`（2026-09-03 dsh-im 实测事故，见常见坑速查）。
+- **不要**用 `dsh plugin add`：它只是 profile 目录里 `pnpm add` 的包装，只装包、不写装配；更不要带 `-w`（那是"装到 workspace 根"，依赖会落到仓库根 `package.json`，profile 解析不到——命令显示 Done 但插件永远不生效）。
+
+### 情形 B：仓库自研插件（`@dsh-sentry/*`，包内无 cordis.patch.yml）
+
+自研包不会自动注册，五步：
+
+1. 依赖写进 `apps/profile/package.json`（`workspace:*`）；根 `package.json` 的 devDependencies 同步加一条，供类型检查
+2. `renderEntries()`（`packages/core/env-matrix/src/index.ts`）加 `{ id, name, config? }` 条目（需要凭据的用 `*Ref` 引用，值进凭据库）
+3. 同步守门测试 `apps/agent/tests/render.test.ts`（插件总数 + id 顺序列表），跑 `pnpm --filter @dsh-sentry/agent run test`
+4. `pnpm --filter @dsh-sentry/agent run regenerate`
+5. 停机 `pnpm install` → 重启
+
+### 验证与边界
+
+```bash
+dsh --profile sentry --dump-config | grep <插件id>   # 只读预检，不启动服务
+```
+
+第三方插件应恰好出现 1 次；带前端页面的插件重启后浏览器要**硬刷新**（Cmd+Shift+R）。
+
+**个人/市场插件不要进 sentry 装配**（它是团队共享的纯 sentry 核心）——装进自己的 web profile：`dsh plugin --profile web add <包名>`（web 是独立真实目录，无需 `-w`），和个人插件共存另见第 2 步备选。
+
 ## 进阶阅读
 
 | 我想… | 看这里 |
 |---|---|
+| 给 sentry profile 加/换插件 | 本文「给 sentry profile 加插件（SOP）」一节 |
 | 对话内切换环境（不重启不断会话） | [env-switching.md](env-switching.md) |
 | 和个人 web 插件共存（引入模式） | 本文第 2 步备选 + [deploy.md](deploy.md) 接入模式对照 |
-| 换 token / 挂新插件包 | [credentials.md](credentials.md) |
+| 换 token | [credentials.md](credentials.md) |
 | headless 一次性任务模式 | [runbook.md](runbook.md) |
 | 排查方法论与各工具边界 | 对话里直接让模型加载对应 skill，或看 `packages/skills/` |

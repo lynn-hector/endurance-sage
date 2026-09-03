@@ -107,4 +107,4 @@ GREPTIMEDB_DP0_PASSWORD: <密码>
 
 ## 当前已加载的 sentry 能力
 
-全部工具与数据源清单见 [README 能力全景](../../README.md#能力全景)（以仓库装配文件 `apps/profile/cordis.include.yml` 为准）。新包加入方式不变：加进根和 `apps/profile` 的 `workspace:*` 依赖 → regenerate → profile:link → 停机安装 → 重启，详见 [onboarding.md](onboarding.md) 日常更新一节。
+全部工具与数据源清单见 [README 能力全景](../../README.md#能力全景)（以仓库装配文件 `apps/profile/cordis.include.yml` 为准）。加插件（第三方与自研流程不同，先分型）见 [onboarding.md](onboarding.md)「给 sentry profile 加插件（SOP）」一节；日常更新见同文末节。

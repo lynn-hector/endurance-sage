@@ -47,13 +47,8 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 
 只需改 `~/.dsh/.credentials.yaml` 一处，然后触发 profile patch 重载（touch 或重新生成 `cordis.patch.yml`）。**不要**在 dsh 进程运行时动 profile 的 `node_modules`——独立 profile（符号链接模式）下不要对**仓库**跑 `pnpm install`，引入模式下不要对 `~/.dsh/profiles/web` 跑——会卡死 patch 热重载（事故记录见 incidents）。
 
-## 给 profile 挂新插件包的步骤
+## 给 profile 挂新插件包
 
-profile 已是仓库内 workspace 包（`apps/profile/`），服务器与本机共用同一套流程：
-
-1. 新包加进根 `package.json` 和 `apps/profile/package.json` 的 `workspace:*` 依赖
-2. 仓库根目录 `pnpm install`（任意机器自动链接，无需手改路径）
-3. 插件条目加进 `apps/agent/envs.yml` / `render.ts` 生成器，`pnpm --filter @dsh-sentry/agent run regenerate`
-4. `pnpm run profile:link sentry` 接入 `~/.dsh/profiles/sentry`（引入模式则不带参数接 web profile），重启 dsh 进程
+单一事实来源：[onboarding.md](onboarding.md) 的「给 sentry profile 加插件（SOP）」一节。要点：先看插件包带不带自带 `cordis.patch.yml`——第三方插件装依赖即自动装配（**不要**再手工注册条目，会 `duplicate loader entry id` 启动失败）；自研 `@dsh-sentry/*` 包才走 renderEntries + regenerate 全流程。凭据相关的 `*Ref` 引用配置见本文上文。
 
 部署全流程见 [deploy.md](deploy.md)。
