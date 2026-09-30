@@ -29,9 +29,8 @@ import { expandHome, resolveCodeBaseDir } from './render.ts'
  *  组内新增仓库时在此手动补一行（发现机制的 novo-* 通配自动覆盖新名字）。 */
 export const REPOS: readonly string[] = [
   'novo-ai-voice',
-  'novo-bootstrap',
   'novo-branch',
-  'novo-common-pluginsOwner',
+  'novo-common-bootstrap',
   'novo-common-proto',
   'novo-commctl-autop',
   'novo-commctl-call-control',
@@ -45,7 +44,6 @@ export const REPOS: readonly string[] = [
   'novo-media-bridge',
   'novo-platform-backend',
   'novo-platform-user',
-  'novo-plugins-deprecated',
   'novo-publish-center',
   'novo-telecom-ai-playbook',
   'novo-telecom-cdr',

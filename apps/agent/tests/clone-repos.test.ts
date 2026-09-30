@@ -7,7 +7,7 @@ import { isAuthFailure, isCompleteClone, parseArgs, REPOS, recoverPartialClone, 
 
 describe('REPOS 权威清单', () => {
   it('无重复、全部 novo- 前缀（novo-* 通配可全覆盖）', () => {
-    expect(REPOS).toHaveLength(28)
+    expect(REPOS).toHaveLength(26)
     expect(new Set(REPOS).size).toBe(REPOS.length)
     for (const repo of REPOS) expect(repo.startsWith('novo-'), repo).toBe(true)
   })

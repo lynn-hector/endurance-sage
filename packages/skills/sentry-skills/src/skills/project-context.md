@@ -39,12 +39,10 @@
 | novo-telecom-ai-playbook | 电信 AI 话术/流程编排 | 中 |
 | novo-commctl-util / novo-commctl-kit | 公共工具库 / 公共框架能力 | 中 |
 | novo-common-proto | 公共 Protobuf 定义 | 中 |
-| novo-common-pluginsOwner | 公共插件 | 中 |
-| novo-bootstrap | 服务引导/初始化 | 中 |
+| novo-common-bootstrap | 服务引导/初始化 | 中 |
 | novo-branch | 分支/多分支管理 | 中 |
 | novo-upgrade | 系统升级/版本迁移 | 中 |
 | novo-publish-center | 发布中心 | 中 |
-| novo-plugins-deprecated | 已废弃历史插件（仅存档检索） | 低 |
 | rocketmq | RocketMQ 客户端封装 | 中 |
 
 > 服务职责/关键程度部分按仓库名起草，实战中可校准。`novo-commctl-layout` 与 `rocketmq` 不在 backend 组清单内、不随引导脚本 clone，条目保留供路由参考。
