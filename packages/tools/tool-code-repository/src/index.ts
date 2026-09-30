@@ -92,7 +92,7 @@ const DEFAULT_MAX_RESULTS = 20
 
 /** Shared activation hint for the unconfigured case (search and sync agree on wording). */
 const UNCONFIGURED_MSG =
-  '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。'
+  '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 用 pnpm --filter @dsh-sentry/agent run clone-repos 把 backend 组仓库引导 clone 到 <目录>，把 DSH_SENTRY_CODE_BASE=<该目录> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或环境变量后重跑 regenerate（见 docs/guides/onboarding.md）。'
 
 const execFileAsync = promisify(execFile)
 

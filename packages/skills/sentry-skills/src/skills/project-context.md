@@ -13,7 +13,7 @@
 
 ## 服务清单
 
-`novo-one` 项目下的 Go 微服务集合（Kratos v2 框架，gRPC + HTTP，Wire 依赖注入；数据层 PostgreSQL/GORM + Redis；消息 RocketMQ；定时 xxl-job；观测 OpenTelemetry + Prometheus + Zap 日志自动注入 trace_id/tenant_code；配置中心 Nacos）：
+`novo-one` 项目 backend 组（GitLab `novoone/backend`）下的服务集合。commctl 各服务为 Go 微服务（Kratos v2 框架，gRPC + HTTP，Wire 依赖注入；数据层 PostgreSQL/GORM + Redis；消息 RocketMQ；定时 xxl-job；观测 OpenTelemetry + Prometheus + Zap 日志自动注入 trace_id/tenant_code；配置中心 Nacos）；组内另含网关、平台服务与电信音视频组件集成仓，非全部为 Go/Kratos：
 
 | 服务 | 主要职责 | 关键程度 |
 |---|---|---|
@@ -21,16 +21,37 @@
 | novo-commctl-call-control | 呼叫控制逻辑，核心通话状态管理 | 核心 |
 | novo-commctl-config | 配置管理、下发与同步（依赖 Nacos 同步到边缘） | 核心 |
 | novo-commctl-orbit | 轨道/路由调度（影响呼叫路由与策略执行） | 核心 |
-| novo-commctl-layout | 布局/界面配置 | 重要 |
+| novo-commctl-contact | 联系人/通讯录 | 重要 |
 | novo-commctl-report | 报表/统计（依赖 PG 和 xxl-job） | 重要 |
 | novo-commctl-telecom-template（novo-telecom-template） | 电信/号码模板（影响呼叫路由） | 重要 |
+| novo-commctl-layout | 布局/界面配置 | 重要 |
+| novo-gateway | API 网关/对外流量入口 | 核心 |
+| novo-platform-backend | 平台管理面后端 | 重要 |
+| novo-platform-user | 平台用户/账号 | 重要 |
+| novo-media-bridge | 媒体桥接（音频流转发/混音） | 重要 |
+| novo-ai-voice | AI 语音能力（TTS/ASR/智能语音） | 重要 |
+| novo-telecom-opensips | OpenSIPS SIP 代理集成/脚本 | 重要 |
+| novo-telecom-freeswitch | FreeSWITCH 媒体服务器集成/模块 | 重要 |
+| novo-telecom-rtpengine | RTPEngine RTP 媒体代理集成 | 重要 |
+| novo-telecom-cdr | 话单（CDR）生成与处理 | 重要 |
+| novo-telecom-common | 电信侧公共库 | 中 |
+| novo-telecom-configs | 电信组件配置 | 中 |
+| novo-telecom-ai-playbook | 电信 AI 话术/流程编排 | 中 |
 | novo-commctl-util / novo-commctl-kit | 公共工具库 / 公共框架能力 | 中 |
 | novo-common-proto | 公共 Protobuf 定义 | 中 |
+| novo-common-pluginsOwner | 公共插件 | 中 |
+| novo-bootstrap | 服务引导/初始化 | 中 |
+| novo-branch | 分支/多分支管理 | 中 |
+| novo-upgrade | 系统升级/版本迁移 | 中 |
+| novo-publish-center | 发布中心 | 中 |
+| novo-plugins-deprecated | 已废弃历史插件（仅存档检索） | 低 |
 | rocketmq | RocketMQ 客户端封装 | 中 |
+
+> 服务职责/关键程度部分按仓库名起草，实战中可校准。`novo-commctl-layout` 与 `rocketmq` 不在 backend 组清单内、不随引导脚本 clone，条目保留供路由参考。
 
 ## 代码仓库布局
 
-代码在 `DSH_SENTRY_CODE_BASE` 指向的检出（novo-commctl）下，目录名即服务仓库名（上表映射）；每个服务仓库是独立 Go module（`go.mod` + `main.go`）。定位代码用 code-repository 技能（`sentry_search_code` 跨仓搜索 + `sentry_read_code` 读文件）；典型层次：`internal/data/` 是数据访问层（SQL、Redis 客户端多在此）、`internal/biz/` 是业务逻辑、`internal/server/` 是 gRPC/HTTP 入口、`api/` 是 Proto 生成代码。
+代码在 `DSH_SENTRY_CODE_BASE` 指向的 backend 组检出根目录下（GitLab `novoone/backend` 组，首次用 `pnpm --filter @dsh-sentry/agent run clone-repos` 引导，日常由 `sentry_sync_code` ff-only 更新），目录名即服务仓库名（上表映射）；commctl 各服务是独立 Go module（`go.mod` + `main.go`）。定位代码用 code-repository 技能（`sentry_search_code` 跨仓搜索 + `sentry_read_code` 读文件）；典型层次：`internal/data/` 是数据访问层（SQL、Redis 客户端多在此）、`internal/biz/` 是业务逻辑、`internal/server/` 是 gRPC/HTTP 入口、`api/` 是 Proto 生成代码。
 
 ## 关键用户旅程（排查优先级）
 

@@ -68,13 +68,22 @@ pnpm run profile:link sentry                     # 预期输出含「✓ 符号�
 
 **备选——想和个人插件共存**：如果你希望 sentry 工具出现在自己的日常 `dsh web`（3080）里、和个人/市场插件并肩，改用引入模式：先 `dsh web` 跑一次建出 `~/.dsh/profiles/web` 真实目录，再 `pnpm run profile:link`（不带参数，默认 web），然后停机状态下 `cd ~/.dsh/profiles/web && pnpm install`。细节见 [deploy.md](deploy.md) 接入模式对照。
 
-**可选——代码检索腿**：`sentry_search_code` 需要本机有 novo-commctl 代码。未配置时 regenerate 会打 ⚠ 警告、该腿返回带启用方式的未配置提示，其余所有腿不受影响：
+**可选——代码检索腿**：`sentry_search_code` 覆盖 GitLab `novoone/backend` 组全部仓库（commctl 各服务 + 网关/平台/电信音视频组件等）。未配置时 regenerate 会打 ⚠ 警告、该腿返回带启用方式的未配置提示，其余所有腿不受影响：
 
 ```bash
-git clone <novo-commctl 仓库地址> ~/novo-commctl   # 里面应是 novo-* 各服务目录
+pnpm --filter @dsh-sentry/agent run clone-repos -- --target ~/novoone-backend
+# 幂等可重跑（完整 clone 过的仓库跳过；中断留下的半成品目录会自动重新 clone）；
+# 浅克隆 --depth 1（默认），日常更新交给 sentry_sync_code 的 ff-only pull
 ```
 
-代码根目录键名 `DSH_SENTRY_CODE_BASE`，三种来源按优先级取第一个：`envs.yml codeRepository.baseDir` > 环境变量 > 凭据库。**推荐写进凭据库**——和凭据同一个文件一次配齐（在 `refs:` 下加 `DSH_SENTRY_CODE_BASE: ~/novo-commctl`；路径不是机密，dsh 只解析 `*Ref` 引用的键，多余键对它无影响）；服务器等已有环境变量注入的场合继续 `export` 也行。配好后重跑 regenerate。
+代码根目录键名 `DSH_SENTRY_CODE_BASE`，三种来源按优先级取第一个：`envs.yml codeRepository.baseDir` > 环境变量 > 凭据库。**推荐写进凭据库**——和凭据同一个文件一次配齐（在 `refs:` 下加 `DSH_SENTRY_CODE_BASE: ~/novoone-backend`；路径不是机密，dsh 只解析 `*Ref` 引用的键，多余键对它无影响）；服务器等已有环境变量注入的场合继续 `export` 也行。配好后重跑 regenerate。
+
+**GitLab 认证（clone 与后续 pull 共用）**：私有仓需要认证，配置一次后 clone 脚本和 `sentry_sync_code` 的 pull 都不再要密码，二选一：
+
+| 方式 | 配置 |
+|---|---|
+| HTTPS + PAT（默认） | GitLab 建 Personal Access Token（`read_repository` 权限即可）；`git config --global credential.helper store` 后首次 clone 交互输入一次（用户名任意，密码填 token）。token 不进 dsh 凭据库，也不作为脚本参数传入；无终端交互（cron/CI）时先手工 clone 任一仓库一次完成凭据缓存，或改用 SSH key |
+| SSH key | 公钥加到 GitLab 账号；clone 脚本加 `--ssh` 走 `git@gitlab.yeastar.com:` 形式 |
 
 注意：代码检索腿的根目录（regenerate 时烘焙）与对话工作区是两个独立来源——排查会话**不要**把产品仓库选成会话工作区，两个检出的版本/行号可能漂移误导结论；代码事实以 `sentry_search_code` 证据为准。检出落后时可用 `sentry_sync_code` 就地刷新：它对配置发现的仓库执行 `git pull --ff-only`（只快进、不合并、不丢本地改动，分叉/脏仓库报错不强同步；可经插件配置 `syncEnabled: false` 关闭）。
 
@@ -94,7 +103,7 @@ ZADIG_API_TOKEN: <Zadig 页面头像 → 个人设置 → OpenAPI → 创建 tok
 TAPD_TOKEN: <TAPD 网页 → 我的设置 → 个人访问令牌>
 ```
 
-**（可选）**同一文件顺手加一行 `DSH_SENTRY_CODE_BASE: <novo-commctl 检出路径>`（嵌套形态加在 `refs:` 下）即启用代码检索腿——来源与优先级见第 2 步。
+**（可选）**同一文件顺手加一行 `DSH_SENTRY_CODE_BASE: <backend 组检出根目录>`（嵌套形态加在 `refs:` 下）即启用代码检索腿——来源与优先级见第 2 步。
 
 | 凭据 | 说明 |
 |---|---|

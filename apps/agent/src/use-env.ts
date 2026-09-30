@@ -68,7 +68,7 @@ function warnCodeLeg(row: EnvRow): void {
   const base = resolveCodeBaseDir(row)
   if (base === undefined) {
     console.error('⚠ 代码检索腿未配置（可选，其余工具不受影响）: envs.yml 无 codeRepository.baseDir，环境变量与凭据库（$DSH_HOME/.credentials.yaml 的 DSH_SENTRY_CODE_BASE 键）也均未设置。')
-    console.error('  启用方式: git clone <novo-commctl> 后把 DSH_SENTRY_CODE_BASE=<检出路径> 写入凭据库 refs: 下（推荐，与凭据同文件）或 ~/.zshrc，重跑 regenerate。')
+    console.error('  启用方式: pnpm --filter @dsh-sentry/agent run clone-repos 引导 clone backend 组仓库后，把 DSH_SENTRY_CODE_BASE=<检出根目录> 写入凭据库 refs: 下（推荐，与凭据同文件）或 ~/.zshrc，重跑 regenerate。')
     return
   }
   if (!existsSync(base)) {

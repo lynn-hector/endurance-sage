@@ -126,6 +126,18 @@ export function knownCredentialKeys(storePath: string, env: NodeJS.ProcessEnv = 
 }
 
 /**
+ * Expand a leading `~` to the user's home dir. Credential-store and env-var
+ * values never pass through a shell, so the `~/novoone-backend` form the
+ * docs recommend must be expanded here (a literal `~` dir would resolve
+ * against every consumer's cwd differently).
+ */
+export function expandHome(value: string): string {
+  if (value === '~') return homedir()
+  if (value.startsWith('~/') || value.startsWith('~\\')) return join(homedir(), value.slice(2))
+  return value
+}
+
+/**
  * Resolve the code-search base dir. Three machine-local sources, highest
  * precedence first:
  *
@@ -145,7 +157,7 @@ export function resolveCodeBaseDir(row?: Pick<EnvRow, 'codeRepository'>): string
   const value = row?.codeRepository?.baseDir
     ?? process.env.DSH_SENTRY_CODE_BASE
     ?? (typeof fromStore === 'string' ? fromStore : undefined)
-  return value === '' ? undefined : value
+  return value === undefined || value === '' ? undefined : expandHome(value)
 }
 
 export function renderEntries(row: EnvRow): Entry[] {

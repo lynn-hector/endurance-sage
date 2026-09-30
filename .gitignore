@@ -8,3 +8,4 @@ dist/
 .pnpm-store/
 docs/环境清单*.csv
 apps/profile/cordis.yml
+docs/superpowers/
