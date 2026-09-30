@@ -23,7 +23,13 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { expandHome, resolveCodeBaseDir } from './render.ts'
+import {
+  codegraphAvailable,
+  expandHome,
+  hasCompleteIndex,
+  resolveCodeBaseDir,
+  writeIndexMarker,
+} from './render.ts'
 
 /** backend 组权威清单（来源 https://gitlab.yeastar.com/yeastar/novoone/backend）。
  *  组内新增仓库时在此手动补一行（发现机制的 novo-* 通配自动覆盖新名字）。 */
@@ -66,6 +72,52 @@ const CLONE_TIMEOUT_MS = 10 * 60_000
 /** 并发 clone 数：4 路对 GitLab 服务端与本机带宽都友好，全组墙钟时间约降为串行的 1/4；
  *  git 认证按进程隔离（credential store / ssh-agent 均可并发），失败汇报互不影响。 */
 const CLONE_CONCURRENCY = 4
+
+/** 索引并发数：队列在全部 clone 完成后才开跑（不与 clone 抢资源），2 路对 CPU/磁盘
+ *  已是大户友好上限——老检出批量补索引（无 clone 在途）的场景同样受益。 */
+const INDEX_CONCURRENCY = 2
+
+/** 单仓 codegraph init 超时：初始化（首次全量建索引）显著慢于增量，给到与 clone 同级的上限。 */
+const CODEGRAPH_INIT_TIMEOUT_MS = 10 * 60_000
+
+/** codegraph 是否可用（启动时探测一次；未装则全程跳过索引，检索回退 ripgrep）。 */
+export function codegraphInstalled(): boolean {
+  return spawnSync('codegraph', ['--version'], { stdio: 'ignore', timeout: 30_000 }).status === 0
+}
+
+/** 仓库完整 HEAD sha（索引标记内容）；失败返回 undefined。 */
+export function gitHeadFull(repoPath: string): string | undefined {
+  const probe = spawnSync('git', ['-C', repoPath, 'rev-parse', 'HEAD'], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: 30_000,
+  })
+  const out = probe.stdout?.toString().trim()
+  return probe.status === 0 && out !== '' ? out : undefined
+}
+
+/** 异步初始化单仓索引（codegraph init <path>，非增量 sync）；永不 reject；超时转译中文。 */
+export function spawnCodegraphInit(repoPath: string): Promise<{ ok: boolean; reason: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('codegraph', ['init', repoPath], { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    let timedOut = false
+    child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill()
+    }, CODEGRAPH_INIT_TIMEOUT_MS)
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      resolve({ ok: false, reason: error.message })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve({ ok: true, reason: '' })
+      else if (timedOut) resolve({ ok: false, reason: `codegraph init 超时（>${CODEGRAPH_INIT_TIMEOUT_MS / 60_000} 分钟）` })
+      else resolve({ ok: false, reason: stderr.trim().split('\n').pop() || 'codegraph init 失败' })
+    })
+  })
+}
 
 /** 仓库 clone URL（ssh=true 走 SSH 形态，默认 HTTPS）。 */
 export function repoUrl(repo: string, ssh: boolean): string {
@@ -201,14 +253,48 @@ async function main(): Promise<void> {
     }
   }
 
+  const codegraphOk = codegraphInstalled()
+  if (!codegraphOk) console.log('· codegraph 未安装，跳过索引初始化（检索回退 ripgrep）')
+
+  const indexedOk: string[] = []
+  const indexedFail: string[] = []
+  const indexTodos: string[] = []
+  /** 初始化单仓索引并落标记；失败只记录，不影响 clone 结果与退出码。
+   *  标记写失败同样计为失败——否则 hasCompleteIndex 恒 false，每次重跑都全量
+   *  re-init（大仓可达 10 分钟/个）却显示成功，IO 问题永远不浮出水面。 */
+  const initIndex = async (repo: string, dir: string): Promise<void> => {
+    console.log(`⚙ 索引 ${repo}`)
+    const init = await spawnCodegraphInit(dir)
+    if (init.ok) {
+      const sha = gitHeadFull(dir)
+      if (sha !== undefined && writeIndexMarker(dir, sha)) {
+        indexedOk.push(repo)
+        console.log(`✓ 索引 ${repo}`)
+      } else {
+        indexedFail.push(repo)
+        console.error(`✗ 索引 ${repo}: ${sha === undefined ? 'init 成功但无法读取 HEAD 落标记' : 'init 成功但标记写入失败（.git 只读或被占用？）——未落标记的索引每次重跑都会全量重建'}`)
+      }
+    } else {
+      indexedFail.push(repo)
+      console.error(`✗ 索引 ${repo}: ${init.reason}`)
+    }
+  }
+
   const failures: { repo: string; stderr: string }[] = []
   let cloned = 0
   let skipped = 0
   const todos: string[] = []
   for (const repo of REPOS) {
-    if (isCompleteClone(resolve(target, repo))) {
-      console.log(`↷ 跳过 ${repo}（已是完整 clone，幂等可重跑）`)
+    const dir = resolve(target, repo)
+    if (isCompleteClone(dir)) {
       skipped++
+      // hasCompleteIndex：索引目录非空且标记已落——init 中断（部分写入、无标记）不算完整，重跑会重新 init
+      if (codegraphOk && !hasCompleteIndex(dir)) {
+        if (args.dryRun) console.log(`… dry-run 补索引 ${repo}（索引缺失或不完整：${codegraphAvailable(dir) ? '有目录无标记，init 未完成' : '无 .codegraph 索引'}）`)
+        indexTodos.push(repo)
+      } else {
+        console.log(`↷ 跳过 ${repo}（已是完整 clone，幂等可重跑）`)
+      }
     } else if (args.dryRun) {
       console.log(`… dry-run ${repo} ← ${repoUrl(repo, args.ssh)}`)
     } else {
@@ -217,7 +303,11 @@ async function main(): Promise<void> {
   }
 
   if (args.dryRun) {
-    console.log(`dry-run 结束: 将 clone ${REPOS.length - skipped} 个、跳过 ${skipped} 个；未执行任何 git 操作。`)
+    const willClone = REPOS.length - skipped
+    console.log(`dry-run 结束: 将 clone ${willClone} 个、跳过 ${skipped} 个${indexTodos.length > 0 ? `、补索引 ${indexTodos.length} 个` : ''}；未执行任何 git 操作。`)
+    if (codegraphOk) {
+      console.log(`  索引预告: clone 完成后将对 ${willClone + indexTodos.length} 个仓库执行 codegraph init（新 clone ${willClone} 个 + 缺失/不完整补建 ${indexTodos.length} 个，${INDEX_CONCURRENCY} 路并发；大仓单个可达数分钟，排维护窗口请计入）`)
+    }
     return
   }
 
@@ -233,6 +323,8 @@ async function main(): Promise<void> {
       if (result.ok) {
         cloned++
         console.log(`✓ ${repo}`)
+        // 索引不在 worker 里做：大仓 init 是 CPU/磁盘大户，就地跑会与并发 clone 抢资源、阻塞队列
+        if (codegraphOk) indexTodos.push(repo)
       } else {
         console.error(`✗ ${repo}: ${result.reason}`)
         failures.push({ repo, stderr: result.stderr })
@@ -241,7 +333,21 @@ async function main(): Promise<void> {
   }
   await Promise.all(Array.from({ length: Math.min(CLONE_CONCURRENCY, todos.length) }, () => worker()))
 
+  // 索引队列在全部 clone 完成后才开跑（新 clone 的 + 老检出缺索引的都在这里），
+  // 因此不会与并发 clone 抢资源；init 是 CPU/磁盘大户，2 路并发即可
+  const indexQueue = [...indexTodos]
+  const indexWorker = async (): Promise<void> => {
+    while (indexQueue.length > 0) {
+      const repo = indexQueue.shift()!
+      await initIndex(repo, resolve(target, repo))
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(INDEX_CONCURRENCY, indexTodos.length) }, () => indexWorker()))
+
   console.log(`完成: 成功 ${cloned}、跳过 ${skipped}、失败 ${failures.length}（共 ${REPOS.length}）`)
+  if (codegraphOk && (indexedOk.length > 0 || indexedFail.length > 0)) {
+    console.log(`  索引: 成功 ${indexedOk.length}、失败 ${indexedFail.length}${indexedFail.length > 0 ? `（${indexedFail.join('、')}；失败不影响 clone 结果，重跑本脚本只重试失败/缺失的）` : ''}`)
+  }
   console.log('  清单为手工维护（REPOS）：GitLab backend 组新增仓库时需在 apps/agent/src/clone-repos.ts 补一行，否则代码检索不覆盖新仓库。')
   if (failures.some(({ stderr }) => isAuthFailure(stderr))) {
     console.error(AUTH_HINT)

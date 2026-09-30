@@ -74,6 +74,7 @@ pnpm run profile:link sentry                     # 预期输出含「✓ 符号�
 pnpm --filter @dsh-sentry/agent run clone-repos -- --target ~/novoone-backend
 # 幂等可重跑（完整 clone 过的仓库跳过；中断留下的半成品目录会自动重新 clone）；
 # 浅克隆 --depth 1（默认），日常更新交给 sentry_sync_code 的 ff-only pull
+# 装有 codegraph 时脚本会为每个仓库自动建索引（未装自动回退 ripgrep；老检出无索引会补建）
 ```
 
 代码根目录键名 `DSH_SENTRY_CODE_BASE`，三种来源按优先级取第一个：`envs.yml codeRepository.baseDir` > 环境变量 > 凭据库。**推荐写进凭据库**——和凭据同一个文件一次配齐（在 `refs:` 下加 `DSH_SENTRY_CODE_BASE: ~/novoone-backend`；路径不是机密，dsh 只解析 `*Ref` 引用的键，多余键对它无影响）；服务器等已有环境变量注入的场合继续 `export` 也行。配好后重跑 regenerate。

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Environment matrix types, credential readiness checks, and Cordis patch rendering shared by the CLI and env-switcher tool.",
+  "description": "Environment matrix types, credential readiness checks, Cordis patch rendering, and the shared codegraph index contract (marker/git-dir/availability probes) consumed by the CLI, env-switcher, and tool-code-repository.",
   "exports": {
     ".": {
       "types": "./src/index.ts",

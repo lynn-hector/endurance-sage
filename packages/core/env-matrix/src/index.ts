@@ -423,3 +423,5 @@ function yamlScalar(value: unknown): string {
   if (typeof value === 'string') return stringify(value).trimEnd()
   return String(value)
 }
+
+export * from './codegraph.ts'

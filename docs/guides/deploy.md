@@ -58,6 +58,8 @@ export DSH_SENTRY_CODE_BASE=/srv/novoone-backend
 pnpm --filter @dsh-sentry/agent run regenerate
 ```
 
+装有 codegraph 的服务器上，clone 脚本会自动初始化各仓索引（老检出无索引会补建）；未装则检索回退 ripgrep。
+
 **GitLab 认证（clone 与后续 pull 共用）**：私有仓二选一——HTTPS + PAT（默认）或 SSH key（脚本加 `--ssh`）。配置步骤唯一权威源是 [onboarding.md](onboarding.md) 第 2 步「GitLab 认证」（含无终端交互环境的预置做法）；配置一次后 `sentry_sync_code` 的 pull 同样免密。
 
 不配置时其他证据腿不受影响，code 腿会以错误证据回报。

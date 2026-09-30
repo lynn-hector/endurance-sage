@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { isAuthFailure, isCompleteClone, parseArgs, REPOS, recoverPartialClone, repoUrl, spawnClone } from '../src/clone-repos.ts'
+import { codegraphAvailable } from '../src/render.ts'
+import { codegraphInstalled, isAuthFailure, isCompleteClone, gitHeadFull, parseArgs, REPOS, recoverPartialClone, repoUrl, spawnClone, spawnCodegraphInit } from '../src/clone-repos.ts'
 
 describe('REPOS 权威清单', () => {
   it('无重复、全部 novo- 前缀（novo-* 通配可全覆盖）', () => {
@@ -72,6 +73,17 @@ describe('isAuthFailure', () => {
 const tmp = mkdtempSync(join(tmpdir(), 'dsh-clone-repos-'))
 const origin = join(tmp, 'origin.git')
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
+
+/** 本机是否装有 codegraph 二进制（与 tool-code-repository/tests/sync.test.ts 同探测模式）；
+ *  无 codegraph 的机器上真实二进制用例自动跳过，失败路径用例恒跑。 */
+const hasCodegraph = (() => {
+  try {
+    execFileSync('codegraph', ['--version'], { stdio: 'pipe' })
+    return true
+  } catch {
+    return false
+  }
+})()
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync('git', ['-C', cwd, ...args], { stdio: 'ignore' })
@@ -153,4 +165,37 @@ describe('spawnClone', () => {
     expect(result.ok).toBe(false)
     expect(result.reason.length).toBeGreaterThan(0)
   })
+})
+
+describe('codegraph 探测与初始化', () => {
+  it('gitHeadFull：对 git fixture 读出完整 HEAD sha', () => {
+    const repo = makeRepo('head-repo', true)
+    expect(gitHeadFull(repo)).toMatch(/^[0-9a-f]{40}$/)
+    const junk = join(tmp, 'head-junk')
+    mkdirSync(junk)
+    expect(gitHeadFull(junk)).toBeUndefined()
+  })
+
+  it('codegraphInstalled 与本机探测常量一致（无 codegraph 环境恒 false）', () => {
+    expect(codegraphInstalled()).toBe(hasCodegraph)
+  })
+
+  it.skipIf(hasCodegraph)('spawnCodegraphInit：二进制不存在时 ok=false 带原因', async () => {
+    const result = await spawnCodegraphInit(join(tmp, 'any'))
+    expect(result.ok).toBe(false)
+    expect(result.reason.length).toBeGreaterThan(0)
+  })
+
+  // 索引判定（codegraphAvailable/hasCompleteIndex）与 marker 读写的契约测试
+  // 在 packages/core/env-matrix/tests/codegraph.test.ts——两消费方共用同一实现
+})
+
+describe.skipIf(!hasCodegraph)('spawnCodegraphInit（真实二进制）', () => {
+  it('成功 init 并产出 .codegraph 索引', async () => {
+    const repo = makeRepo('cg-real', true)
+    writeFileSync(join(repo, 'svc.go'), 'package main\n')
+    const result = await spawnCodegraphInit(repo)
+    expect(result.ok).toBe(true)
+    expect(codegraphAvailable(repo)).toBe(true)
+  }, 120_000)
 })
