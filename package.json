@@ -23,6 +23,7 @@
     "@dsh-sentry/guard-git": "workspace:*",
     "@dsh-sentry/sentry-persona": "workspace:*",
     "@dsh-sentry/sentry-skills": "workspace:*",
+    "@dsh-sentry/service-alertmanager": "workspace:*",
     "@dsh-sentry/service-code-repository": "workspace:*",
     "@dsh-sentry/service-dbx": "workspace:*",
     "@dsh-sentry/service-greptimedb": "workspace:*",

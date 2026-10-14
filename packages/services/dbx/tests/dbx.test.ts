@@ -60,11 +60,11 @@ afterEach(() => {
 
 describe('extractCookie', () => {
   it('reads the named cookie out of Set-Cookie headers, like _extract_cookie', () => {
-    expect(extractCookie(loginResponse('SESSION42'), 'dbx_session')).toBe('SESSION42')
+    expect(extractCookie(loginResponse('SESSION42').headers, 'dbx_session')).toBe('SESSION42')
   })
 
   it('returns undefined when the cookie is absent', () => {
-    expect(extractCookie(loginResponse(undefined), 'dbx_session')).toBeUndefined()
+    expect(extractCookie(loginResponse(undefined).headers, 'dbx_session')).toBeUndefined()
   })
 })
 

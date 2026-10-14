@@ -20,6 +20,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 import {
   credentialStorePath,
@@ -34,7 +35,9 @@ import {
   resolveEnvName,
 } from './render.ts'
 
-const AGENT_DIR = new URL('..', import.meta.url).pathname
+// fileURLToPath 而非 .pathname：Windows 上 pathname 带 /D:/ 前缀，join 后会被
+// 解析成 D:\D:\… 双盘符路径（与 env-matrix defaultAssemblyPaths 同一惯用法）。
+const AGENT_DIR = fileURLToPath(new URL('..', import.meta.url))
 const CREDENTIAL_STORE = credentialStorePath()
 
 interface Args {

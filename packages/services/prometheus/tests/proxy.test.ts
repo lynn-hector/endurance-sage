@@ -1,5 +1,6 @@
+import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
-import { framesToQueryRangeEnvelope } from '../src/index.ts'
+import { framesToQueryRangeEnvelope, PrometheusService } from '../src/index.ts'
 
 /**
  * Golden tests for the grafana-proxy mode: the `/api/ds/query` frames-to-
@@ -67,5 +68,22 @@ describe('framesToQueryRangeEnvelope', () => {
       }] } },
     }) as { data: { result: { values: [number, string][] }[] } }
     expect(envelope.data.result[0]?.values).toEqual([[1, 'NaN'], [3, '6']])
+  })
+})
+
+describe('buildRangeRequest（dry-run 与真实请求的同一形状）', () => {
+  it('direct 模式：GET /api/v1/query_range 带 step 参数', () => {
+    const service = new PrometheusService(new Context(), { endpoint: 'http://prom:9090' })
+    const req = service.buildRangeRequest('up', 100, 200, '15s')
+    expect(req.url).toBe('http://prom:9090/api/v1/query_range?query=up&start=100.0&end=200.0&step=15s')
+    expect(req.body).toBeUndefined()
+  })
+
+  it('proxied 模式：POST /api/ds/query + 代理 body——dry-run 不再显示从未发送的直连 URL', () => {
+    const service = new PrometheusService(new Context(), { grafanaEndpoint: 'https://grafana.example.com' })
+    const req = service.buildRangeRequest('up', 100, 200, '15s')
+    expect(req.url).toBe('https://grafana.example.com/api/ds/query')
+    const queries = (req.body as { queries: { expr: string; datasource: { uid: string } }[] }).queries
+    expect(queries[0]).toMatchObject({ expr: 'up', datasource: { uid: 'prometheus' } })
   })
 })

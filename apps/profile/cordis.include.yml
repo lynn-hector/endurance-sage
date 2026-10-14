@@ -31,6 +31,13 @@
       datasourceUid: prometheus
       usernameRef: GRAFANA_DP0_USERNAME
       passwordRef: GRAFANA_DP0_PASSWORD
+  - id: sentry-alertmanager
+    name: '@dsh-sentry/service-alertmanager'
+    config:
+      grafanaEndpoint: https://grafana.cn-0.dev.novo-one.com
+      datasourceUid: alertmanager
+      usernameRef: GRAFANA_DP0_USERNAME
+      passwordRef: GRAFANA_DP0_PASSWORD
   - id: sentry-tool-metrics-inspector
     name: '@dsh-sentry/tool-metrics-inspector'
   - id: sentry-dbx

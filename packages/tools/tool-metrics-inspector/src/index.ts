@@ -3,10 +3,10 @@
  * returning the unified evidence envelope.
  *
  * Port of the original `skills/metrics-inspector` (SKILL.md +
- * `scripts/query_metrics.py` + `scripts/list_alerts.py`). The CLI flags
- * collapse into two JSON-Schema tools:
- * - `sentry_query_metrics` — `--start/--end/--metrics/--service/--step/--dry-run/--demo`;
- * - `sentry_list_alerts` — `--service/--state/--demo`.
+ * `scripts/query_metrics.py` + `scripts/list_alerts.py`). The CLI-era flag
+ * set became JSON-Schema tools (query / list-alerts / list-metrics from the
+ * scripts; later additions serve alert triage — see each `defineTool`
+ * registration below for the authoritative list).
  *
  * `--metrics` (a comma-separated string) became a string array; `--env`
  * became the `env` label in `Config` — the environment is an assembly-time
@@ -40,11 +40,16 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError, nowIso } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
+import type {} from '@dsh-sentry/service-alertmanager'
 import type {} from '@dsh-sentry/service-prometheus'
+import { extractAmAlerts, extractAmSilences } from './am.ts'
 import {
+  asRecord,
   buildPromql,
+  extractAlertRules,
   extractDataPoints,
   extractFiringAlerts,
+  extractInstantDataPoints,
   metricUnit,
   parseIso8601,
 } from './promql.ts'
@@ -53,7 +58,7 @@ import {
 export const name = 'tool-metrics-inspector'
 
 /** The seams this plugin registers into. */
-export const inject = ['tools', 'prometheus']
+export const inject = ['tools', 'prometheus', 'alertmanager']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
@@ -72,21 +77,17 @@ export const Config: z<Config> = z.object({
 const SOURCE = 'metrics-inspector'
 const TYPE_METRIC = 'metric'
 const TYPE_ALERT = 'alert'
+const TYPE_ALERT_RULE = 'alert-rule'
+const TYPE_AM_ALERT = 'am-alert'
+const TYPE_AM_SILENCE = 'am-silence'
 const DEFAULT_METRICS = ['qps', 'latency_p99', 'error_rate']
 const DEFAULT_STEP = '15s'
-const QUERY_RANGE_PATH = '/api/v1/query_range'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined
-}
-
-/** Register the two metrics-inspector tools. */
+/** Register the metrics-inspector tools (metrics + alerts). */
 export function apply(ctx: Context, config: Config): void {
   // Env label resolves per call from the assembly files: this plugin injects a
   // service, so a service config swap can leave this instance frozen on
@@ -94,10 +95,30 @@ export function apply(ctx: Context, config: Config): void {
   const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
   const envRef = (): string => `env:${liveEnv()}`
 
+  /** 数据源引用（证据 refs 的第二元素）：与装配模式无关地指向真实出处——
+   *  proxied 装配下 prometheus 的 endpoint 为空，引用 grafana + 数据源 uid。 */
+  const datasourceRef = (): string | undefined => {
+    if (ctx.prometheus.proxied) {
+      const grafana = ctx.prometheus.grafanaEndpoint
+      return grafana.length > 0 ? `${grafana}/datasources/uid/${ctx.prometheus.datasourceUid}` : undefined
+    }
+    const endpoint = ctx.prometheus.endpoint
+    return endpoint.length > 0 ? endpoint : undefined
+  }
+
   /** Evidence refs in the original's two-element shape: datasource ref + endpoint. */
   const refs = (): string[] => {
-    const endpoint = ctx.prometheus.endpoint
-    return endpoint.length > 0 ? [envRef(), endpoint] : [envRef()]
+    const ref = datasourceRef()
+    return ref !== undefined ? [envRef(), ref] : [envRef()]
+  }
+
+  /** AM 工具的 refs：引用真实数据源（Grafana + 数据源 uid）——prometheus 的 endpoint
+   *  在 proxied 装配下为空，不能作为 Alertmanager 证据的出处。 */
+  const amRefs = (): string[] => {
+    const grafana = ctx.alertmanager.grafanaEndpoint
+    return grafana.length > 0
+      ? [envRef(), `${grafana}/datasources/uid/${ctx.alertmanager.datasourceUid}`]
+      : [envRef()]
   }
 
   /** Original endpoint guard, shared by both scripts, original wording kept. */
@@ -113,14 +134,18 @@ export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'sentry_query_metrics',
     description:
-      'Query Prometheus metrics over a time range and return one evidence envelope per call. '
+      'Query Prometheus metrics over a time range or at a single instant (`time`) and return one evidence envelope per call. '
       + 'Read-only. `metrics` accepts built-in short names '
       + '(qps / latency_p99 / latency_p95 / error_rate / cpu / memory) or raw PromQL expressions; '
       + 'at least qps, latency_p99 and error_rate should be queried together when triaging. '
       + 'Prefer a tight time window (5–30 minutes around the symptom).',
     parameters: {
-      start: { type: 'string', required: true, description: 'Range start, ISO8601 (e.g. 2026-07-22T10:00:00Z).' },
-      end: { type: 'string', required: true, description: 'Range end, ISO8601.' },
+      start: { type: 'string', description: 'Range start, ISO8601 (e.g. 2026-07-22T10:00:00Z). Required in range mode; ignored when `time` is given.' },
+      end: { type: 'string', description: 'Range end, ISO8601. Required in range mode; ignored when `time` is given.' },
+      time: {
+        type: 'string',
+        description: 'Instant mode: ISO8601 evaluation time (e.g. 2026-07-22T10:00:00Z). When given, start/end/step are ignored and the query runs as a single-point instant query — use it to pin an exact moment (e.g. the alert firing time).',
+      },
       metrics: {
         type: 'array',
         items: { type: 'string' },
@@ -137,6 +162,17 @@ export function apply(ctx: Context, config: Config): void {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
     async execute(args, _exec) {
+      const instant = typeof args.time === 'string' && args.time.length > 0
+      if (!instant && (typeof args.start !== 'string' || typeof args.end !== 'string')) {
+        return buildEvidenceError({
+          source: SOURCE,
+          type: TYPE_METRIC,
+          error: '缺少 time（instant 模式）或 start/end（range 模式）二者之一',
+          summary: 'time 与 start/end 必须提供其中一组',
+          refs: [envRef()],
+        }) as unknown as JsonValue
+      }
+
       const service = args.service
       const serviceLabel = service || 'all'
 
@@ -151,18 +187,26 @@ export function apply(ctx: Context, config: Config): void {
           name: metricName,
           promql: buildPromql(metricName, service),
           unit: metricUnit(metricName),
-          data_points: [
-            {
-              timestamp: args.start,
-              value: metricName === 'latency_p99' ? 120.0 : 0.05,
-              labels: { service: svc },
-            },
-            {
-              timestamp: args.end,
-              value: metricName === 'latency_p99' ? 3200.0 : 0.35,
-              labels: { service: svc },
-            },
-          ],
+          // instant 单点；range 两点（第二点带峰值）——instant 时 end 是 undefined，
+          // 无条件两点会产出一个无时间戳的幽灵点
+          data_points: instant
+            ? [{
+                timestamp: args.time,
+                value: metricName === 'latency_p99' ? 120.0 : 0.05,
+                labels: { service: svc },
+              }]
+            : [
+                {
+                  timestamp: args.start,
+                  value: metricName === 'latency_p99' ? 120.0 : 0.05,
+                  labels: { service: svc },
+                },
+                {
+                  timestamp: args.end,
+                  value: metricName === 'latency_p99' ? 3200.0 : 0.35,
+                  labels: { service: svc },
+                },
+              ],
         }))
         return buildEvidence({
           source: SOURCE,
@@ -170,8 +214,11 @@ export function apply(ctx: Context, config: Config): void {
           data: {
             env: liveEnv(),
             service: service ?? null,
-            start: args.start,
-            end: args.end,
+            // instant 模式忽略 start/end，也不回显——证据不声称查过从未查询的区间
+            start: instant ? null : args.start,
+            end: instant ? null : args.end,
+            time: args.time ?? null,
+            mode: instant ? 'instant' : 'range',
             demo: true,
             metrics: metricResults,
           },
@@ -184,14 +231,14 @@ export function apply(ctx: Context, config: Config): void {
       let startTs: number
       let endTs: number
       try {
-        startTs = parseIso8601(args.start)
-        endTs = parseIso8601(args.end)
+        startTs = parseIso8601(instant ? args.time! : args.start!)
+        endTs = instant ? startTs : parseIso8601(args.end!)
       } catch (error) {
         return buildEvidenceError({
           source: SOURCE,
           type: TYPE_METRIC,
           error: `时间格式错误: ${errorMessage(error)}`,
-          summary: '--start 或 --end 不是合法的 ISO8601 时间',
+          summary: instant ? 'time 不是合法的 ISO8601 时间' : '--start 或 --end 不是合法的 ISO8601 时间',
           refs: [envRef()],
         }) as unknown as JsonValue
       }
@@ -205,22 +252,39 @@ export function apply(ctx: Context, config: Config): void {
         // Deviation (see module doc): one envelope with every metric's
         // request; the original printed only the first and exited. The
         // Authorization header is omitted exactly like the original dry-run.
-        const requests = metricNames.map(metricName => ({
-          url: `${ctx.prometheus.endpoint}${QUERY_RANGE_PATH}`,
-          query: buildPromql(metricName, service),
-          start: startTs,
-          end: endTs,
-          step,
-          headers: { accept: 'application/json' },
-        }))
+        const requests = metricNames.map((metricName) => {
+          const promql = buildPromql(metricName, service)
+          if (instant) {
+            return {
+              url: ctx.prometheus.buildInstantRequest(promql, startTs).url,
+              query: promql,
+              time: args.time,
+              mode: 'instant',
+              headers: { accept: 'application/json' },
+            }
+          }
+          // dry-run 展示与真实请求同一形状：proxied 装配是 POST /api/ds/query + body，
+          // 不再显示从未发送的直连 /api/v1/query_range
+          const req = ctx.prometheus.buildRangeRequest(promql, startTs, endTs, step)
+          return {
+            url: req.url,
+            ...(req.body !== undefined ? { method: 'POST', body: req.body } : {}),
+            query: promql,
+            start: startTs,
+            end: endTs,
+            step,
+            mode: 'range',
+            headers: { accept: 'application/json' },
+          }
+        })
         return buildEvidence({
           source: SOURCE,
           type: TYPE_METRIC,
           data: {
             env: liveEnv(),
             service: service ?? null,
-            start: args.start,
-            end: args.end,
+            start: instant ? null : args.start,
+            end: instant ? null : args.end,
             step,
             dry_run: true,
             requests,
@@ -237,7 +301,9 @@ export function apply(ctx: Context, config: Config): void {
         const promql = buildPromql(metricName, service)
         const unit = metricUnit(metricName)
         try {
-          const raw = await ctx.prometheus.queryRange(promql, startTs, endTs, step)
+          const raw = instant
+            ? await ctx.prometheus.queryInstant(promql, startTs)
+            : await ctx.prometheus.queryRange(promql, startTs, endTs, step)
           const rawRecord = asRecord(raw)
           if (rawRecord?.['status'] !== 'success') {
             const errorValue = rawRecord?.['error']
@@ -247,7 +313,8 @@ export function apply(ctx: Context, config: Config): void {
             name: metricName,
             promql,
             unit,
-            data_points: extractDataPoints(raw),
+            mode: instant ? 'instant' : 'range',
+            data_points: instant ? extractInstantDataPoints(raw) : extractDataPoints(raw),
           })
         } catch (error) {
           const message = errorMessage(error)
@@ -256,6 +323,7 @@ export function apply(ctx: Context, config: Config): void {
             name: metricName,
             promql,
             unit,
+            mode: instant ? 'instant' : 'range',
             data_points: [],
             error: message,
           })
@@ -272,9 +340,10 @@ export function apply(ctx: Context, config: Config): void {
         data: {
           env: liveEnv(),
           service: service ?? null,
-          start: args.start,
-          end: args.end,
+          start: instant ? null : args.start,
+          end: instant ? null : args.end,
           step,
+          mode: instant ? 'instant' : 'range',
           metrics: metricResults,
         },
         summary,
@@ -415,16 +484,7 @@ export function apply(ctx: Context, config: Config): void {
       // drift, ported verbatim (see module doc and promql.ts).
 
       // Original ordering: endpoint check first, then demo.
-      if (ctx.prometheus.proxied) {
-        return buildEvidence({
-          source: SOURCE, type: TYPE_ALERT,
-          data: { env: liveEnv(), alerts: [], error: '告警查询需要直连 Prometheus /api/v1/rules；当前为 grafana 代理模式，告警接口不可达' },
-          summary: '告警查询在 grafana 代理模式下不可用',
-          confidence: 0,
-          refs: [`env:${liveEnv()}:prometheus`],
-        }) as unknown as JsonValue
-      }
-      if (ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_ALERT)
+      if (!ctx.prometheus.proxied && ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_ALERT)
 
       if (args.demo === true) {
         const svc = service || 'order-service'
@@ -475,6 +535,211 @@ export function apply(ctx: Context, config: Config): void {
           error: errorMessage(error),
           summary: `查询 Prometheus 告警失败：${errorMessage(error)}`,
           refs: refs(),
+        }) as unknown as JsonValue
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sentry_get_alert_rule',
+    description:
+      'Look up alert rule definitions by name substring (case-insensitive) via /api/v1/rules: '
+      + 'returns the PromQL expression, for-duration, labels, annotations and current state of every matching rule, '
+      + 'firing or not. Read-only. First step of alert analysis: take the alert name from the notification, '
+      + 'get the expression, then drill into its metrics.',
+    parameters: {
+      name: { type: 'string', required: true, description: 'Rule name substring, e.g. "GoGrpcP95LatencyHigh".' },
+      demo: { type: 'boolean', default: false, description: 'Return fixed demo data without connecting to Prometheus.' },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute(args, _exec) {
+      // Original ordering（与 sentry_query_metrics / sentry_list_alerts 一致）：先查配置再谈 demo——
+      // 半配置宿主上 demo 输出不该被当成真实证据
+      if (!ctx.prometheus.proxied && ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_ALERT_RULE)
+      if (args.demo === true) {
+        return buildEvidence({
+          source: SOURCE,
+          type: TYPE_ALERT_RULE,
+          data: {
+            env: liveEnv(),
+            name_filter: args.name,
+            demo: true,
+            rules: [{
+              name: 'GoGrpcP95LatencyHigh',
+              group: 'GoServiceL2Alerts',
+              query: 'histogram_quantile(0.95, sum by (le, grpc_service, grpc_method) (rate(grpc_server_handling_seconds_bucket{namespace="novo-one"}[5m]))) > 1',
+              duration: 180,
+              labels: { severity: 'l2' },
+              annotations: { summary: 'Go gRPC P95 耗时过高' },
+              state: 'firing',
+              firing: [{ active_at: '2026-10-10T07:14:53Z', value: '2.125', labels: { grpc_method: 'GetConfigurationXML' } }],
+            }],
+            match_count: 1,
+          },
+          summary: `[demo] env=${liveEnv()} 规则名过滤 "${args.name}" 命中 1 条。`,
+          confidence: 1.0,
+          refs: [envRef()],
+        }) as unknown as JsonValue
+      }
+
+      try {
+        const raw = await ctx.prometheus.rules()
+        const rules = extractAlertRules(raw, args.name)
+        return buildEvidence({
+          source: SOURCE,
+          type: TYPE_ALERT_RULE,
+          data: {
+            env: liveEnv(),
+            name_filter: args.name,
+            rules,
+            match_count: rules.length,
+          },
+          summary: `env=${liveEnv()} 规则名过滤 "${args.name}" 命中 ${rules.length} 条`,
+          confidence: rules.length > 0 ? 0.95 : 0.4,
+          refs: refs(),
+        }) as unknown as JsonValue
+      } catch (error) {
+        return buildEvidenceError({
+          source: SOURCE,
+          type: TYPE_ALERT_RULE,
+          error: errorMessage(error),
+          summary: `查询 Prometheus 告警规则失败：${errorMessage(error)}`,
+          refs: refs(),
+        }) as unknown as JsonValue
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sentry_list_am_alerts',
+    description:
+      'List active alert instances from Alertmanager (behind Grafana): name, labels, annotations, '
+      + 'active_at/ends_at, fingerprint, receivers. Complements sentry_list_alerts with the routing view — '
+      + 'use it for the global firing picture and correlated alerts before drilling into a single rule. Read-only.',
+    parameters: {
+      match: { type: 'string', description: 'Case-insensitive substring filter on the alert name.' },
+      demo: { type: 'boolean', default: false, description: 'Return fixed demo data without connecting.' },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute(args, _exec) {
+      if (args.demo === true) {
+        return buildEvidence({
+          source: SOURCE,
+          type: TYPE_AM_ALERT,
+          data: {
+            env: liveEnv(),
+            demo: true,
+            alerts: [{
+              name: 'GoGrpcP95LatencyHigh',
+              status: { state: 'active', inhibited_by: [], silenced_by: [] },
+              labels: { severity: 'l2', cluster: 'dev-platform-hosted-1' },
+              annotations: { summary: 'Go gRPC P95 耗时过高' },
+              active_at: '2026-10-10T07:14:53Z',
+              ends_at: '2026-10-10T07:44:53Z',
+              fingerprint: 'demo',
+              receivers: ['feishu-ops'],
+            }],
+          },
+          summary: `[demo] env=${liveEnv()} 1 个活跃告警。`,
+          confidence: 1.0,
+          refs: amRefs(),
+        }) as unknown as JsonValue
+      }
+      try {
+        const raw = await ctx.alertmanager.listAlerts()
+        const alerts = extractAmAlerts(raw, args.match)
+        return buildEvidence({
+          source: SOURCE,
+          type: TYPE_AM_ALERT,
+          data: { env: liveEnv(), match: args.match ?? null, alerts, count: alerts.length },
+          summary: `env=${liveEnv()} Alertmanager 活跃告警 ${alerts.length} 条${args.match ? `（过滤 "${args.match}"）` : ''}`,
+          confidence: 0.95,
+          refs: amRefs(),
+        }) as unknown as JsonValue
+      } catch (error) {
+        return buildEvidenceError({
+          source: SOURCE,
+          type: TYPE_AM_ALERT,
+          error: errorMessage(error),
+          summary: `查询 Alertmanager 活跃告警失败：${errorMessage(error)}`,
+          refs: amRefs(),
+        }) as unknown as JsonValue
+      }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sentry_list_am_silences',
+    description:
+      'List Alertmanager silences (active and expired, optional state filter). Use to check whether an alert '
+      + 'was muted — a silenced alert stops notifying while still firing. Read-only.',
+    parameters: {
+      state: { type: 'string', description: 'Filter by silence state: "active" or "expired". Omit for all.' },
+      demo: { type: 'boolean', default: false, description: 'Return fixed demo data without connecting.' },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+    },
+    async execute(args, _exec) {
+      const state = args.state
+      // 非法值报错而不是静默丢掉过滤条件——「没有匹配的静默」和「过滤没执行过」
+      // 对"这条告警被静音了吗"是完全不同的答案
+      if (state !== undefined && state !== 'active' && state !== 'expired') {
+        return buildEvidenceError({
+          source: SOURCE,
+          type: TYPE_AM_SILENCE,
+          error: `state 仅支持 active 或 expired（收到: ${state}），不传则返回全部`,
+          summary: 'state 参数不合法',
+          refs: [envRef()],
+        }) as unknown as JsonValue
+      }
+      if (args.demo === true) {
+        return buildEvidence({
+          source: SOURCE,
+          type: TYPE_AM_SILENCE,
+          data: {
+            env: liveEnv(),
+            demo: true,
+            silences: [{
+              id: 'demo-sil',
+              status: { state: 'active' },
+              matchers: [{ name: 'cluster', value: 'dev-platform-hosted-1', is_regex: false }],
+              starts_at: '2026-10-01T00:00:00Z',
+              ends_at: '2026-10-20T00:00:00Z',
+              comment: '升级窗口静默',
+              created_by: 'ops',
+            }],
+          },
+          summary: `[demo] env=${liveEnv()} 1 条静默。`,
+          confidence: 1.0,
+          refs: amRefs(),
+        }) as unknown as JsonValue
+      }
+      try {
+        const raw = await ctx.alertmanager.listSilences()
+        const silences = extractAmSilences(raw, state)
+        return buildEvidence({
+          source: SOURCE,
+          type: TYPE_AM_SILENCE,
+          data: { env: liveEnv(), state: state ?? null, silences, count: silences.length },
+          summary: `env=${liveEnv()} Alertmanager 静默 ${silences.length} 条${state ? `（state=${state}）` : ''}`,
+          confidence: 0.95,
+          refs: amRefs(),
+        }) as unknown as JsonValue
+      } catch (error) {
+        return buildEvidenceError({
+          source: SOURCE,
+          type: TYPE_AM_SILENCE,
+          error: errorMessage(error),
+          summary: `查询 Alertmanager 静默失败：${errorMessage(error)}`,
+          refs: amRefs(),
         }) as unknown as JsonValue
       }
     },

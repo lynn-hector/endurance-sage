@@ -39,6 +39,7 @@ import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
   endpointField,
+  extractCookie,
   resolveCredential,
   secretField,
   timeoutMsField,
@@ -151,21 +152,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Extract a cookie value from `Set-Cookie` response headers.
- * Port of `dbx.py._extract_cookie`.
+ * Extract a cookie value from `Set-Cookie` response headers — the shared
+ * `@dsh-sentry/datasource` helper (dbx.py `_extract_cookie`'s behavior,
+ * takes the `headers` rather than the whole response).
  */
-export function extractCookie(response: Response, name: string): string | undefined {
-  const headers = response.headers as Headers & { getSetCookie?: () => string[] }
-  const rawCookies = typeof headers.getSetCookie === 'function'
-    ? headers.getSetCookie()
-    : (headers.get('set-cookie') !== null ? [headers.get('set-cookie') as string] : [])
-  for (const cookie of rawCookies) {
-    if (!cookie.startsWith(`${name}=`)) continue
-    const first = cookie.split(';')[0] as string
-    return first.slice(first.indexOf('=') + 1)
-  }
-  return undefined
-}
+export { extractCookie }
 
 /**
  * Pick the target-type connection out of `/api/connection/list` results.
@@ -369,7 +360,7 @@ export class DbxService extends Service {
       throw new Error(`dbx 登录失败 HTTP ${resp.status}: ${detail}`)
     }
 
-    const session = extractCookie(resp, SESSION_COOKIE)
+    const session = extractCookie(resp.headers, SESSION_COOKIE)
     if (!session) {
       const body = await resp.text()
       throw new Error(`登录成功但未返回 dbx_session cookie，响应: ${body.slice(0, 200)}`)

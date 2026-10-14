@@ -129,3 +129,60 @@ describe('parseGreptimeRows', () => {
     expect(rows).toEqual([{ a: 1, b: null }, { a: 2, b: 3 }])
   })
 })
+
+describe('parseGreptimeRows — timestamp column normalization', () => {
+  const bodyWith = (datatypeKey: string, rowValue: unknown) => ({
+    output: [{
+      records: {
+        schema: { column_schemas: [{ name: 'greptime_timestamp', [datatypeKey]: 'timestamp' }, { name: 'message' }] },
+        rows: [[rowValue, 'hi']],
+      },
+    }],
+  })
+
+  it('normalizes nanosecond numbers to ISO8601 with 9 fractional digits', () => {
+    const rows = parseGreptimeRows(bodyWith('datatype', 1760078093123456789))
+    // The numeric literal exceeds Number.MAX_SAFE_INTEGER, so the double
+    // rounds to ...456768 — sub-millisecond digits cannot survive the number path.
+    expect(rows[0]!['greptime_timestamp']).toBe('2025-10-10T06:34:53.123456768Z')
+  })
+
+  it('normalizes nanosecond digit-strings the same way', () => {
+    const rows = parseGreptimeRows(bodyWith('data_type', '1760078093123456789'))
+    // Digit-strings are parsed as exact BigInts, so all 9 fractional digits survive.
+    expect(rows[0]!['greptime_timestamp']).toBe('2025-10-10T06:34:53.123456789Z')
+  })
+
+  it('normalizes millisecond numbers with 3 fractional digits', () => {
+    const rows = parseGreptimeRows(bodyWith('datatype', 1760078093123))
+    expect(rows[0]!['greptime_timestamp']).toBe('2025-10-10T06:34:53.123Z')
+  })
+
+  it('keeps date-shaped strings untouched', () => {
+    const rows = parseGreptimeRows(bodyWith('datatype', '2026-10-10T07:14:53.123456789Z'))
+    expect(rows[0]!['greptime_timestamp']).toBe('2026-10-10T07:14:53.123456789Z')
+  })
+
+  it('keeps null untouched', () => {
+    const rows = parseGreptimeRows(bodyWith('datatype', null))
+    expect(rows[0]!['greptime_timestamp']).toBeNull()
+  })
+
+  it('leaves values alone when the schema carries no datatype', () => {
+    const rows = parseGreptimeRows({
+      output: [{
+        records: {
+          schema: { column_schemas: [{ name: 'greptime_timestamp' }, { name: 'message' }] },
+          rows: [[1760078093123456789, 'hi']],
+        },
+      }],
+    })
+    expect(rows[0]!['greptime_timestamp']).toBe(1760078093123456789)
+  })
+
+  it('integral values beyond the Date range pass through untouched instead of throwing（怪值不该炸掉整条查询）', () => {
+    const huge = parseGreptimeRows(bodyWith('datatype', '99999999999999999999999')) // 23 位 → ns 路径 → 秒值远超 Date 上限
+    expect(huge[0]!['greptime_timestamp']).toBe('99999999999999999999999')
+    expect(() => parseGreptimeRows(bodyWith('datatype', '99999999999999999999999'))).not.toThrow()
+  })
+})

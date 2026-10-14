@@ -21,6 +21,8 @@ export interface EnvLeg {
   datasourceUid?: string
   /** Grafana 内 GreptimeDB-Jaeger 数据源的 uid（仅 grafana 腿使用，uid 随环境漂移） */
   greptimedbJaegerDatasourceUid?: string
+  /** Grafana 内 Alertmanager 数据源的 uid（仅 grafana 腿派生服务使用，缺省 alertmanager） */
+  alertmanagerDatasourceUid?: string
   project?: string
   envName?: string
   usernameRef?: string
@@ -207,6 +209,16 @@ export function renderEntries(row: EnvRow): Entry[] {
         ...(row.prometheus.tokenRef !== undefined
           ? { tokenRef: row.prometheus.tokenRef }
           : { usernameRef: row.grafana.usernameRef, passwordRef: row.grafana.passwordRef }),
+      },
+    },
+    {
+      id: 'sentry-alertmanager',
+      name: '@dsh-sentry/service-alertmanager',
+      config: {
+        grafanaEndpoint: row.grafana.endpoint,
+        datasourceUid: row.grafana.alertmanagerDatasourceUid ?? 'alertmanager',
+        usernameRef: row.grafana.usernameRef,
+        passwordRef: row.grafana.passwordRef,
       },
     },
     { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector' },

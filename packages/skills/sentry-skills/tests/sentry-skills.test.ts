@@ -28,6 +28,7 @@ describe('sentry-skills registration', () => {
       'db-inspector',
       'redis-inspector',
       'zadig-inspector',
+      'alert-analysis',
     ]) {
       expect(names).toContain(expected)
       const full = await ctx.skills.get(expected)
@@ -69,6 +70,27 @@ describe('log-analyzer skill content', () => {
     expect(orderIdx[0]).toBeGreaterThan(0)
     expect(orderIdx[0]).toBeLessThan(orderIdx[1]!)
     expect(orderIdx[1]).toBeLessThan(orderIdx[2]!)
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('alert-analysis skill content anchors', () => {
+  it('pins the alert-analysis workflow anchors', async () => {
+    const ctx = await bootSkills()
+    const full = await ctx.skills.get('alert-analysis')
+    const content = full?.content ?? ''
+    for (const anchor of [
+      'sentry_env_switch',
+      'sentry_list_am_alerts',
+      'sentry_get_alert_rule',
+      'sentry_query_metrics',
+      'sentry_query_logs',
+      'sentry_query_zadig',
+      'UTC+8',
+      'commctl-config',
+    ]) {
+      expect(content).toContain(anchor)
+    }
     await ctx.fiber.dispose()
   })
 })
