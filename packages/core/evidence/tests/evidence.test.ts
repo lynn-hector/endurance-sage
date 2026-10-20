@@ -3,6 +3,7 @@ import {
   buildEvidence,
   buildEvidenceError,
   isEvidenceEnvelope,
+  KNOWN_EVIDENCE_TYPES,
   nowIso,
   validateEvidence,
 } from '../src/index.ts'
@@ -107,5 +108,11 @@ describe('validateEvidence', () => {
 describe('nowIso', () => {
   it('emits second-precision UTC', () => {
     expect(nowIso()).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
+  })
+})
+
+describe('KNOWN_EVIDENCE_TYPES', () => {
+  it('lists callflow among known evidence types', () => {
+    expect(KNOWN_EVIDENCE_TYPES).toContain('callflow')
   })
 })

@@ -182,6 +182,7 @@ export function renderEntries(row: EnvRow): Entry[] {
       },
     },
     { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },
+    { id: 'sentry-tool-callflow-analyzer', name: '@dsh-sentry/tool-callflow-analyzer' },
     {
       id: 'sentry-trace',
       name: '@dsh-sentry/service-trace',

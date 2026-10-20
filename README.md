@@ -1,6 +1,6 @@
 # dsh-sentry
 
-通信产品（novo-commctl）的 AIOps 故障调查员：以 DSH（deepseek-harness）原生 Cordis 插件体系构建的排障 Agent——八条证据腿（日志、链路、指标、DB、Redis、MQ、CI/CD、缺陷单）+ 方法论 persona + 危险命令门禁，在 web GUI 里以只读纪律完成「现象 → 根因 → 建议」的闭环排查。
+通信产品（novo-commctl）的 AIOps 故障调查员：以 DSH（deepseek-harness）原生 Cordis 插件体系构建的排障 Agent——十条证据腿（日志、链路、信令、指标、数据库、Redis、MQ、CI/CD、缺陷单、代码）+ 方法论 persona + 危险命令门禁，在 web GUI 里以只读纪律完成「现象 → 根因 → 建议」的闭环排查。
 
 ## 能力全景
 
@@ -8,6 +8,7 @@
 |---|---|---|
 | 日志 | `sentry_query_logs` / `sentry_list_log_services` | GreptimeDB k8s 容器日志，异常模式提取 |
 | 链路 | `sentry_fetch_trace` | Grafana Jaeger 按 traceId 追踪，慢/错调用识别 |
+| 信令 | `sentry_query_call_flow` | GreptimeDB hep_1 SIP 信令流，callid 关联通话全程时序（里程碑/PDD/错误响应），trace_id 桥接回日志与链路 |
 | 指标 | `sentry_query_metrics` / `sentry_list_metrics` / `sentry_list_alerts` | Prometheus 曲线、可用指标名清单（写原生 PromQL 前自查）、firing 告警 |
 | 数据库 | `sentry_query_db` | PostgreSQL 只读 SQL（dbx 平台） |
 | Redis | `sentry_query_redis` | key 值 / TTL / 类型查询 |

@@ -25,6 +25,11 @@
   config:
     env: local
 
+- id: sentry-tool-callflow-analyzer
+  name: '@dsh-sentry/tool-callflow-analyzer'
+  config:
+    env: local
+
 - id: sentry-trace
   name: '@dsh-sentry/service-trace'
   config:

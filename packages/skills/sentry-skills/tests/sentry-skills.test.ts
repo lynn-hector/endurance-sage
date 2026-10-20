@@ -23,6 +23,7 @@ describe('sentry-skills registration', () => {
     const names = skills.map(skill => skill.name)
     for (const expected of [
       'log-analyzer',
+      'callflow-analyzer',
       'trace-analyzer',
       'metrics-inspector',
       'db-inspector',
@@ -91,6 +92,18 @@ describe('alert-analysis skill content anchors', () => {
     ]) {
       expect(content).toContain(anchor)
     }
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('callflow-analyzer skill content', () => {
+  it('describes the hep_1 call-flow tool', async () => {
+    const ctx = await bootSkills()
+    const content = (await ctx.skills.get('callflow-analyzer'))?.content ?? ''
+    expect(content).toContain('sentry_query_call_flow')
+    expect(content).toContain('hep_1')
+    expect(content).toContain('call_id')
+    expect(content).toContain('trace_ids')
     await ctx.fiber.dispose()
   })
 })

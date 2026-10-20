@@ -19,6 +19,7 @@ import TraceService from '@dsh-sentry/service-trace'
 import ZadigService from '@dsh-sentry/service-zadig'
 import * as dbInspector from '@dsh-sentry/tool-db-inspector'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
+import * as callflowAnalyzer from '@dsh-sentry/tool-callflow-analyzer'
 import * as metricsInspector from '@dsh-sentry/tool-metrics-inspector'
 import * as redisInspector from '@dsh-sentry/tool-redis-inspector'
 import * as sentryPersona from '@dsh-sentry/sentry-persona'
@@ -40,6 +41,7 @@ await root.plugin(GreptimeDbService, {
   passwordRef: 'GREPTIMEDB_LOCAL_PASSWORD',
 })
 await root.plugin(logAnalyzer, { env: 'local' })
+await root.plugin(callflowAnalyzer, { env: 'local' })
 await root.plugin(TraceService, {
   endpoint: 'https://grafana.example.invalid',
   usernameRef: 'GRAFANA_LOCAL_USERNAME',
@@ -71,7 +73,7 @@ await root.plugin(mqInspector, { env: 'local' })
 await root.plugin(sentrySkills)
 await root.plugin(sentryPersona)
 
-const TOOLS = ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_get_alert_rule', 'sentry_list_am_alerts', 'sentry_list_am_silences', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq']
+const TOOLS = ['sentry_query_logs', 'sentry_list_log_services', 'sentry_query_call_flow', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_get_alert_rule', 'sentry_list_am_alerts', 'sentry_list_am_silences', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq']
 
 for (const name of TOOLS) {
   if (root.tools.get(name) === undefined) {

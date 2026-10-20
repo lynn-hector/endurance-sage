@@ -57,6 +57,12 @@ const SKILLS: SkillSpec[] = [
       '根据服务、时间范围、关键词和过滤条件从 GreptimeDB 查询 k8s 容器日志，提取异常模式（sentry_query_logs / sentry_list_log_services）。',
   },
   {
+    file: 'callflow-analyzer.md',
+    name: 'callflow-analyzer',
+    description:
+      '按 callid 查询 GreptimeDB hep_1 表的 SIP 信令流，还原 INVITE/180/200/BYE 时序与 PDD，识别错误响应（≥400，401 认证质询不计入）；trace_id 桥接回日志与链路（sentry_query_call_flow）。',
+  },
+  {
     file: 'trace-analyzer.md',
     name: 'trace-analyzer',
     description:

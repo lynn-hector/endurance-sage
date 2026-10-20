@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto'
 export const KNOWN_EVIDENCE_TYPES = [
   'log',
   'trace',
+  'callflow',
   'code',
   'metric',
   'alert',
