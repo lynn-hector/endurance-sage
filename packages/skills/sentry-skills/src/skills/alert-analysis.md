@@ -52,7 +52,7 @@
 
 ## 步骤 4：日志交叉
 
-**服务名三方映射**：gRPC 标签 `com.yeastar.novoone.<短名>.<Svc>Service` → 短名（`cconfig`）→ workload_name（`commctl-config`）。已知映射：`cconfig→commctl-config`。**短名与 workload 不总是字面相等**（`commctl-` 前缀），不确定时先 `sentry_list_log_services` 按短名模糊探测。
+**服务名三方映射**：gRPC 标签 `com.yeastar.novoone.<短名>.<Svc>Service` → 短名（`cconfig`）→ workload_name（`commctl-config`）。已知映射：`cconfig→commctl-config`；Java 平台服务：Zadig 模块 `novo-one/platform` → 仓库 `novo-platform-backend`（代码检索的 `repo` 参数用仓库名，勿传模块名/服务名）。**短名与 workload 不总是字面相等**（`commctl-` 前缀），不确定时先 `sentry_list_log_services` 按短名模糊探测。
 
 查询：`sentry_query_logs`，窗口告警开始 ±5–10 分钟；先 `level=ERROR`（ERROR/WARN 双级别用 `filterOr`，如 `filterOr: ["level=ERROR","level=WARN"]`），无结果放宽；同时查该窗口**全集群** ERROR 计数区分「错误风暴」与「慢但成功」（后者日志往往干净）。
 

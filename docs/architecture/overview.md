@@ -47,7 +47,7 @@ flowchart TB
     end
 
     subgraph TARGET["外部产品环境（novo-one，环境清单见 envs.yml）"]
-        obs["GreptimeDB 日志 · Grafana（Jaeger 链路 + Prometheus 指标）<br/>dbx（PG + Redis）· RocketMQ · Zadig · TAPD"]
+        obs["GreptimeDB 日志 · Grafana（Jaeger 链路 + Prometheus 指标 + Alertmanager 告警）<br/>dbx（PG + Redis）· RocketMQ · Zadig · TAPD"]
         gitlab["GitLab novoone/backend 组产品仓库"]
     end
 
@@ -56,7 +56,7 @@ flowchart TB
     entry --> runtime
     agent -->|生成| profile
     runtime -->|装配| profile
-    profile --> skills & guard & tools
+    profile --> skills & guard & tools & services
     tools --> services
     tools --> core
     services --> core
