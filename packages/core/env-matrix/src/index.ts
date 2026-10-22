@@ -56,6 +56,8 @@ export const ENV_ALIASES: Readonly<Record<string, string>> = {
   TC0: 'tst-client-hosted-0',
   SC1: 'sit-client-hosted-1',
   SC2: 'sit-client-hosted-2',
+  PBO: 'pro-br-saas-aws-eks-novo',
+  TPSG0: 'tst-platform-aws-eks-sg-0',
 }
 
 const DEFAULT_DB_DATABASE = 'novo_commctl_config'
@@ -77,6 +79,12 @@ export function aliasesForEnv(name: string): string[] {
     .map(([alias]) => alias)
 }
 
+/**
+ * All credential refs a row declares — a config-shape contract (envs.yml rows
+ * must name every ref they wire; greptimedb dual-config lists both sets).
+ * Value-aware runtime readiness (missing/empty degrades the leg, never blocks
+ * a switch) lives in {@link credentialReadiness}.
+ */
 export function requiredCredentialRefs(row: EnvRow): string[] {
   return [
     row.greptimedb.usernameRef,
@@ -127,6 +135,88 @@ export function knownCredentialKeys(storePath: string, env: NodeJS.ProcessEnv = 
   const keys = new Set(Object.keys(env))
   for (const key of Object.keys(readCredentialStore(storePath))) keys.add(key)
   return keys
+}
+
+/**
+ * Value-aware credential view: keys of the credential store plus process env
+ * whose value is a non-empty string. Empty and whitespace-only values count
+ * as unconfigured (a present-but-empty key must not satisfy a leg).
+ */
+export function credentialValues(storePath: string, env: NodeJS.ProcessEnv = process.env): Map<string, string> {
+  const values = new Map<string, string>()
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === 'string' && value.trim() !== '') values.set(key, value)
+  }
+  for (const [key, value] of Object.entries(readCredentialStore(storePath))) {
+    if (typeof value === 'string' && value.trim() !== '') values.set(key, value)
+  }
+  return values
+}
+
+export interface LegReadiness {
+  leg: 'greptimedb' | 'grafana' | 'prometheus' | 'dbx' | 'rocketmq' | 'zadig'
+  ok: boolean
+  /** greptimedb 腿的认证模式，与渲染接线一致：tokenRef 定义即 token，否则账密 */
+  authMode?: 'token' | 'basic'
+  missingRefs: string[]
+}
+
+/**
+ * Per-leg credential readiness. Values absent or empty degrade only that leg
+ * (`ok: false` + its `missingRefs`) — never a whole-environment refusal; the
+ * switcher warns and the leg's tools fail lazily at call time. Only legs that
+ * configure refs are evaluated. greptimedb is either/or: with `tokenRef`
+ * defined the leg evaluates token mode only (leftover basic refs are ignored,
+ * mirroring renderEntries' connectTokenRef-first wiring). A degraded `grafana`
+ * leg is wider than its name: trace / prometheus (form login) / alertmanager
+ * tools share the grafana credentials and degrade with it.
+ */
+export function credentialReadiness(
+  row: EnvRow,
+  storePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): LegReadiness[] {
+  const values = credentialValues(storePath, env)
+  const evaluate = (
+    leg: LegReadiness['leg'],
+    refs: Array<string | undefined>,
+    authMode?: LegReadiness['authMode'],
+  ): LegReadiness => {
+    const missingRefs = refs
+      .filter((ref): ref is string => ref !== undefined)
+      .filter(ref => !values.has(ref))
+    return {
+      leg,
+      ok: missingRefs.length === 0,
+      ...(authMode !== undefined ? { authMode } : {}),
+      missingRefs,
+    }
+  }
+  const legs: LegReadiness[] = []
+  const greptimedbToken = row.greptimedb.tokenRef !== undefined
+  const greptimedbHasRefs = greptimedbToken
+    || row.greptimedb.usernameRef !== undefined
+    || row.greptimedb.passwordRef !== undefined
+  if (greptimedbHasRefs) {
+    legs.push(evaluate(
+      'greptimedb',
+      greptimedbToken ? [row.greptimedb.tokenRef] : [row.greptimedb.usernameRef, row.greptimedb.passwordRef],
+      greptimedbToken ? 'token' : 'basic',
+    ))
+  }
+  if (row.grafana.usernameRef !== undefined || row.grafana.passwordRef !== undefined) {
+    legs.push(evaluate('grafana', [row.grafana.usernameRef, row.grafana.passwordRef]))
+  }
+  // prometheus 统一走 grafana 表单登录；tokenRef 是单环境 Bearer 逃生口
+  if (row.prometheus.tokenRef !== undefined) {
+    legs.push(evaluate('prometheus', [row.prometheus.tokenRef], 'token'))
+  }
+  if (row.dbx.passwordRef !== undefined) legs.push(evaluate('dbx', [row.dbx.passwordRef]))
+  if (row.rocketmq.usernameRef !== undefined || row.rocketmq.passwordRef !== undefined) {
+    legs.push(evaluate('rocketmq', [row.rocketmq.usernameRef, row.rocketmq.passwordRef]))
+  }
+  if (row.zadig.tokenRef !== undefined) legs.push(evaluate('zadig', [row.zadig.tokenRef]))
+  return legs
 }
 
 /**

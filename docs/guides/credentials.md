@@ -14,7 +14,7 @@ TAPD_TOKEN: <token>
 ...
 ```
 
-键名约定 `<SYSTEM>_<ENV>_<FIELD>`；平台级数据源（zadig、tapd）无环境段。每行环境引用哪些键，权威来源是 `apps/agent/envs.yml`（`use-env` 切换前会校验全部键就绪，缺一个拒绝切换）。
+键名约定 `<SYSTEM>_<ENV>_<FIELD>`；平台级数据源（zadig、tapd）无环境段。每行环境引用哪些键，权威来源是 `apps/agent/envs.yml`（`use-env` 切换前按腿校验就绪，缺值或空值只降级对应腿、不拦截切换）。
 
 凭据库有两种形态，就绪校验（`use-env` 与 `sentry_env_list` / `sentry_env_switch`，实现共享于 `@dsh-sentry/env-matrix`）对两种都识别：
 

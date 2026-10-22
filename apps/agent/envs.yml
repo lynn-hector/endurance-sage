@@ -2,17 +2,20 @@
 #
 # 每行环境 = 一组数据源 endpoint + 凭据键名（引用，不是值）。
 # 值放 ~/.dsh/.credentials.yaml（键名即此处的 *Ref 字段）。
-# use-env 切换前会校验该环境全部凭据键是否就绪，缺任何一个都拒绝切换。
+# use-env 切换前按腿校验凭据值是否就绪；缺值或空值只降级该腿并告警，不拦截切换（补值即恢复）。
 #
 # 环境命名与运维环境标识一致（本文件即权威环境矩阵）；凭据键短码：
 #   DP0=dev-platform-hosted-0, DP1=dev-platform-hosted-1, DC0=dev-client-hosted-0，
 #   TP0=tst-platform-hosted-0, TP1=tst-platform-hosted-1, TC0=tst-client-hosted-0，
-#   SC1=sit-client-hosted-1, SC2=sit-client-hosted-2
+#   SC1=sit-client-hosted-1, SC2=sit-client-hosted-2,
+#   PBO=pro-br-saas-aws-eks-novo, TPSG0=tst-platform-aws-eks-sg-0
 # - dev-platform-hosted-0/1  研发-平台托管 cn-0/cn-1.dev.novo-one.com
 # - dev-client-hosted-0      研发-客户自托管 cn-0.dev-byoi.novo-one.com
 # - tst-platform-hosted-0/1  测试-平台托管 cn-0/cn-1.test.novo-one.com
 # - tst-client-hosted-0      测试-客户自托管 cn-0.test-byoi.novo-one.com
-# - sit-client-hosted-1/2    性能-客户自托管 cn-1/cn-2.sit-byoi.novo-one.com（2026-09-03 骨架录入，rocketmq 已实测）
+# - sit-client-hosted-1/2    性能-客户自托管 cn-1/cn-2.sit-byoi.novo-one.com
+# - pro-br-saas-aws-eks-novo   生产-平台自营-亚马逊云-EKS-巴西-0 br.novoone.com
+# - tst-platform-aws-eks-sg-0  新加坡-测试0自营环境 sg-0.pre.novo-one.com
 #
 # 已实测的凭据事实（tst 三环境 2026-09-02 全腿 probe 通过）：
 # - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_DP0_USERNAME/PASSWORD），CSV 中该块为陈旧值
@@ -24,8 +27,8 @@
 # - alertmanager 数据源经 grafana 代理（dp1 实测 uid=alertmanager，2026-10-12）；复用 grafana 腿账密，envs 每环境无需另配
 # - greptimedb 支持 token 模式：greptimedb 腿改配 tokenRef（值=纯 token，dashboard /#/token-generator
 #   页面生成，AES 加密的账密），省略 usernameRef/passwordRef；服务端解密后仍走 Basic。
-#   配了 tokenRef 就删掉该腿的 usernameRef/passwordRef 两行——预检要求配置里
-#   出现的所有引用键都在场，残留旧账密引用会挡住切换
+#   tokenRef 与账密引用二选一：tokenRef 定义时按 token 接线，渲染与预检都
+#   忽略残留的账密引用（别同配两套）
 #   用法（XX=环境短码）：
 #     greptimedb:
 #       endpoint: https://greptimedb.br.novoone.com
@@ -247,4 +250,61 @@ sit-client-hosted-2:
     endpoint: https://zadig.yeastardigital.com
     project: novo-one-helm-charts-project
     envName: sit-client-hosted-2   # 未核实 Zadig 中是否存在同名环境
+    tokenRef: ZADIG_API_TOKEN
+
+# 生产-平台自营-亚马逊云-EKS-巴西-0（br.novoone.com 族）骨架录入（凭据键预留、值未补，全腿未实测——补齐凭据后逐腿 probe 校准）。
+# endpoint 按 {组件}.br.novoone.com 推断（与头部 token 模式示例的 greptimedb.br.novoone.com 同族）。
+pro-br-saas-aws-eks-novo:
+  envLabel: pro-br-saas-aws-eks-novo
+  greptimedb:
+    endpoint: https://greptimedb.br.novoone.com
+    database: public
+    tokenRef: GREPTIMEDB_PBO_CONNECT_TOKEN   # token 模式：dashboard /#/token-generator 生成；配 tokenRef 不留账密引用
+  grafana:
+    endpoint: https://grafana.br.novoone.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 未实测占位（tst 族实测值）；probe grafana-datasources PBO 校准
+    usernameRef: GRAFANA_PBO_USERNAME
+    passwordRef: GRAFANA_PBO_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.br.novoone.com
+    passwordRef: DBX_PBO_PASSWORD   # 暂无账号——值缺省时该腿降级（预检不拦截），账号下发后补值即生效
+  rocketmq:
+    endpoint: https://rocketmq.br.novoone.com
+    usernameRef: ROCKETMQ_PBO_USERNAME   # 暂无账号——值缺省时该腿降级（预检不拦截），账号下发后补值即生效
+    passwordRef: ROCKETMQ_PBO_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: pro-br-saas-aws-eks-novo   # 未核实 Zadig 中是否存在同名环境
+    tokenRef: ZADIG_API_TOKEN
+
+# 新加坡-测试0自营环境（sg-0.pre.novo-one.com 族）骨架录入（凭据键预留、值未补，全腿未实测）。
+# endpoint 按 {组件}.sg-0.pre.novo-one.com 推断。
+tst-platform-aws-eks-sg-0:
+  envLabel: tst-platform-aws-eks-sg-0
+  greptimedb:
+    endpoint: https://greptimedb.sg-0.pre.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TPSG0_USERNAME
+    passwordRef: GREPTIMEDB_TPSG0_PASSWORD
+  grafana:
+    endpoint: https://grafana.sg-0.pre.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 未实测占位（tst 族实测值）；probe grafana-datasources TPSG0 校准
+    usernameRef: GRAFANA_TPSG0_USERNAME
+    passwordRef: GRAFANA_TPSG0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.sg-0.pre.novo-one.com
+    passwordRef: DBX_TPSG0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.sg-0.pre.novo-one.com
+    usernameRef: ROCKETMQ_TPSG0_USERNAME
+    passwordRef: ROCKETMQ_TPSG0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-platform-aws-eks-sg-0   # 未核实 Zadig 中是否存在同名环境
     tokenRef: ZADIG_API_TOKEN

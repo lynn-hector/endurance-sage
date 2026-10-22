@@ -93,7 +93,7 @@ flowchart LR
 
     subgraph hot["环境热切换（不重启、不断会话）"]
         switch["use-env CLI / 对话内 sentry_env_switch"]
-        precheck["凭据键预检：缺任何一个拒绝切换"]
+        precheck["凭据按腿预检：缺值降级告警，不拦截切换"]
         watch["重写 cordis.patch.yml<br/>→ dsh patch watcher 热重载"]
         switch --> precheck --> watch
     end

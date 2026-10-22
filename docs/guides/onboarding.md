@@ -142,7 +142,7 @@ dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090，开【新�
 | 模型说没有 sentry 工具 | 对话是装插件前开的旧对话 → 开新对话；或装完没重启 sentry profile |
 | evidence 报「endpoint 或凭据缺失」 | 键名拼错或没写进 `~/.dsh/.credentials.yaml`，逐字母对照第 3 步 |
 | evidence 报 `401` | 凭据值本身错了，链路是好的 |
-| 切环境被拒绝 | 目标环境凭据键没补齐，`use-env --list` 看缺哪个；键明明已填仍全量报缺 → 凭据在 dsh GUI 管理的 `refs:` 嵌套层，`git pull` 更新本仓库后重跑（校验已兼容两种形态） |
+| 切换结果带降级腿 / 切过去某腿工具报凭据错误 | 目标环境该腿凭据没补值（空值也算未配置），`use-env --list` 看缺哪个，补值即恢复、无需重切；键明明已填仍全量报缺 → 凭据在 dsh GUI 管理的 `refs:` 嵌套层，`git pull` 更新本仓库后重跑（校验已兼容两种形态） |
 | `sentry_search_code` 报「未配置任何代码仓库」 | `DSH_SENTRY_CODE_BASE` 三个来源（envs.yml / 环境变量 / 凭据库）都没设——regenerate 时的 ⚠ 警告说的就是这件事；按第 2 步写入凭据库后重跑 regenerate |
 | patch 改了不生效 | 在 dsh 运行期间对仓库跑过 `pnpm install`？停掉重启 sentry profile |
 | `pnpm install` 后类型冲突 | 不要单独 pin `@deepseek-ai/dsh-*` 某个包版本，全仓库统一 `^0.1.0-rc.7` 范围 |

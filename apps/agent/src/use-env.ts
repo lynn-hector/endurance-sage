@@ -7,9 +7,9 @@
  *   pnpm --filter @dsh-sentry/agent run use-env local -- --out apps/profile/cordis.patch.yml
  *   pnpm --filter @dsh-sentry/agent run use-env test -- --profile sentry-test
  *
- * 切换前校验该环境引用的全部凭据键（envs.yml 的 *Ref 字段）在
- * $DSH_HOME/.credentials.yaml 或进程环境中就绪——缺任何一个都拒绝切换，
- * 防止切到一个全 401 的瞎环境。
+ * 切换前按腿校验该环境引用的凭据值（envs.yml 的 *Ref 字段）在
+ * $DSH_HOME/.credentials.yaml 或进程环境中就绪——缺值或空值只降级对应腿
+ * 并告警，不拦截切换（该腿工具调用时按需报错，补值即恢复）。
  *
  * 写入目标 profile 的 cordis.patch.yml 后，dsh 的 patch watcher 会就地
  * 重组插件：不重启进程、不中断会话。
@@ -23,14 +23,13 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 import {
+  credentialReadiness,
   credentialStorePath,
   type EnvRow,
   extractCurrentEnv,
-  knownCredentialKeys,
   type Matrix,
   renderPatch,
   renderIncludePatch,
-  requiredCredentialRefs,
   resolveCodeBaseDir,
   resolveEnvName,
 } from './render.ts'
@@ -98,9 +97,8 @@ function main(): void {
 
   if (args.list || args.env === undefined) {
     console.log('可用环境（envs.yml）:')
-    const known = knownCredentialKeys(CREDENTIAL_STORE)
     for (const [name, row] of Object.entries(matrix)) {
-      const missing = requiredCredentialRefs(row).filter((ref) => !known.has(ref))
+      const missing = credentialReadiness(row, CREDENTIAL_STORE).flatMap((item) => item.missingRefs)
       const state = missing.length === 0 ? '就绪' : `缺凭据: ${missing.join(', ')}`
       console.log(`  ${name.padEnd(12)} ${row.envLabel.padEnd(12)} ${state}`)
     }
@@ -118,13 +116,14 @@ function main(): void {
     process.exit(2)
   }
 
-  const known = knownCredentialKeys(CREDENTIAL_STORE)
-  const missing = requiredCredentialRefs(row).filter((ref) => !known.has(ref))
-  if (missing.length > 0) {
-    console.error(`✗ 环境 ${envName} 缺少凭据，拒绝切换:`)
-    for (const ref of missing) console.error(`    ${ref}   （凭据库中不存在）`)
-    console.error('  补入 $DSH_HOME/.credentials.yaml 后重试。')
-    process.exit(1)
+  // 缺值/空值只降级对应腿并告警，不拦截切换——该腿工具调用时按需报错，补值即恢复
+  const degraded = credentialReadiness(row, CREDENTIAL_STORE).filter((item) => !item.ok)
+  if (degraded.length > 0) {
+    console.error(`⚠ 环境 ${envName} 有 ${degraded.length} 条腿凭据未就绪（不拦截切换，补值即恢复）:`)
+    for (const item of degraded) {
+      const mode = item.authMode !== undefined ? `(${item.authMode})` : ''
+      console.error(`    ${item.leg}${mode}: ${item.missingRefs.join(', ')}`)
+    }
   }
 
   const patch = renderPatch(row)
