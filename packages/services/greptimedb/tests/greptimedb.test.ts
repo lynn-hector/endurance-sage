@@ -1,6 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GreptimeDbService, parseGreptimeRows } from '../src/index.ts'
+import { encryptConnectToken } from './helpers.ts'
 
 const SAMPLE_RESPONSE = {
   output: [
@@ -106,6 +107,73 @@ describe('GreptimeDbService.query', () => {
       passwordRef: 'GT_PASS',
     })
     await expect(service.query('SELECT 1')).rejects.toThrow('GreptimeDB 响应不是合法 JSON')
+  })
+
+  it('uses decrypted credentials from a connect token — token wins over username/password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SAMPLE_RESPONSE))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubEnv('GT_TOKEN', encryptConnectToken({ h: 'https://greptimedb.example.com', u: 'tok-user', p: 'tok-pass' }))
+    vi.stubEnv('GT_USER', 'alice')
+    vi.stubEnv('GT_PASS', 's3cret')
+
+    const ctx = new Context()
+    const service = new GreptimeDbService(ctx, {
+      endpoint: 'https://greptimedb.example.com',
+      usernameRef: 'GT_USER',
+      passwordRef: 'GT_PASS',
+      connectTokenRef: 'GT_TOKEN',
+    })
+
+    const rows = await service.query('SELECT 1')
+    expect(rows).toHaveLength(2)
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = init.headers as Record<string, string>
+    expect(headers['authorization']).toBe(`Basic ${Buffer.from('tok-user:tok-pass', 'utf8').toString('base64')}`)
+  })
+
+  it('fails fast on an undecryptable connect token even when username/password exist', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    vi.stubEnv('GT_TOKEN', 'not-a-valid-token-12345678901234567890')
+    vi.stubEnv('GT_USER', 'alice')
+    vi.stubEnv('GT_PASS', 's3cret')
+
+    const ctx = new Context()
+    const service = new GreptimeDbService(ctx, {
+      endpoint: 'https://greptimedb.example.com',
+      usernameRef: 'GT_USER',
+      passwordRef: 'GT_PASS',
+      connectTokenRef: 'GT_TOKEN',
+    })
+    await expect(service.query('SELECT 1')).rejects.toThrow('connect token')
+  })
+
+  it('rejects a token whose payload lacks username/password', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    vi.stubEnv('GT_TOKEN', encryptConnectToken({ h: 'https://greptimedb.example.com', d: 'public' }))
+
+    const ctx = new Context()
+    const service = new GreptimeDbService(ctx, {
+      endpoint: 'https://greptimedb.example.com',
+      connectTokenRef: 'GT_TOKEN',
+    })
+    await expect(service.query('SELECT 1')).rejects.toThrow('缺 username/password')
+  })
+
+  it('warns but proceeds when the token host mismatches the configured endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SAMPLE_RESPONSE))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubEnv('GT_TOKEN', encryptConnectToken({ h: 'https://greptimedb.other-env.example.com', u: 'u', p: 'p' }))
+
+    const ctx = new Context()
+    const warn = vi.spyOn(ctx.logger, 'warn')
+    const service = new GreptimeDbService(ctx, {
+      endpoint: 'https://greptimedb.example.com',
+      connectTokenRef: 'GT_TOKEN',
+    })
+
+    const rows = await service.query('SELECT 1')
+    expect(rows).toHaveLength(2)
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })
 

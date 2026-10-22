@@ -27,6 +27,7 @@ export interface EnvLeg {
   envName?: string
   usernameRef?: string
   passwordRef?: string
+  /** 腿特定 token 引用，语义随腿变化：prometheus 腿=Bearer token；greptimedb 腿=dashboard connect token（解密还原账密，见 docs/guides/credentials.md） */
   tokenRef?: string
 }
 
@@ -80,6 +81,7 @@ export function requiredCredentialRefs(row: EnvRow): string[] {
   return [
     row.greptimedb.usernameRef,
     row.greptimedb.passwordRef,
+    row.greptimedb.tokenRef,
     row.grafana.usernameRef,
     row.grafana.passwordRef,
     row.dbx.passwordRef,
@@ -177,8 +179,10 @@ export function renderEntries(row: EnvRow): Entry[] {
       config: {
         endpoint: row.greptimedb.endpoint,
         database: row.greptimedb.database ?? 'public',
-        usernameRef: row.greptimedb.usernameRef,
-        passwordRef: row.greptimedb.passwordRef,
+        // token 模式（dashboard connect token 解密为账密）优先；否则账密引用
+        ...(row.greptimedb.tokenRef !== undefined
+          ? { connectTokenRef: row.greptimedb.tokenRef }
+          : { usernameRef: row.greptimedb.usernameRef, passwordRef: row.greptimedb.passwordRef }),
       },
     },
     { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },

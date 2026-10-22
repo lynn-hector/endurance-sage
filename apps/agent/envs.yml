@@ -22,6 +22,14 @@
 # - zadig 为平台级（唯一）
 # - zadig 用长期 OpenAPI token（ZADIG_API_TOKEN，Zadig 个人设置创建，不过期）；不要用浏览器复制的 dex 会话 token（约 1h 过期）
 # - alertmanager 数据源经 grafana 代理（dp1 实测 uid=alertmanager，2026-10-12）；复用 grafana 腿账密，envs 每环境无需另配
+# - greptimedb 支持 token 模式：greptimedb 腿改配 tokenRef（值=纯 token，dashboard /#/token-generator
+#   页面生成，AES 加密的账密），省略 usernameRef/passwordRef；服务端解密后仍走 Basic。
+#   配了 tokenRef 就删掉该腿的 usernameRef/passwordRef 两行——预检要求配置里
+#   出现的所有引用键都在场，残留旧账密引用会挡住切换
+#   用法（XX=环境短码）：
+#     greptimedb:
+#       endpoint: https://greptimedb.br.novoone.com
+#       tokenRef: GREPTIMEDB_XX_CONNECT_TOKEN   # 值=纯 token（token-generator 生成的 base64url 串）
 
 dev-platform-hosted-0:
   envLabel: dev-platform-hosted-0

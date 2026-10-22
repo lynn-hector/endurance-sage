@@ -86,8 +86,9 @@ try {
     await ctx.plugin(GreptimeDbService, {
       endpoint: row.greptimedb.endpoint!,
       database: row.greptimedb.database ?? 'public',
-      usernameRef: row.greptimedb.usernameRef,
-      passwordRef: row.greptimedb.passwordRef,
+      ...(row.greptimedb.tokenRef !== undefined
+        ? { connectTokenRef: row.greptimedb.tokenRef }
+        : { usernameRef: row.greptimedb.usernameRef, passwordRef: row.greptimedb.passwordRef }),
     })
     const rows = await ctx.greptimedb.query('SELECT * FROM k8s_logs LIMIT 1')
     console.log(`GREPTIMEDB PROBE OK — k8s_logs LIMIT 1 returned ${rows.length} row(s)`)

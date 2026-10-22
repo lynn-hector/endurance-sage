@@ -25,6 +25,8 @@ import {
   timeoutMsField,
 } from '@dsh-sentry/datasource'
 
+import { decryptConnectToken } from './connect-token.ts'
+
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
   /** GreptimeDB HTTP base, e.g. `https://greptimedb.example.com`. */
@@ -35,6 +37,10 @@ export interface Config {
   usernameRef?: string
   /** Credential reference for the Basic-auth password. */
   passwordRef?: string
+  /** Credential reference for a dashboard connect token (the bare base64url token, not the whole URL). */
+  connectTokenRef?: string
+  /** Literal connect token fallback when no reference is configured. Discouraged in composition files. */
+  connectToken?: string
   /** Literal username fallback when no reference is configured. Discouraged in composition files. */
   username?: string
   /** Literal password fallback when no reference is configured. Discouraged in composition files. */
@@ -49,6 +55,8 @@ export class GreptimeDbService extends Service {
     database: z.string().default('public').description('SQL 接口的 db 查询参数'),
     usernameRef: credentialRefField('Basic 认证用户名的凭据引用，如 GREPTIMEDB_PRODUCTION_USERNAME'),
     passwordRef: credentialRefField('Basic 认证密码的凭据引用'),
+    connectTokenRef: credentialRefField('dashboard connect token（纯 token）的凭据引用，如 GREPTIMEDB_BR0_CONNECT_TOKEN'),
+    connectToken: secretField('内联 connect token（credential ref 优先；不推荐写在组合文件）'),
     username: secretField('内联用户名（credential ref 优先；不推荐写在组合文件）'),
     password: secretField('内联密码（credential ref 优先；不推荐写在组合文件）'),
     timeoutMs: timeoutMsField(30_000),
@@ -70,8 +78,29 @@ export class GreptimeDbService extends Service {
 
   private readonly config: Config
 
-  /** Resolve Basic-auth credentials: references win over literal fallbacks. */
+  /**
+   * Resolve Basic-auth credentials. A configured connect token (reference
+   * wins over the literal fallback) takes priority and must decrypt — a bad
+   * token fails fast instead of silently falling back to username/password.
+   * An empty-resolving token counts as unconfigured (falls through).
+   */
   private async credentials(): Promise<{ username: string; password: string }> {
+    let connectToken: string | undefined
+    if (this.config.connectTokenRef !== undefined) {
+      connectToken = await resolveCredential(this.ctx, this.config.connectTokenRef)
+    }
+    connectToken ??= this.config.connectToken
+    if (connectToken !== undefined && connectToken.length > 0) {
+      const payload = decryptConnectToken(connectToken)
+      if (!payload.u || !payload.p) {
+        throw new Error('connect token 解出的凭据缺 username/password，token 无效')
+      }
+      if (payload.h !== undefined && this.endpoint.length > 0
+        && payload.h.replace(/\/+$/, '').toLowerCase() !== this.endpoint.toLowerCase()) {
+        this.ctx.logger.warn(`connect token 内 host (${payload.h}) 与配置 endpoint (${this.endpoint}) 不一致，以配置为准`)
+      }
+      return { username: payload.u, password: payload.p }
+    }
     let username: string | undefined
     let password: string | undefined
     if (this.config.usernameRef !== undefined) {

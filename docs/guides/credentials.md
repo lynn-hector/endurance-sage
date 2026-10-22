@@ -39,6 +39,12 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 
 个人令牌：TAPD 网页 → 我的设置 → 个人访问令牌。权限跟账号项目角色走，无需管理员审批。插件直连 `api.tapd.cn`，**不需要安装官方 `mcp-server-tapd`**（已评估否决）。键名：`TAPD_TOKEN`。细节见 [integrations/tapd-integration.md](../integrations/tapd-integration.md)。
 
+### GreptimeDB（connect token 模式）
+
+部分实例发放 dashboard connect token 链接（`…/#/connect?token=…`）。凭据库只存 **token 本身**（`#/connect?token=` 后面的 base64url 串，不存整条 URL）：dashboard 的 `/#/token-generator` 页面生成，本质是 AES 加密的账密，服务端解密后走 Basic。envs.yml 对应环境腿配 `tokenRef`（省略 usernameRef/passwordRef）；token 内 host 与环境 endpoint 不一致时以 envs.yml 为准并告警。
+
+注意：加密密钥内嵌于公开的 dashboard bundle，token 只是一层混淆——connect 链接应与明文密码同等对待，不要贴进聊天或文档。
+
 ### GreptimeDB / Grafana / dbx / RocketMQ
 
 每环境独立或跨环境复用的实测结论记录在 `apps/agent/envs.yml` 头部注释；密码值不入库。
