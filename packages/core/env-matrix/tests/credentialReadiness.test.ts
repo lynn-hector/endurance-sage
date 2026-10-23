@@ -195,4 +195,12 @@ describe('credentialReadiness', () => {
     const legs = credentialReadiness(bareRow, storePath)
     expect(legs.map(item => item.leg)).toEqual(['greptimedb', 'grafana', 'zadig'])
   })
+
+  it('degrades to an empty store instead of throwing on unparseable YAML (duplicate keys)', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    store(['GREPTIMEDB_TEST_USERNAME: user', 'GREPTIMEDB_TEST_USERNAME: user'])
+    const legs = credentialReadiness(row, storePath)
+    expect(legs.every(item => !item.ok)).toBe(true)
+    expect(legs.every(item => item.missingRefs.length > 0)).toBe(true)
+  })
 })

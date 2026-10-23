@@ -58,6 +58,13 @@ export const ENV_ALIASES: Readonly<Record<string, string>> = {
   SC2: 'sit-client-hosted-2',
   PBO: 'pro-br-saas-aws-eks-novo',
   TPSG0: 'tst-platform-aws-eks-sg-0',
+  PUO: 'pro-use-saas-aws-eks-novo',
+  PZO: 'pro-za-saas-aws-eks-novo',
+  PDO: 'pro-de-saas-aws-eks-novo',
+  PSO: 'pro-sg-saas-aws-eks-novo',
+  TPDE0: 'tst-platform-aws-eks-de-0',
+  TPUS0: 'tst-platform-aws-eks-us-0',
+  TPAU0: 'tst-platform-aws-eks-au-0',
 }
 
 const DEFAULT_DB_DATABASE = 'novo_commctl_config'
@@ -117,10 +124,18 @@ export function credentialStorePath(env: NodeJS.ProcessEnv = process.env): strin
 function readCredentialStore(storePath: string): Record<string, unknown> {
   const merged: Record<string, unknown> = {}
   if (!existsSync(storePath)) return merged
-  const store = parse(readFileSync(storePath, 'utf8')) as Record<string, unknown> | null
+  let store: unknown
+  try {
+    store = parse(readFileSync(storePath, 'utf8'))
+  } catch (cause) {
+    // 坏文件（如重复键；读失败如权限也算）不炸切换器：按空库处理，全部引用键视为未配置
+    console.error(`⚠ 凭据库读取/解析失败，按空库处理: ${storePath}\n  ${cause instanceof Error ? cause.message : String(cause)}`)
+    return merged
+  }
   if (store === null || typeof store !== 'object' || Array.isArray(store)) return merged
-  Object.assign(merged, store)
-  const refs = store['refs']
+  const record = store as Record<string, unknown>
+  Object.assign(merged, record)
+  const refs = record['refs']
   if (refs !== null && typeof refs === 'object' && !Array.isArray(refs)) {
     Object.assign(merged, refs as Record<string, unknown>)
   }

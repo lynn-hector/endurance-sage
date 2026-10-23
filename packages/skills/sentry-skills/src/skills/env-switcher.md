@@ -51,6 +51,13 @@
 | `SC2` | `sit-client-hosted-2` |
 | `PBO` | `pro-br-saas-aws-eks-novo` |
 | `TPSG0` | `tst-platform-aws-eks-sg-0` |
+| `PUO` | `pro-use-saas-aws-eks-novo` |
+| `PZO` | `pro-za-saas-aws-eks-novo` |
+| `PDO` | `pro-de-saas-aws-eks-novo` |
+| `PSO` | `pro-sg-saas-aws-eks-novo` |
+| `TPDE0` | `tst-platform-aws-eks-de-0` |
+| `TPUS0` | `tst-platform-aws-eks-us-0` |
+| `TPAU0` | `tst-platform-aws-eks-au-0` |
 
 ## 执行原则
 
