@@ -1,21 +1,22 @@
 /**
- * GreptimeDB HTTP `/v1/sql` client as a Cordis service.
+ * GreptimeDB Provider package for the log and call-flow seams.
+ *
+ * One shared transport owns the HTTP `/v1/sql` endpoint, connect-token/Basic
+ * authentication, timeout and row parsing. It mounts two backend-neutral
+ * Providers from `@dsh-sentry/log-store` and `@dsh-sentry/callflow-store`;
+ * neither slot exposes generic SQL. Table names, schema names, timestamp
+ * columns and field whitelists are Provider configuration.
  *
  * Port of the transport half of the original
  * `skills/log-analyzer/scripts/fetch_logs.py` (`query_greptimedb` +
- * `parse_rows`): POST form-encoded SQL with HTTP Basic auth, parse the
- * column-schema/rows response into records. Read-only by usage — the service
- * never issues anything but caller-supplied SELECT statements.
- *
- * Differences from the script era: credentials resolve per query through the
- * ambient credential plane (`@dsh-sentry/datasource`), so a hot-reloaded
- * credential store takes effect without restarting; `fetch` keep-alive gives
- * connection reuse the per-invocation script never had.
+ * `parse_rows`). Credentials resolve per query through the ambient credential
+ * plane (`@dsh-sentry/datasource`), so a hot-reloaded credential store takes
+ * effect without restarting.
  *
  * @module @dsh-sentry/service-greptimedb
  */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
@@ -24,8 +25,19 @@ import {
   secretField,
   timeoutMsField,
 } from '@dsh-sentry/datasource'
+import {
+  CallflowStore,
+  DEFAULT_CALLFLOW_LIMIT,
+  DEFAULT_CALLFLOW_LOOKBACK_MS,
+  summarizeCallFlow,
+  type CallflowQueryRequest,
+  type CallflowQueryResult,
+} from '@dsh-sentry/callflow-store'
+import { LogStore, type ListLogServicesRequest, type LogQueryRequest, type LogQueryResult } from '@dsh-sentry/log-store'
 
 import { decryptConnectToken } from './connect-token.ts'
+import { buildCallFlowSql } from './callflow-sql.ts'
+import { ALLOWED_LOG_FIELDS, buildListServicesSql, buildLogQuerySql } from './log-sql.ts'
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
@@ -47,36 +59,64 @@ export interface Config {
   password?: string
   /** Per-query timeout in milliseconds. Defaults to 30000 (the original script's query timeout). */
   timeoutMs?: number
+  /** Log table schema. Defaults to `public`. */
+  logSchema?: string
+  /** Log table. Defaults to `k8s_logs`. */
+  logTable?: string
+  /** Log timestamp column. Defaults to `greptime_timestamp`. */
+  logTimestampCol?: string
+  /** Workload-discovery lookback window in minutes. Defaults to 30. */
+  logLookbackMinutes?: number
+  /** Workload-discovery row cap. Defaults to 200. */
+  logListServicesLimit?: number
+  /** Signaling table schema. Defaults to `public`. */
+  callflowSchema?: string
+  /** SIP signaling table. Defaults to `hep_1`. */
+  callflowTable?: string
+  /** Signaling timestamp column. Defaults to `greptime_timestamp`. */
+  callflowTimestampCol?: string
 }
 
-export class GreptimeDbService extends Service {
-  static Config: z<Config> = z.object({
-    endpoint: endpointField('GreptimeDB HTTP 地址，如 https://greptimedb.example.com'),
-    database: z.string().default('public').description('SQL 接口的 db 查询参数'),
-    usernameRef: credentialRefField('Basic 认证用户名的凭据引用，如 GREPTIMEDB_PRODUCTION_USERNAME'),
-    passwordRef: credentialRefField('Basic 认证密码的凭据引用'),
-    connectTokenRef: credentialRefField('dashboard connect token（纯 token）的凭据引用，如 GREPTIMEDB_BR0_CONNECT_TOKEN'),
-    connectToken: secretField('内联 connect token（credential ref 优先；不推荐写在组合文件）'),
-    username: secretField('内联用户名（credential ref 优先；不推荐写在组合文件）'),
-    password: secretField('内联密码（credential ref 优先；不推荐写在组合文件）'),
-    timeoutMs: timeoutMsField(30_000),
-  })
+const GreptimeDbServiceConfig: z<Config> = z.object({
+  endpoint: endpointField('GreptimeDB HTTP 地址，如 https://greptimedb.example.com'),
+  database: z.string().default('public').description('SQL 接口的 db 查询参数'),
+  usernameRef: credentialRefField('Basic 认证用户名的凭据引用，如 GREPTIMEDB_PRODUCTION_USERNAME'),
+  passwordRef: credentialRefField('Basic 认证密码的凭据引用'),
+  connectTokenRef: credentialRefField('dashboard connect token（纯 token）的凭据引用，如 GREPTIMEDB_BR0_CONNECT_TOKEN'),
+  connectToken: secretField('内联 connect token（credential ref 优先；不推荐写在组合文件）'),
+  username: secretField('内联用户名（credential ref 优先；不推荐写在组合文件）'),
+  password: secretField('内联密码（credential ref 优先；不推荐写在组合文件）'),
+  timeoutMs: timeoutMsField(30_000),
+  logSchema: z.string().default('public').description('日志表所在 schema'),
+  logTable: z.string().default('k8s_logs').description('日志表名'),
+  logTimestampCol: z.string().default('greptime_timestamp').description('日志时间范围过滤列'),
+  logLookbackMinutes: z.number().step(1).min(1).default(30).description('日志服务发现的回看窗口（分钟）'),
+  logListServicesLimit: z.number().step(1).min(1).default(200).description('日志服务发现的行数上限'),
+  callflowSchema: z.string().default('public').description('信令表所在 schema'),
+  callflowTable: z.string().default('hep_1').description('SIP 信令表名'),
+  callflowTimestampCol: z.string().default('greptime_timestamp').description('信令时间范围过滤列'),
+})
 
+/** Shared HTTP transport and credential resolution for both GreptimeDB slots. */
+export class GreptimeTransport {
+  private readonly ctx: Context
   private readonly endpoint: string
   private readonly database: string
   private readonly timeoutMs: number
+  private readonly config: Config
 
-  constructor(ctx: Context, config: Config = { endpoint: '' }) {
-    super(ctx, 'greptimedb')
-    // The schema already defaulted optional fields under the Loader; the ??
-    // narrows the type for direct (non-Loader) construction in tests.
+  constructor(ctx: Context, config: Config) {
+    this.ctx = ctx
     this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
     this.database = config.database ?? 'public'
     this.timeoutMs = config.timeoutMs ?? 30_000
     this.config = config
   }
 
-  private readonly config: Config
+  /** Non-secret identity shared by both Provider slots. */
+  get backendRef(): string {
+    return `greptimedb:${this.endpoint}/${this.database}`
+  }
 
   /**
    * Resolve Basic-auth credentials. A configured connect token (reference
@@ -118,15 +158,12 @@ export class GreptimeDbService extends Service {
   }
 
   /**
-   * Execute a read-only SQL statement and return parsed rows.
-   * @param sql - caller-supplied SELECT statement.
-   * @param options.database - overrides the configured database for one query.
-   * @returns row objects keyed by column name.
+   * Execute one Provider-built read-only SQL statement and return parsed rows.
+   * This method is package-internal plumbing; Consumers never see it.
    */
-  async query(sql: string, options?: { database?: string }): Promise<Record<string, unknown>[]> {
+  async query(sql: string): Promise<Record<string, unknown>[]> {
     const { username, password } = await this.credentials()
-    const database = options?.database ?? this.database
-    const url = `${this.endpoint}/v1/sql?db=${encodeURIComponent(database)}`
+    const url = `${this.endpoint}/v1/sql?db=${encodeURIComponent(this.database)}`
     const auth = Buffer.from(`${username}:${password}`, 'utf8').toString('base64')
 
     let resp: Response
@@ -159,6 +196,159 @@ export class GreptimeDbService extends Service {
     return parseGreptimeRows(body)
   }
 }
+
+/** Construction options for the log Provider. */
+export interface GreptimeLogStoreOptions {
+  transport: GreptimeTransport
+  schema?: string
+  table?: string
+  timestampCol?: string
+  lookbackMinutes?: number
+  listServicesLimit?: number
+}
+
+/** GreptimeDB implementation of the backend-neutral log seam. */
+export class GreptimeLogStore extends LogStore {
+  private readonly transport: GreptimeTransport
+  private readonly schema: string
+  private readonly table: string
+  private readonly timestampCol: string
+  private readonly lookbackMinutes: number
+  private readonly listServicesLimit: number
+
+  constructor(ctx: Context, options: GreptimeLogStoreOptions) {
+    super(ctx)
+    this.transport = options.transport
+    this.schema = options.schema ?? 'public'
+    this.table = options.table ?? 'k8s_logs'
+    this.timestampCol = options.timestampCol ?? 'greptime_timestamp'
+    this.lookbackMinutes = options.lookbackMinutes ?? 30
+    this.listServicesLimit = options.listServicesLimit ?? 200
+  }
+
+  override get backendRef(): string {
+    return this.transport.backendRef
+  }
+
+  override get logFilterFields(): readonly string[] {
+    return ALLOWED_LOG_FIELDS
+  }
+
+  override async queryLogs(request: LogQueryRequest): Promise<LogQueryResult> {
+    const services = request.services
+      ?.map(service => service.trim())
+      .filter(service => service.length > 0)
+    const logType = request.logType ?? 'go'
+    const limit = request.limit ?? 1000
+    const sql = buildLogQuerySql({
+      ...services !== undefined && services.length > 0 ? { services } : {},
+      start: request.start,
+      end: request.end,
+      ...request.keywords !== undefined && request.keywords.length > 0 ? { keywords: request.keywords } : {},
+      limit,
+      logType,
+      schema: this.schema,
+      table: this.table,
+      timestampCol: this.timestampCol,
+      ...request.filters !== undefined && request.filters.length > 0 ? { filters: request.filters } : {},
+      ...request.filterOr !== undefined && request.filterOr.length > 0 ? { filterOr: request.filterOr } : {},
+    })
+    const records = await this.transport.query(sql)
+    return { records, timestampField: this.timestampCol }
+  }
+
+  override async listLogServices(request: ListLogServicesRequest): Promise<string[]> {
+    const sql = buildListServicesSql({
+      logType: request.logType ?? 'go',
+      schema: this.schema,
+      table: this.table,
+      timestampCol: this.timestampCol,
+      lookbackMinutes: this.lookbackMinutes,
+      limit: this.listServicesLimit,
+    })
+    const rows = await this.transport.query(sql)
+    return rows
+      .map(row => String(row['workload_name'] ?? '').trim())
+      .filter(service => service.length > 0)
+  }
+}
+
+/** Construction options for the call-flow Provider. */
+export interface GreptimeCallflowStoreOptions {
+  transport: GreptimeTransport
+  schema?: string
+  table?: string
+  timestampCol?: string
+}
+
+/** GreptimeDB implementation of the backend-neutral call-flow seam. */
+export class GreptimeCallflowStore extends CallflowStore {
+  private readonly transport: GreptimeTransport
+  private readonly schema: string
+  private readonly table: string
+  private readonly timestampCol: string
+
+  constructor(ctx: Context, options: GreptimeCallflowStoreOptions) {
+    super(ctx)
+    this.transport = options.transport
+    this.schema = options.schema ?? 'public'
+    this.table = options.table ?? 'hep_1'
+    this.timestampCol = options.timestampCol ?? 'greptime_timestamp'
+  }
+
+  override get backendRef(): string {
+    return this.transport.backendRef
+  }
+
+  override async queryCallFlow(request: CallflowQueryRequest): Promise<CallflowQueryResult> {
+    const callId = request.callId.trim()
+    const start = request.start?.trim() || new Date(Date.now() - DEFAULT_CALLFLOW_LOOKBACK_MS).toISOString()
+    const end = request.end?.trim() || new Date().toISOString()
+    const limit = request.limit ?? DEFAULT_CALLFLOW_LIMIT
+    const sql = buildCallFlowSql({
+      callId,
+      start,
+      end,
+      limit,
+      schema: this.schema,
+      table: this.table,
+      timestampCol: this.timestampCol,
+    })
+    const messages = await this.transport.query(sql)
+    return {
+      start,
+      end,
+      limit,
+      messages,
+      summary: summarizeCallFlow(messages, { timestampCol: this.timestampCol }),
+    }
+  }
+}
+
+/**
+ * Mount both GreptimeDB Providers over one shared transport. This function is
+ * the plugin entry used by hosts and assembly files; the two exported classes
+ * exist for direct construction in Provider tests.
+ */
+export async function GreptimeDbService(ctx: Context, config: Config): Promise<void> {
+  const transport = new GreptimeTransport(ctx, config)
+  await ctx.plugin(GreptimeLogStore, {
+    transport,
+    schema: config.logSchema,
+    table: config.logTable,
+    timestampCol: config.logTimestampCol,
+    lookbackMinutes: config.logLookbackMinutes,
+    listServicesLimit: config.logListServicesLimit,
+  })
+  await ctx.plugin(GreptimeCallflowStore, {
+    transport,
+    schema: config.callflowSchema,
+    table: config.callflowTable,
+    timestampCol: config.callflowTimestampCol,
+  })
+}
+
+GreptimeDbService.Config = GreptimeDbServiceConfig
 
 /**
  * Defensive normalization for timestamp columns: whatever unit the backend
@@ -253,12 +443,6 @@ export function parseGreptimeRows(body: unknown): Record<string, unknown>[] {
     parsed.push(record)
   }
   return parsed
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    greptimedb: GreptimeDbService
-  }
 }
 
 export default GreptimeDbService

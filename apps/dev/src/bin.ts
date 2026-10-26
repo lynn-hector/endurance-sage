@@ -17,6 +17,7 @@ import PrometheusService from '@dsh-sentry/service-prometheus'
 import AlertmanagerService from '@dsh-sentry/service-alertmanager'
 import TraceService from '@dsh-sentry/service-trace'
 import ZadigService from '@dsh-sentry/service-zadig'
+import CodeRepositoryService from '@dsh-sentry/service-code-repository'
 import * as dbInspector from '@dsh-sentry/tool-db-inspector'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
 import * as callflowAnalyzer from '@dsh-sentry/tool-callflow-analyzer'
@@ -39,6 +40,10 @@ await root.plugin(GreptimeDbService, {
   endpoint: 'https://greptimedb.example.invalid',
   usernameRef: 'GREPTIMEDB_LOCAL_USERNAME',
   passwordRef: 'GREPTIMEDB_LOCAL_PASSWORD',
+  logSchema: 'public',
+  logTable: 'k8s_logs',
+  callflowSchema: 'public',
+  callflowTable: 'hep_1',
 })
 await root.plugin(logAnalyzer, { env: 'local' })
 await root.plugin(callflowAnalyzer, { env: 'local' })
@@ -46,8 +51,9 @@ await root.plugin(TraceService, {
   endpoint: 'https://grafana.example.invalid',
   usernameRef: 'GRAFANA_LOCAL_USERNAME',
   passwordRef: 'GRAFANA_LOCAL_PASSWORD',
+  datasourceUid: 'GreptimeDB-Jaeger',
 })
-await root.plugin(traceAnalyzer, { env: 'local', greptimedbJaegerDatasourceUid: 'GreptimeDB-Jaeger' })
+await root.plugin(traceAnalyzer, { env: 'local' })
 await root.plugin(PrometheusService, { endpoint: 'http://prometheus.example.invalid' })
 await root.plugin(AlertmanagerService, {
   grafanaEndpoint: 'https://grafana.example.invalid',
@@ -67,7 +73,8 @@ await root.plugin(ZadigService, {
   envName: 'dev-env',
 })
 await root.plugin(zadigInspector, { env: 'local' })
-await root.plugin(codeRepository, { env: 'local', baseDir: '/tmp/sentry-code-repos' })
+await root.plugin(CodeRepositoryService, { baseDir: '/tmp/sentry-code-repos' })
+await root.plugin(codeRepository, { env: 'local' })
 await root.plugin(RocketMq, { endpoint: 'https://rocketmq.example.invalid', username: 'admin' })
 await root.plugin(mqInspector, { env: 'local' })
 await root.plugin(sentrySkills)

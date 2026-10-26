@@ -1,0 +1,23 @@
+{
+  "name": "@dsh-sentry/mq-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend-neutral message-queue inspection Service Definition occupying ctx.mqStore.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

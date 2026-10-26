@@ -15,7 +15,15 @@
  * - the demo/dry-run "degraded config" fallback (example.com defaults when
  *   config was incomplete) is gone — the service Config is validated by the
  *   schema at load time;
- * - dry-run returns an evidence envelope (original printed raw JSON);
+ * - dry-run returns an evidence envelope (original printed raw JSON), and
+ *   since the seam migration it carries the backend-neutral request
+ *   (mode/service/workflow + backend_ref) — the OpenAPI URL, method and
+ *   query params are Provider internals and no longer cross the seam;
+ * - evidence refs change shape with the seam migration: the previous
+ *   `zadig-inspector: <endpoint-built URL>` forms (pipelines/workloads
+ *   routes, plus the bare-endpoint dry-run ref) become
+ *   `<backendRef>` + `env:<label>:zadig`, matching the other evidence
+ *   legs; list/detail/workflow evidence data gains `backend_ref`;
  * - HTTP and network errors are uniformly `请求 Zadig API 失败: ...` in the
  *   service layer, matching the original's except-branch wording.
  *
@@ -23,7 +31,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
@@ -49,6 +57,17 @@ export const Config: z<Config> = z.object({
 
 const SOURCE = 'zadig-inspector'
 const TYPE = 'cicd'
+
+/**
+ * The Provider identity one execution snapshots at its start: every
+ * evidence branch of that call (success, error, dry-run) reports the same
+ * backend, even if the assembly swaps the service mid-call.
+ */
+interface ZadigIdentity {
+  project: string
+  envName: string
+  backendRef: string
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -203,6 +222,16 @@ export function apply(ctx: Context, config: Config): void {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
     async execute(args, _exec) {
+      // One Provider snapshot per call: identity and transport agree even if
+      // a hot swap replaces the service mid-execution.
+      const zadig = ctx.zadig
+      const identity: ZadigIdentity = {
+        project: zadig.project,
+        envName: zadig.envName,
+        backendRef: zadig.backendRef,
+      }
+      const refs = (): string[] => [identity.backendRef, `env:${liveEnv()}:zadig`]
+
       const service = args.service
       const workflow = args.workflow
       const isWorkflow = workflow !== undefined && workflow.length > 0
@@ -219,56 +248,63 @@ export function apply(ctx: Context, config: Config): void {
         : undefined
 
       if (args.dryRun === true) {
-        const built = workflowQuery !== undefined
-          ? ctx.zadig.buildWorkflowTasksRequest(workflowQuery)
+        // Backend-neutral request only: the OpenAPI URL, method and query
+        // params are Provider internals (module doc records the drift).
+        const request = workflowQuery !== undefined
+          ? {
+            mode: 'workflow_tasks' as const,
+            workflow: workflowQuery.workflowName,
+            ...(workflowQuery.project !== undefined ? { project: workflowQuery.project } : {}),
+            page_size: pageSize,
+          }
           : detailService !== undefined
-            ? ctx.zadig.buildServiceDetailRequest(detailService)
-            : ctx.zadig.buildWorkloadsRequest()
+            ? { mode: 'service_detail' as const, service: detailService }
+            : { mode: 'list_workloads' as const }
         return buildEvidence({
           source: SOURCE,
           type: TYPE,
           data: {
+            env: liveEnv(),
             dry_run: true,
-            method: 'GET',
-            url: built.url,
-            params: built.params,
+            backend_ref: identity.backendRef,
+            request,
           },
           summary: `[dry-run] 构造 Zadig ${workflowQuery !== undefined ? `工作流 ${String(workflow)} 历史` : detailService !== undefined ? `服务 ${detailService} 详情` : '环境服务列表'}查询请求，未发送。`,
           confidence: 1.0,
-          refs: [`zadig-inspector: ${ctx.zadig.endpoint}`],
+          refs: refs(),
         }) as unknown as JsonValue
       }
 
       if (args.demo === true) {
         if (workflowQuery !== undefined) {
-          return workflowEvidence(liveEnv(), ctx, workflow as string, workflowQuery.project, demoWorkflowTasks(workflow as string), true, undefined)
+          return workflowEvidence(liveEnv(), identity, workflow as string, workflowQuery.project, demoWorkflowTasks(workflow as string), true, undefined)
         }
         if (detailService !== undefined) {
-          return detailEvidence(liveEnv(), ctx, detailService, demoLatestDeployment(detailService), true, undefined)
+          return detailEvidence(liveEnv(), identity, detailService, demoLatestDeployment(detailService), true, undefined)
         }
-        return listEvidence(liveEnv(), ctx, demoServices(), true, undefined)
+        return listEvidence(liveEnv(), identity, demoServices(), true, undefined)
       }
 
       try {
         if (workflowQuery !== undefined) {
-          const tasks = await ctx.zadig.fetchWorkflowTasks(workflowQuery)
-          return workflowEvidence(liveEnv(), ctx, workflow as string, workflowQuery.project, tasks, false, undefined)
+          const tasks = await zadig.fetchWorkflowTasks(workflowQuery)
+          return workflowEvidence(liveEnv(), identity, workflow as string, workflowQuery.project, tasks, false, undefined)
         }
         if (detailService !== undefined) {
-          const deployment = await ctx.zadig.fetchServiceDetail(detailService)
-          return detailEvidence(liveEnv(), ctx, detailService, deployment, false, undefined)
+          const deployment = await zadig.fetchServiceDetail(detailService)
+          return detailEvidence(liveEnv(), identity, detailService, deployment, false, undefined)
         }
-        const services = await ctx.zadig.fetchServices()
-        return listEvidence(liveEnv(), ctx, services, false, undefined)
+        const services = await zadig.fetchServices()
+        return listEvidence(liveEnv(), identity, services, false, undefined)
       } catch (error) {
         const message = errorMessage(error)
         if (workflowQuery !== undefined) {
-          return workflowEvidence(liveEnv(), ctx, workflow as string, workflowQuery.project, [], false, message)
+          return workflowEvidence(liveEnv(), identity, workflow as string, workflowQuery.project, [], false, message)
         }
         if (detailService !== undefined) {
-          return detailEvidence(liveEnv(), ctx, detailService, {}, false, message)
+          return detailEvidence(liveEnv(), identity, detailService, {}, false, message)
         }
-        return listEvidence(liveEnv(), ctx, [], false, message)
+        return listEvidence(liveEnv(), identity, [], false, message)
       }
     },
   }))
@@ -276,14 +312,14 @@ export function apply(ctx: Context, config: Config): void {
   /** Workflow-history evidence envelope. */
   function workflowEvidence(
     env: string,
-    ctx: Context,
+    identity: ZadigIdentity,
     workflow: string,
     projectOverride: string | undefined,
     tasks: ZadigWorkflowTask[],
     demo: boolean,
     error: string | undefined,
   ): JsonValue {
-    const project = projectOverride ?? ctx.zadig.project
+    const project = projectOverride ?? identity.project
     let summary: string
     let confidence: number
     if (error !== undefined) {
@@ -304,6 +340,7 @@ export function apply(ctx: Context, config: Config): void {
       type: TYPE,
       data: {
         env,
+        backend_ref: identity.backendRef,
         project,
         workflow,
         task_count: tasks.length,
@@ -313,14 +350,14 @@ export function apply(ctx: Context, config: Config): void {
       },
       summary,
       confidence,
-      refs: [`zadig-inspector: ${ctx.zadig.endpoint}/v1/projects/detail/${project}/pipelines/custom/${workflow}`],
+      refs: [identity.backendRef, `env:${env}:zadig`],
     }) as unknown as JsonValue
   }
 
   /** Port of `_build_list_evidence`. */
   function listEvidence(
     env: string,
-    ctx: Context,
+    identity: ZadigIdentity,
     services: ZadigServiceRow[],
     demo: boolean,
     error: string | undefined,
@@ -332,7 +369,7 @@ export function apply(ctx: Context, config: Config): void {
       confidence = 0.0
     } else {
       const notReady = services.filter(s => s.ready !== 'ready' || s.status !== 'Running')
-      summary = `环境 ${env} (${ctx.zadig.envName}) 共 ${services.length} 个服务`
+      summary = `环境 ${env} (${identity.envName}) 共 ${services.length} 个服务`
       if (notReady.length > 0) {
         summary += `，其中 ${notReady.length} 个未就绪: ${notReady.map(s => s.name).join(', ')}`
       }
@@ -344,8 +381,9 @@ export function apply(ctx: Context, config: Config): void {
       type: TYPE,
       data: {
         env,
-        project: ctx.zadig.project,
-        env_name: ctx.zadig.envName,
+        backend_ref: identity.backendRef,
+        project: identity.project,
+        env_name: identity.envName,
         service_count: services.length,
         services,
         demo,
@@ -353,14 +391,14 @@ export function apply(ctx: Context, config: Config): void {
       },
       summary,
       confidence,
-      refs: [`zadig-inspector: ${ctx.zadig.endpoint}/api/aslan/environment/environments/${ctx.zadig.envName}/workloads?projectName=${ctx.zadig.project}`],
+      refs: [identity.backendRef, `env:${env}:zadig`],
     }) as unknown as JsonValue
   }
 
   /** Port of `_build_detail_evidence`. */
   function detailEvidence(
     env: string,
-    ctx: Context,
+    identity: ZadigIdentity,
     service: string,
     deployment: Record<string, unknown>,
     demo: boolean,
@@ -388,8 +426,9 @@ export function apply(ctx: Context, config: Config): void {
       type: TYPE,
       data: {
         env,
-        project: ctx.zadig.project,
-        env_name: ctx.zadig.envName,
+        backend_ref: identity.backendRef,
+        project: identity.project,
+        env_name: identity.envName,
         service,
         latest_deployment: deployment,
         demo,
@@ -397,7 +436,7 @@ export function apply(ctx: Context, config: Config): void {
       },
       summary,
       confidence,
-      refs: [`zadig-inspector: project=${ctx.zadig.project}, env_name=${ctx.zadig.envName}, service=${service}`],
+      refs: [identity.backendRef, `env:${env}:zadig`],
     }) as unknown as JsonValue
   }
 }

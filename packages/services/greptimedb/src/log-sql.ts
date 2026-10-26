@@ -12,7 +12,7 @@
  * only on inputs with ≥3 consecutive spaces inside `IS NOT NULL` / `NOT LIKE`,
  * where the Python output kept stray spaces — a quirk, not a contract.
  *
- * @module @dsh-sentry/tool-log-analyzer/sql
+ * @module @dsh-sentry/service-greptimedb/log-sql
  */
 
 /** Known columns of `public.k8s_logs`; the filter DSL whitelist (injection guard). */

@@ -7,7 +7,7 @@
  * timestamp. No user-supplied column names means no whitelist is needed;
  * values go through {@link escapeSqlLiteral} only.
  *
- * @module @dsh-sentry/tool-callflow-analyzer/sql
+ * @module @dsh-sentry/service-greptimedb/callflow-sql
  */
 
 /** Escape single quotes in a SQL string literal. */

@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the code-repository tools: repo discovery, language
+ * Pure helpers for the code-repository service: repo discovery, language
  * globs, ripgrep JSON event parsing, and snippet merging.
  *
  * Port of the corresponding helpers in the original
@@ -8,7 +8,7 @@
  * `_run_rg_query`'s event loop, `_build_rg_snippets`, `_normalize_file`,
  * `_build_summary`), verbatim in behavior.
  *
- * @module @dsh-sentry/tool-code-repository/search
+ * @module @dsh-sentry/service-code-repository/search
  */
 
 import { existsSync, readdirSync, statSync } from 'node:fs'

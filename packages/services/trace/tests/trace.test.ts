@@ -89,6 +89,7 @@ function makeGrafanaService(ctx: Context, extra: Record<string, unknown> = {}): 
     endpoint: GRAFANA,
     usernameRef: 'GRAFANA_TEST_USERNAME',
     passwordRef: 'GRAFANA_TEST_PASSWORD',
+    datasourceUid: 'uid',
     ...extra,
   })
 }
@@ -224,17 +225,26 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
     vi.useRealTimers()
   })
 
+  it('exposes a non-secret backendRef for both Provider modes', () => {
+    const grafana = makeGrafanaService(new Context(), { datasourceUid: 'GreptimeDB-Jaeger' })
+    expect(grafana.backendRef).toBe('grafana:GreptimeDB-Jaeger')
+
+    const jaeger = new TraceService(new Context(), { mode: 'jaeger', endpoint: JAEGER })
+    expect(jaeger.backendRef).toBe(`jaeger:${JAEGER}`)
+  })
+
   it('logs in, queries with the session cookie, and parses the frames', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginResponse('SESSION123'))
       .mockResolvedValueOnce(jsonResponse(SAMPLE_TRACE_RESPONSE))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeGrafanaService(new Context())
-    const parsed = await service.queryTrace({
-      traceId: TRACE_ID,
+    const service = makeGrafanaService(new Context(), {
       datasourceUid: 'GreptimeDB-Jaeger',
       datasourceId: 6,
+    })
+    const parsed = await service.queryTrace({
+      traceId: TRACE_ID,
       start: '2026-07-27T10:00:00Z',
       end: '2026-07-27T10:30:00Z',
       service: 'gateway',
@@ -276,7 +286,7 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const service = makeGrafanaService(new Context(), { sessionTtlMs: 60_000 })
-    const params = { traceId: TRACE_ID, datasourceUid: 'uid' }
+    const params = { traceId: TRACE_ID }
 
     await service.queryTrace(params)
     await service.queryTrace(params)
@@ -305,7 +315,7 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const service = makeGrafanaService(new Context())
-    const parsed = await service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' })
+    const parsed = await service.queryTrace({ traceId: TRACE_ID })
 
     expect(parsed.frames_count).toBe(1)
     expect(fetchMock).toHaveBeenCalledTimes(4)
@@ -322,7 +332,7 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const service = makeGrafanaService(new Context())
-    await expect(service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' }))
+    await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('Grafana query HTTP 500: boom')
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
@@ -330,21 +340,21 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
   it('wraps login HTTP errors with the original wording', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(loginResponse(undefined, 401, 'invalid credentials')))
     const service = makeGrafanaService(new Context())
-    await expect(service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' }))
+    await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('Grafana 登录失败 HTTP 401: invalid credentials')
   })
 
   it('wraps login connection failures with the original wording', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')))
     const service = makeGrafanaService(new Context())
-    await expect(service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' }))
+    await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('Grafana 登录连接失败: ECONNREFUSED')
   })
 
   it('fails when the login response carries no grafana_session cookie', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(loginResponse(undefined, 200, '{"message":"Logged in"}')))
     const service = makeGrafanaService(new Context())
-    await expect(service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' }))
+    await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('登录成功但未返回 grafana_session cookie，响应: {"message":"Logged in"}')
   })
 
@@ -354,7 +364,7 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
       .mockRejectedValueOnce(new Error('ETIMEDOUT'))
     vi.stubGlobal('fetch', fetchMock)
     const service = makeGrafanaService(new Context())
-    await expect(service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' }))
+    await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('Grafana query 连接失败: ETIMEDOUT')
   })
 
@@ -364,19 +374,19 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
       .mockResolvedValueOnce(new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } }))
     vi.stubGlobal('fetch', fetchMock)
     const service = makeGrafanaService(new Context())
-    await expect(service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' }))
+    await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('Grafana query 响应不是合法 JSON')
   })
 
   it('fails fast when credentials are missing', async () => {
     const ctx = new Context()
-    const service = new TraceService(ctx, { endpoint: GRAFANA })
-    await expect(service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid' }))
+    const service = new TraceService(ctx, { endpoint: GRAFANA, datasourceUid: 'uid' })
+    await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('traces 凭据缺失，需要 username/password 或凭据引用注入')
   })
 
   it('fails fast when datasource_uid is missing', async () => {
-    const service = makeGrafanaService(new Context())
+    const service = makeGrafanaService(new Context(), { datasourceUid: undefined })
     await expect(service.queryTrace({ traceId: TRACE_ID }))
       .rejects.toThrow('traces.datasource_uid 缺失')
   })
@@ -389,18 +399,19 @@ describe('TraceService.queryTrace (grafana-jaeger)', () => {
       .mockResolvedValueOnce(jsonResponse(SAMPLE_TRACE_RESPONSE))
     vi.stubGlobal('fetch', fetchMock)
     const service = makeGrafanaService(new Context())
-    await service.queryTrace({ traceId: TRACE_ID, datasourceUid: 'uid', start: '', end: '' })
+    await service.queryTrace({ traceId: TRACE_ID, start: '', end: '' })
     const body = JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string)
     expect(body.from).toBe(String(1_800_000_000_000 - 3600_000))
     expect(body.to).toBe(String(1_800_000_000_000))
   })
 
   it('builds a dry-run preview with a masked cookie and the real query string', async () => {
-    const service = makeGrafanaService(new Context())
-    const preview = await service.buildQueryPreview({
-      traceId: TRACE_ID,
+    const service = makeGrafanaService(new Context(), {
       datasourceUid: 'GreptimeDB-Jaeger',
       datasourceId: 6,
+    })
+    const preview = await service.buildQueryPreview({
+      traceId: TRACE_ID,
       start: '2026-07-27T10:00:00Z',
       end: '2026-07-27T10:30:00Z',
     })

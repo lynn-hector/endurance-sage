@@ -11,8 +11,15 @@
  * `--metrics` (a comma-separated string) became a string array; `--env`
  * became the `env` label in `Config` — the environment is an assembly-time
  * choice now, and the label survives only as evidence metadata. The original
- * `config/{env}.yml:metrics` evidence refs became `env:<env>`; the endpoint
- * ref is kept.
+ * `config/{env}.yml:metrics` evidence refs became `env:<env>`; the datasource
+ * ref is the Provider's `backendRef`.
+ *
+ * Seam migration (structure-only, wording preserved): PromQL execution,
+ * rules walking and metric-name discovery go through the backend-neutral
+ * `ctx.metricsStore` Definition; the Alertmanager leg keeps the named
+ * `ctx.alertmanager` service (no second real backend exists, see the
+ * architecture plan). Evidence `data` gains a `backend_ref` field like the
+ * sibling legs.
  *
  * Recorded behavior notes (faithful ports, not fixes — see `promql.ts`):
  * - `sentry_list_alerts` accepts `state` but still returns firing alerts
@@ -25,9 +32,12 @@
  * - dry-run returns one evidence envelope carrying every metric's request;
  *   the original printed raw (non-evidence) JSON for the FIRST metric only
  *   and exited mid-loop;
- * - evidence refs use the `env:<env>` style instead of the removed
- *   `config/{env}.yml` path (the missing-endpoint error messages keep their
- *   original wording verbatim, path included);
+ * - dry-run evidence describes the backend-neutral request (promql, mode,
+ *   window/step) plus `backend_ref`; the concrete URL/method/body are
+ *   Provider transport detail and no longer cross the seam;
+ * - evidence refs use the `env:<env>` + Provider `backendRef` style instead
+ *   of the removed `config/{env}.yml` path (the missing-endpoint error
+ *   messages keep their original wording verbatim, path included);
  * - transport failure wording is unified in the service layer
  *   (`请求 Prometheus 失败: ...`).
  *
@@ -35,30 +45,21 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError, nowIso } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
+import type {} from '@dsh-sentry/metrics-store'
 import type {} from '@dsh-sentry/service-alertmanager'
-import type {} from '@dsh-sentry/service-prometheus'
 import { extractAmAlerts, extractAmSilences } from './am.ts'
-import {
-  asRecord,
-  buildPromql,
-  extractAlertRules,
-  extractDataPoints,
-  extractFiringAlerts,
-  extractInstantDataPoints,
-  metricUnit,
-  parseIso8601,
-} from './promql.ts'
+import { buildPromql, metricUnit, parseIso8601 } from './promql.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-metrics-inspector'
 
 /** The seams this plugin registers into. */
-export const inject = ['tools', 'prometheus', 'alertmanager']
+export const inject = ['tools', 'metricsStore', 'alertmanager']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
@@ -95,31 +96,12 @@ export function apply(ctx: Context, config: Config): void {
   const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
   const envRef = (): string => `env:${liveEnv()}`
 
-  /** 数据源引用（证据 refs 的第二元素）：与装配模式无关地指向真实出处——
-   *  proxied 装配下 prometheus 的 endpoint 为空，引用 grafana + 数据源 uid。 */
-  const datasourceRef = (): string | undefined => {
-    if (ctx.prometheus.proxied) {
-      const grafana = ctx.prometheus.grafanaEndpoint
-      return grafana.length > 0 ? `${grafana}/datasources/uid/${ctx.prometheus.datasourceUid}` : undefined
-    }
-    const endpoint = ctx.prometheus.endpoint
-    return endpoint.length > 0 ? endpoint : undefined
-  }
+  /** Evidence refs in the original's two-element shape: env label + backend identity. */
+  const refs = (): string[] => [envRef(), ctx.metricsStore.backendRef]
 
-  /** Evidence refs in the original's two-element shape: datasource ref + endpoint. */
-  const refs = (): string[] => {
-    const ref = datasourceRef()
-    return ref !== undefined ? [envRef(), ref] : [envRef()]
-  }
-
-  /** AM 工具的 refs：引用真实数据源（Grafana + 数据源 uid）——prometheus 的 endpoint
-   *  在 proxied 装配下为空，不能作为 Alertmanager 证据的出处。 */
-  const amRefs = (): string[] => {
-    const grafana = ctx.alertmanager.grafanaEndpoint
-    return grafana.length > 0
-      ? [envRef(), `${grafana}/datasources/uid/${ctx.alertmanager.datasourceUid}`]
-      : [envRef()]
-  }
+  /** AM 工具的 refs：具名 alertmanager 服务的 backendRef（grafana + 数据源 uid），
+   *  不在 Consumer 侧拼接 endpoint。 */
+  const amRefs = (): string[] => [envRef(), ctx.alertmanager.backendRef]
 
   /** Original endpoint guard, shared by both scripts, original wording kept. */
   const missingEndpointError = (type: string): JsonValue =>
@@ -177,7 +159,7 @@ export function apply(ctx: Context, config: Config): void {
       const serviceLabel = service || 'all'
 
       // Original ordering: endpoint check first, then demo, then time parsing.
-      if (!ctx.prometheus.proxied && ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_METRIC)
+      if (!ctx.metricsStore.configured) return missingEndpointError(TYPE_METRIC)
 
       if (args.demo === true) {
         // The original demo path used the raw (untrimmed) --metrics split.
@@ -250,33 +232,16 @@ export function apply(ctx: Context, config: Config): void {
 
       if (args.dryRun === true) {
         // Deviation (see module doc): one envelope with every metric's
-        // request; the original printed only the first and exited. The
-        // Authorization header is omitted exactly like the original dry-run.
-        const requests = metricNames.map((metricName) => {
-          const promql = buildPromql(metricName, service)
-          if (instant) {
-            return {
-              url: ctx.prometheus.buildInstantRequest(promql, startTs).url,
-              query: promql,
-              time: args.time,
-              mode: 'instant',
-              headers: { accept: 'application/json' },
-            }
-          }
-          // dry-run 展示与真实请求同一形状：proxied 装配是 POST /api/ds/query + body，
-          // 不再显示从未发送的直连 /api/v1/query_range
-          const req = ctx.prometheus.buildRangeRequest(promql, startTs, endTs, step)
-          return {
-            url: req.url,
-            ...(req.body !== undefined ? { method: 'POST', body: req.body } : {}),
-            query: promql,
-            start: startTs,
-            end: endTs,
-            step,
-            mode: 'range',
-            headers: { accept: 'application/json' },
-          }
-        })
+        // backend-neutral request; the original printed only the first and
+        // exited. The concrete URL/method/body are Provider transport detail
+        // and no longer cross the seam; backend_ref carries the identity.
+        const requests = metricNames.map((metricName) => ({
+          query: buildPromql(metricName, service),
+          mode: instant ? 'instant' : 'range',
+          ...(instant
+            ? { time_sec: startTs }
+            : { start_sec: startTs, end_sec: endTs, step }),
+        }))
         return buildEvidence({
           source: SOURCE,
           type: TYPE_METRIC,
@@ -287,6 +252,7 @@ export function apply(ctx: Context, config: Config): void {
             end: instant ? null : args.end,
             step,
             dry_run: true,
+            backend_ref: ctx.metricsStore.backendRef,
             requests,
           },
           summary: `[dry-run] env=${liveEnv()} service=${serviceLabel} 构造 ${metricNames.length} 个查询请求，未发送。`,
@@ -301,20 +267,15 @@ export function apply(ctx: Context, config: Config): void {
         const promql = buildPromql(metricName, service)
         const unit = metricUnit(metricName)
         try {
-          const raw = instant
-            ? await ctx.prometheus.queryInstant(promql, startTs)
-            : await ctx.prometheus.queryRange(promql, startTs, endTs, step)
-          const rawRecord = asRecord(raw)
-          if (rawRecord?.['status'] !== 'success') {
-            const errorValue = rawRecord?.['error']
-            throw new Error(errorValue === undefined ? 'unknown error' : String(errorValue))
-          }
+          const dataPoints = instant
+            ? await ctx.metricsStore.queryInstantMetrics({ promql, timeSec: startTs })
+            : await ctx.metricsStore.queryRangeMetrics({ promql, startSec: startTs, endSec: endTs, step })
           metricResults.push({
             name: metricName,
             promql,
             unit,
             mode: instant ? 'instant' : 'range',
-            data_points: instant ? extractInstantDataPoints(raw) : extractDataPoints(raw),
+            data_points: dataPoints,
           })
         } catch (error) {
           const message = errorMessage(error)
@@ -344,6 +305,7 @@ export function apply(ctx: Context, config: Config): void {
           end: instant ? null : args.end,
           step,
           mode: instant ? 'instant' : 'range',
+          backend_ref: ctx.metricsStore.backendRef,
           metrics: metricResults,
         },
         summary,
@@ -379,11 +341,10 @@ export function apply(ctx: Context, config: Config): void {
       const limit = typeof args.limit === 'number' && args.limit > 0 ? args.limit : 40000
 
       if (args.dryRun === true) {
-        const built = ctx.prometheus.buildLabelValuesRequest('__name__', windowMinutes, limit)
         return buildEvidence({
           source: SOURCE,
           type: TYPE_METRIC,
-          data: { dry_run: true, method: 'GET', url: built.url, params: built.params },
+          data: { dry_run: true, backend_ref: ctx.metricsStore.backendRef, window_minutes: windowMinutes, limit },
           summary: `[dry-run] 构造指标名清单查询请求（窗口 ${windowMinutes} 分钟），未发送。`,
           confidence: 1.0,
           refs: refs(),
@@ -404,7 +365,7 @@ export function apply(ctx: Context, config: Config): void {
       }
 
       try {
-        const names = await ctx.prometheus.labelValues('__name__', { windowMinutes, limit })
+        const names = await ctx.metricsStore.listMetricNames({ windowMinutes, limit })
         return listMetricsEvidence(liveEnv(), envRef(), names, match, windowMinutes, false, undefined)
       } catch (error) {
         return listMetricsEvidence(liveEnv(), envRef(), [], match, windowMinutes, false, errorMessage(error))
@@ -484,7 +445,7 @@ export function apply(ctx: Context, config: Config): void {
       // drift, ported verbatim (see module doc and promql.ts).
 
       // Original ordering: endpoint check first, then demo.
-      if (!ctx.prometheus.proxied && ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_ALERT)
+      if (!ctx.metricsStore.configured) return missingEndpointError(TYPE_ALERT)
 
       if (args.demo === true) {
         const svc = service || 'order-service'
@@ -514,14 +475,14 @@ export function apply(ctx: Context, config: Config): void {
       }
 
       try {
-        const raw = await ctx.prometheus.rules()
-        const alerts = extractFiringAlerts(raw, service)
+        const alerts = await ctx.metricsStore.listFiringAlerts(service !== undefined ? { service } : {})
         return buildEvidence({
           source: SOURCE,
           type: TYPE_ALERT,
           data: {
             env: liveEnv(),
             service: service ?? null,
+            backend_ref: ctx.metricsStore.backendRef,
             alerts,
           },
           summary: `env=${liveEnv()} service=${service || 'all'} 发现 ${alerts.length} 个 firing 告警`,
@@ -558,7 +519,7 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, _exec) {
       // Original ordering（与 sentry_query_metrics / sentry_list_alerts 一致）：先查配置再谈 demo——
       // 半配置宿主上 demo 输出不该被当成真实证据
-      if (!ctx.prometheus.proxied && ctx.prometheus.endpoint.length === 0) return missingEndpointError(TYPE_ALERT_RULE)
+      if (!ctx.metricsStore.configured) return missingEndpointError(TYPE_ALERT_RULE)
       if (args.demo === true) {
         return buildEvidence({
           source: SOURCE,
@@ -586,14 +547,14 @@ export function apply(ctx: Context, config: Config): void {
       }
 
       try {
-        const raw = await ctx.prometheus.rules()
-        const rules = extractAlertRules(raw, args.name)
+        const rules = await ctx.metricsStore.listAlertRules({ nameContains: args.name })
         return buildEvidence({
           source: SOURCE,
           type: TYPE_ALERT_RULE,
           data: {
             env: liveEnv(),
             name_filter: args.name,
+            backend_ref: ctx.metricsStore.backendRef,
             rules,
             match_count: rules.length,
           },
@@ -657,7 +618,7 @@ export function apply(ctx: Context, config: Config): void {
         return buildEvidence({
           source: SOURCE,
           type: TYPE_AM_ALERT,
-          data: { env: liveEnv(), match: args.match ?? null, alerts, count: alerts.length },
+          data: { env: liveEnv(), match: args.match ?? null, backend_ref: ctx.alertmanager.backendRef, alerts, count: alerts.length },
           summary: `env=${liveEnv()} Alertmanager 活跃告警 ${alerts.length} 条${args.match ? `（过滤 "${args.match}"）` : ''}`,
           confidence: 0.95,
           refs: amRefs(),
@@ -728,7 +689,7 @@ export function apply(ctx: Context, config: Config): void {
         return buildEvidence({
           source: SOURCE,
           type: TYPE_AM_SILENCE,
-          data: { env: liveEnv(), state: state ?? null, silences, count: silences.length },
+          data: { env: liveEnv(), state: state ?? null, backend_ref: ctx.alertmanager.backendRef, silences, count: silences.length },
           summary: `env=${liveEnv()} Alertmanager 静默 ${silences.length} 条${state ? `（state=${state}）` : ''}`,
           confidence: 0.95,
           refs: amRefs(),

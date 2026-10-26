@@ -19,6 +19,12 @@
     endpoint: https://greptimedb.example.invalid
     usernameRef: GREPTIMEDB_LOCAL_USERNAME
     passwordRef: GREPTIMEDB_LOCAL_PASSWORD
+    logSchema: public
+    logTable: k8s_logs
+    logTimestampCol: greptime_timestamp
+    callflowSchema: public
+    callflowTable: hep_1
+    callflowTimestampCol: greptime_timestamp
 
 - id: sentry-tool-log-analyzer
   name: '@dsh-sentry/tool-log-analyzer'
@@ -37,12 +43,12 @@
     endpoint: https://grafana.example.invalid
     usernameRef: GRAFANA_LOCAL_USERNAME
     passwordRef: GRAFANA_LOCAL_PASSWORD
+    datasourceUid: GreptimeDB-Jaeger
 
 - id: sentry-tool-trace-analyzer
   name: '@dsh-sentry/tool-trace-analyzer'
   config:
     env: local
-    greptimedbJaegerDatasourceUid: GreptimeDB-Jaeger
 
 - id: sentry-prometheus
   name: '@dsh-sentry/service-prometheus'
@@ -101,11 +107,15 @@
   config:
     env: local
 
+- id: sentry-code-repository
+  name: '@dsh-sentry/service-code-repository'
+  config:
+    baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
+
 - id: sentry-tool-code-repository
   name: '@dsh-sentry/tool-code-repository'
   config:
     env: local
-    baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
 
 - id: sentry-persona
   name: '@dsh-sentry/sentry-persona'

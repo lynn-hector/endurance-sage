@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Matrix } from '@dsh-sentry/env-matrix'
 import { extractCurrentEnv } from '@dsh-sentry/env-matrix'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   currentEnvironment,

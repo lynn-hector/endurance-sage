@@ -1,5 +1,5 @@
 /**
- * git sync for the code-repository tool: refresh the configured product
+ * git sync for the code-repository service: refresh the configured product
  * repositories with `git pull --ff-only`.
  *
  * Why this tool may run git at all — and why it is safe even though
@@ -39,7 +39,7 @@
  * incremental `sync`. Index CREATION on a repo without any `.codegraph`
  * is still bootstrap-only (clone-repos' job).
  *
- * @module @dsh-sentry/tool-code-repository/sync
+ * @module @dsh-sentry/service-code-repository/sync
  */
 
 import { execFile } from 'node:child_process'

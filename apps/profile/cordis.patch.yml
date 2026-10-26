@@ -13,8 +13,16 @@
         database: public
         usernameRef: GREPTIMEDB_DP0_USERNAME
         passwordRef: GREPTIMEDB_DP0_PASSWORD
+        logSchema: public
+        logTable: k8s_logs
+        logTimestampCol: greptime_timestamp
+        callflowSchema: public
+        callflowTable: hep_1
+        callflowTimestampCol: greptime_timestamp
     - id: sentry-tool-log-analyzer
       name: '@dsh-sentry/tool-log-analyzer'
+    - id: sentry-tool-callflow-analyzer
+      name: '@dsh-sentry/tool-callflow-analyzer'
     - id: sentry-trace
       name: '@dsh-sentry/service-trace'
       config:
@@ -22,10 +30,9 @@
         endpoint: https://grafana.cn-0.dev.novo-one.com
         usernameRef: GRAFANA_DP0_USERNAME
         passwordRef: GRAFANA_DP0_PASSWORD
+        datasourceUid: GreptimeDB-Jaeger
     - id: sentry-tool-trace-analyzer
       name: '@dsh-sentry/tool-trace-analyzer'
-      config:
-        greptimedbJaegerDatasourceUid: GreptimeDB-Jaeger
     - id: sentry-prometheus
       name: '@dsh-sentry/service-prometheus'
       config:

@@ -306,6 +306,15 @@ export class ZadigService extends Service {
     return this.config.workLoadType ?? 'Deployment'
   }
 
+  /**
+   * Stable, non-secret backend identity used in evidence refs and
+   * `backend_ref`. Consumers never assemble URLs from the endpoint
+   * themselves (see the mq/alertmanager legs for the same contract).
+   */
+  get backendRef(): string {
+    return `zadig:${this.endpoint}`
+  }
+
   /** Original `_request_headers`: browser-ish accepts + optional Bearer token. */
   private async requestHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
@@ -349,7 +358,7 @@ export class ZadigService extends Service {
     }
   }
 
-  /** Constructed workloads request, for dry-run evidence. */
+  /** Constructed workloads request, for tests and internal wiring. */
   buildWorkloadsRequest(): { url: string; params: Record<string, string> } {
     return {
       url: `${this.endpoint}${WORKLOADS_PATH.replace('{env_name}', encodeURIComponent(this.envName))}`,
@@ -362,7 +371,7 @@ export class ZadigService extends Service {
     }
   }
 
-  /** Constructed service-detail request, for dry-run evidence. */
+  /** Constructed service-detail request, for tests and internal wiring. */
   buildServiceDetailRequest(service: string): { url: string; params: Record<string, string> } {
     return {
       url: `${this.endpoint}${SERVICE_DETAIL_PATH
@@ -493,7 +502,7 @@ export class ZadigService extends Service {
     }
   }
 
-  /** Constructed workflow-tasks request, for dry-run evidence. */
+  /** Constructed workflow-tasks request, for tests and internal wiring. */
   buildWorkflowTasksRequest(query: WorkflowTasksQuery): { url: string; params: Record<string, string> } {
     return {
       url: `${this.endpoint}${WORKFLOW_TASKS_PATH}`,

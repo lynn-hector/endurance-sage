@@ -40,7 +40,7 @@
     "@dsh-sentry/tool-tapd-inspector": "workspace:*",
     "@dsh-sentry/tool-trace-analyzer": "workspace:*",
     "@dsh-sentry/tool-zadig-inspector": "workspace:*",
-    "@xmanrui/dsh-im": "^4.7.0",
-    "dsh-context": "^0.40.1"
+    "@xmanrui/dsh-im": "^5.6.0",
+    "dsh-context": "^0.77.0"
   }
 }

@@ -288,6 +288,12 @@ export function renderEntries(row: EnvRow): Entry[] {
         ...(row.greptimedb.tokenRef !== undefined
           ? { connectTokenRef: row.greptimedb.tokenRef }
           : { usernameRef: row.greptimedb.usernameRef, passwordRef: row.greptimedb.passwordRef }),
+        logSchema: 'public',
+        logTable: 'k8s_logs',
+        logTimestampCol: 'greptime_timestamp',
+        callflowSchema: 'public',
+        callflowTable: 'hep_1',
+        callflowTimestampCol: 'greptime_timestamp',
       },
     },
     { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },
@@ -300,13 +306,10 @@ export function renderEntries(row: EnvRow): Entry[] {
         endpoint: row.grafana.endpoint,
         usernameRef: row.grafana.usernameRef,
         passwordRef: row.grafana.passwordRef,
+        datasourceUid: row.grafana.greptimedbJaegerDatasourceUid,
       },
     },
-    {
-      id: 'sentry-tool-trace-analyzer',
-      name: '@dsh-sentry/tool-trace-analyzer',
-      config: { greptimedbJaegerDatasourceUid: row.grafana.greptimedbJaegerDatasourceUid },
-    },
+    { id: 'sentry-tool-trace-analyzer', name: '@dsh-sentry/tool-trace-analyzer' },
     {
       id: 'sentry-prometheus',
       name: '@dsh-sentry/service-prometheus',
@@ -377,10 +380,11 @@ export function renderEntries(row: EnvRow): Entry[] {
     },
     { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector' },
     {
-      id: 'sentry-tool-code-repository',
-      name: '@dsh-sentry/tool-code-repository',
+      id: 'sentry-code-repository',
+      name: '@dsh-sentry/service-code-repository',
       config: codeBaseDir === undefined ? undefined : { baseDir: codeBaseDir },
     },
+    { id: 'sentry-tool-code-repository', name: '@dsh-sentry/tool-code-repository' },
     { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
     { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
     { id: 'sentry-git-guard', name: '@dsh-sentry/guard-git' },

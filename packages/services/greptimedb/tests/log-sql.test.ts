@@ -4,7 +4,7 @@ import {
   buildLogQuerySql,
   escapeSqlLiteral,
   parseLogFilter,
-} from '../src/sql.ts'
+} from '../src/log-sql.ts'
 
 /**
  * Golden tests: every expected SQL below is quoted verbatim from the original

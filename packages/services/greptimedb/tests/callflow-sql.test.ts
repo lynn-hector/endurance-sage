@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCallFlowSql, escapeSqlLiteral } from '../src/sql.ts'
+import { buildCallFlowSql, escapeSqlLiteral } from '../src/callflow-sql.ts'
 
 /**
  * Golden tests: the query shape mirrors the novo-grafana hep_1 dashboard

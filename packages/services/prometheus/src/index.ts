@@ -1,6 +1,14 @@
 /**
- * Prometheus HTTP API client (`/api/v1/query_range` + `/api/v1/rules`) as a
- * Cordis service.
+ * MetricsStore Provider: the Prometheus HTTP API (`/api/v1/query_range`,
+ * `/api/v1/query`, `/api/v1/rules`, label values) with two interchangeable
+ * transports — direct Prometheus, or Grafana's `/api/ds/query` datasource
+ * proxy (the deployment exposes Prometheus exclusively through Grafana).
+ *
+ * Occupies the backend-neutral `ctx.metricsStore` slot from
+ * `@dsh-sentry/metrics-store`; Consumers never see URLs, datasource uids or
+ * auth. The lower-level `queryRange`/`queryInstant`/`rules`/`labelValues`
+ * methods remain public as Provider transport surface for tests and probes
+ * of this specific backend — they are not part of the seam.
  *
  * Port of the transport half of the original metrics-inspector scripts
  * (`skills/metrics-inspector/scripts/query_metrics.py::_query_prometheus` and
@@ -33,7 +41,7 @@
  * @module @dsh-sentry/service-prometheus
  */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
@@ -44,6 +52,22 @@ import {
   secretField,
   timeoutMsField,
 } from '@dsh-sentry/datasource'
+import {
+  extractAlertRules,
+  extractDataPoints,
+  extractFiringAlerts,
+  extractInstantDataPoints,
+  MetricsStore,
+  prometheusEnvelopeOrThrow,
+  type AlertRecord,
+  type AlertRuleRecord,
+  type FiringAlertsQuery,
+  type AlertRulesQuery,
+  type MetricDataPoint,
+  type MetricNamesQuery,
+  type MetricsInstantQuery,
+  type MetricsRangeQuery,
+} from '@dsh-sentry/metrics-store'
 
 /** In-memory session TTL default, matching service-trace (`auth_cache._DEFAULT_TTL_HOURS`). */
 const DEFAULT_SESSION_TTL_MS = 24 * 3600 * 1000
@@ -81,7 +105,7 @@ export interface Config {
   sessionTtlMs?: number
 }
 
-export class PrometheusService extends Service {
+export class PrometheusService extends MetricsStore {
   static Config: z<Config> = z.object({
     endpoint: z.string().description('Prometheus HTTP 地址，如 http://localhost:9090（grafana 代理模式下省略）'),
     grafanaEndpoint: z.string().description('Grafana 地址；设置后 PromQL 经 /api/ds/query 代理查询（该部署的 Prometheus 只经 Grafana 暴露）'),
@@ -101,7 +125,7 @@ export class PrometheusService extends Service {
   readonly endpoint: string
   /** Grafana proxy base when configured, trailing slashes stripped. */
   readonly grafanaEndpoint: string
-  /** Prometheus datasource uid inside Grafana (schema default applied), for URLs and evidence refs. */
+  /** Prometheus datasource uid inside Grafana (schema default applied), for proxy routing. */
   readonly datasourceUid: string
   private readonly timeoutMs: number
   private readonly sessionTtlMs: number
@@ -109,7 +133,7 @@ export class PrometheusService extends Service {
   private readonly keeper: GrafanaSessionKeeper
 
   constructor(ctx: Context, config: Config = {}) {
-    super(ctx, 'prometheus')
+    super(ctx)
     // The schema already defaulted optional fields under the Loader; the ??
     // narrows the type for direct (non-Loader) construction in tests.
     this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
@@ -246,6 +270,45 @@ export class PrometheusService extends Service {
   /** True when PromQL goes through the Grafana datasource proxy. */
   get proxied(): boolean {
     return this.grafanaEndpoint.length > 0
+  }
+
+  /** Non-secret backend identity included in metrics evidence refs. */
+  override get backendRef(): string {
+    return this.proxied
+      ? `grafana:${this.grafanaEndpoint}/datasources/uid/${this.datasourceUid}`
+      : `prometheus:${this.endpoint}`
+  }
+
+  /** Availability contract: proxied mode needs the Grafana base, direct mode an endpoint. */
+  override get configured(): boolean {
+    return this.proxied || this.endpoint.length > 0
+  }
+
+  override async queryRangeMetrics(request: MetricsRangeQuery): Promise<MetricDataPoint[]> {
+    const raw = await this.queryRange(request.promql, request.startSec, request.endSec, request.step)
+    prometheusEnvelopeOrThrow(raw)
+    return extractDataPoints(raw)
+  }
+
+  override async queryInstantMetrics(request: MetricsInstantQuery): Promise<MetricDataPoint[]> {
+    const raw = await this.queryInstant(request.promql, request.timeSec)
+    prometheusEnvelopeOrThrow(raw)
+    return extractInstantDataPoints(raw)
+  }
+
+  override async listFiringAlerts(request: FiringAlertsQuery): Promise<AlertRecord[]> {
+    return extractFiringAlerts(await this.rules(), request.service)
+  }
+
+  override async listAlertRules(request: AlertRulesQuery): Promise<AlertRuleRecord[]> {
+    return extractAlertRules(await this.rules(), request.nameContains)
+  }
+
+  override async listMetricNames(request: MetricNamesQuery): Promise<string[]> {
+    return this.labelValues('__name__', {
+      ...(request.windowMinutes !== undefined ? { windowMinutes: request.windowMinutes } : {}),
+      ...(request.limit !== undefined ? { limit: request.limit } : {}),
+    })
   }
 
   /** Constructed grafana proxy request body, for tests and dry-run evidence. */
@@ -473,12 +536,6 @@ export function framesToQueryRangeEnvelope(payload: unknown): unknown {
 export function formatPyFloat(value: number): string {
   if (Number.isFinite(value) && Number.isInteger(value)) return `${value}.0`
   return String(value)
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    prometheus: PrometheusService
-  }
 }
 
 export default PrometheusService

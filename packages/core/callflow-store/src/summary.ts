@@ -13,7 +13,7 @@
  * REGISTER flow's 200 is a registration success, and a cancelled call's 200
  * acknowledges the CANCEL itself, neither is a call answer.
  *
- * @module @dsh-sentry/tool-callflow-analyzer/summary
+ * @module @dsh-sentry/callflow-store/summary
  */
 
 /** Milestone timestamps of one call; absent when the event never occurred. */
@@ -42,7 +42,7 @@ export interface CallSummary {
   trace_ids: string[]
 }
 
-/** Options for {@link extractCallSummary}. */
+/** Options for {@link summarizeCallFlow}. */
 export interface ExtractCallSummaryOptions {
   /** Timestamp column; defaults to `greptime_timestamp`. */
   timestampCol?: string
@@ -55,7 +55,7 @@ function tsOf(row: Record<string, unknown>, timestampCol: string): string {
 }
 
 /** Extract the call summary from signaling rows (any input order). */
-export function extractCallSummary(
+export function summarizeCallFlow(
   messages: Record<string, unknown>[],
   options: ExtractCallSummaryOptions = {},
 ): CallSummary {

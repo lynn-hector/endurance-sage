@@ -107,6 +107,13 @@ describe('buildWebUiUrl — port of _web_ui_url', () => {
   })
 })
 
+describe('ZadigService identity', () => {
+  it('exposes a stable backendRef for Consumer evidence', () => {
+    const service = makeService(new Context(), { endpoint: `${ENDPOINT}/` })
+    expect(service.backendRef).toBe(`zadig:${ENDPOINT}`)
+  })
+})
+
 describe('ZadigService.fetchServices — golden request + parsing', () => {
   it('GETs workloads with referer, browser accepts, and the script-era params', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({

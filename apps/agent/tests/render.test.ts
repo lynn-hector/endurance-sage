@@ -36,7 +36,7 @@ const fixture: EnvRow = {
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders all 22 plugins in dependency order', () => {
+  it('renders all 23 plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
       'sentry-tool-env-switcher',
       'sentry-greptimedb',
@@ -56,6 +56,7 @@ describe('renderEntries', () => {
       'sentry-tool-mq-inspector',
       'sentry-tapd',
       'sentry-tool-tapd-inspector',
+      'sentry-code-repository',
       'sentry-tool-code-repository',
       'sentry-persona',
       'sentry-skills',
@@ -69,6 +70,33 @@ describe('renderEntries', () => {
     for (const entry of entries.filter((e) => e.id !== 'sentry-tool-env-switcher')) {
       expect(entry.config?.['env'], entry.id).toBeUndefined()
     }
+  })
+
+  it('places log and callflow table configuration on the shared GreptimeDB Provider, not its Consumers', () => {
+    const provider = entries.find((e) => e.id === 'sentry-greptimedb')
+    const logConsumer = entries.find((e) => e.id === 'sentry-tool-log-analyzer')
+    const callflowConsumer = entries.find((e) => e.id === 'sentry-tool-callflow-analyzer')
+
+    expect(provider?.config).toMatchObject({
+      endpoint: 'https://greptimedb.cn-0.test.novo-one.com',
+      logSchema: 'public',
+      logTable: 'k8s_logs',
+      callflowSchema: 'public',
+      callflowTable: 'hep_1',
+    })
+    expect(logConsumer?.config).toBeUndefined()
+    expect(callflowConsumer?.config).toBeUndefined()
+  })
+
+  it('places Jaeger datasource configuration on the trace Provider, not its Consumer', () => {
+    const provider = entries.find((e) => e.id === 'sentry-trace')
+    const consumer = entries.find((e) => e.id === 'sentry-tool-trace-analyzer')
+
+    expect(provider?.config).toMatchObject({
+      endpoint: 'https://grafana.cn-0.test.novo-one.com',
+      datasourceUid: 'GreptimeDB-Jaeger',
+    })
+    expect(consumer?.config).toBeUndefined()
   })
 
   it('prometheus goes through the grafana proxy of this env', () => {
@@ -107,11 +135,13 @@ describe('renderEntries', () => {
       },
     }
     const entry = renderEntries(tokenRow).find((e) => e.id === 'sentry-greptimedb')
-    expect(entry?.config).toEqual({
+    expect(entry?.config).toMatchObject({
       endpoint: 'https://greptimedb.br.novoone.com',
       database: 'public',
       connectTokenRef: 'GREPTIMEDB_TEST_CONNECT_TOKEN',
     })
+    expect(entry?.config).not.toHaveProperty('usernameRef')
+    expect(entry?.config).not.toHaveProperty('passwordRef')
   })
 })
 
@@ -148,22 +178,27 @@ describe('requiredCredentialRefs', () => {
 describe('code leg baseDir', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it('omits the entry entirely when no source configures it', () => {
+  it('omits the config entirely when no source configures it', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '')
-    const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
-    expect(entry?.config).toBeUndefined()
+    const service = renderEntries(fixture).find((e) => e.id === 'sentry-code-repository')
+    const consumer = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
+    expect(service?.config).toBeUndefined()
+    expect(consumer?.config).toBeUndefined()
   })
 
-  it('bakes DSH_SENTRY_CODE_BASE into baseDir when set', () => {
+  it('bakes DSH_SENTRY_CODE_BASE into the service Provider, not its Consumer', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/novo-commctl')
-    const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
-    expect(entry?.config).toEqual({ baseDir: '/tmp/novo-commctl' })
+    const entries = renderEntries(fixture)
+    const service = entries.find((e) => e.id === 'sentry-code-repository')
+    const consumer = entries.find((e) => e.id === 'sentry-tool-code-repository')
+    expect(service?.config).toEqual({ baseDir: '/tmp/novo-commctl' })
+    expect(consumer?.config).toBeUndefined()
   })
 
   it('envs.yml codeRepository.baseDir wins over the environment variable', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/from-env')
     const row: EnvRow = { ...fixture, codeRepository: { baseDir: '/tmp/from-matrix' } }
-    const entry = renderEntries(row).find((e) => e.id === 'sentry-tool-code-repository')
+    const entry = renderEntries(row).find((e) => e.id === 'sentry-code-repository')
     expect(entry?.config).toEqual({ baseDir: '/tmp/from-matrix' })
   })
 })
@@ -173,7 +208,7 @@ describe('renderPatch', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(22)
+    expect(parsed[0]!.insert).toHaveLength(23)
     const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
     expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
     // direct endpoint field is absent in proxy mode (optional since day one
