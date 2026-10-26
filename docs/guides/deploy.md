@@ -47,13 +47,20 @@ RocketMQ）都在里面。键名清单以 `apps/agent/envs.yml` 为准。
 
 ## 代码检索腿（可选）
 
-`sentry_search_code` 需要服务器上有 novo-commctl 的 clone：
+`sentry_search_code` 覆盖 GitLab `novoone/backend` 组全部仓库。服务器上用仓库自带的引导脚本一次拉全（浅克隆；日常更新由 `sentry_sync_code` 的 ff-only pull 负责）：
 
 ```bash
-export DSH_SENTRY_CODE_BASE=/srv/novo-commctl   # 服务器上的 clone 路径（或写入 $DSH_HOME/.credentials.yaml 的同名键）
-git clone <novo-commctl 地址> $DSH_SENTRY_CODE_BASE
+pnpm --filter @dsh-sentry/agent run clone-repos -- --target /srv/novoone-backend
+# 目标也可走 DSH_SENTRY_CODE_BASE（环境变量 / $DSH_HOME/.credentials.yaml 同名键），脚本会自动解析
+# 检出根目录必须同时告知 regenerate，否则 clone 完 code 腿仍报「未配置」（三来源优先级: envs.yml > 环境变量 > 凭据库，
+# 从本地 scp 过来的凭据库里若带旧机器路径，环境变量这一层会覆盖它）:
+export DSH_SENTRY_CODE_BASE=/srv/novoone-backend
 pnpm --filter @dsh-sentry/agent run regenerate
 ```
+
+装有 codegraph 的服务器上，clone 脚本会自动初始化各仓索引（老检出无索引会补建）；未装则检索回退 ripgrep。
+
+**GitLab 认证（clone 与后续 pull 共用）**：私有仓二选一——HTTPS + PAT（默认）或 SSH key（脚本加 `--ssh`）。配置步骤唯一权威源是 [onboarding.md](onboarding.md) 第 2 步「GitLab 认证」（含无终端交互环境的预置做法）；配置一次后 `sentry_sync_code` 的 pull 同样免密。
 
 不配置时其他证据腿不受影响，code 腿会以错误证据回报。
 

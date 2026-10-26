@@ -55,9 +55,11 @@
 | `repo` | 否 | 全部 | 限定一个**配置内**仓库（名称或配置路径）；不能指定任意目录 |
 | `dryRun` | 否 | `false` | 只列出目标仓库的当前分支/HEAD，不执行 pull |
 
-对配置发现到的仓库执行 `git pull --ff-only`：只快进；本地分叉、工作区不干净、无上游时返回该仓库的 git 错误，不做任何合并/重置/丢弃。每仓结果含 `head_before → head_after`（短 sha）、分支名与 git 输出摘要；真正更新的仓库若带 `.codegraph/` 索引，会接着跑增量 `codegraph sync --quiet` 刷新索引（结果记在每仓的 `index_sync`/`index_error`，失败不影响 pull 结果，搜索无结果时仍会回退 ripgrep）。
+对配置发现到的仓库执行 `git pull --ff-only`：只快进；本地分叉、工作区不干净、无上游时返回该仓库的 git 错误，不做任何合并/重置/丢弃。每仓结果含 `head_before → head_after`（短 sha）、分支名与 git 输出摘要；有更新（或下述自愈触发）的仓库若带 `.codegraph/` 索引，会接着跑增量 `codegraph sync --quiet` 刷新索引（结果记在每仓的 `index_sync`/`index_error`，失败不影响 pull 结果，搜索无结果时仍会回退 ripgrep）。
 
 什么时候用：行号/内容与日志或链路证据对不上、怀疑本地检出落后于部署版本时，先同步再重新搜索。
+
+索引自愈：clone-repos 在装有 codegraph 的机器上会为每个仓库自动初始化索引并记录建索引时的 HEAD（`.git/dsh-codegraph-head`）。sentry_sync_code 每次运行会将该标记与当前 HEAD 比对——切分支、手工 pull 等任何带外变更导致不一致时自动重建该仓索引（哪怕本次 pull 无更新；pull 失败不阻断自愈）。重建失败时标记保持旧值，下次 sync 自动重试，期间检索回退 ripgrep。
 
 ## 输出格式
 

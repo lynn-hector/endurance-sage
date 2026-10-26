@@ -13,9 +13,11 @@
  * report):
  * - Session cache: the script persisted `grafana_session` through
  *   `skills/lib/auth_cache.py` at `~/.endurance-sentry/auth/{env}.json`. This
- *   service keeps an in-memory `{ session, expiresAt }` pair with the same
- *   24h default TTL and re-logs-in after a process restart — nothing touches
- *   the disk.
+ *   service uses the shared in-memory `GrafanaSessionKeeper`
+ *   (`@dsh-sentry/datasource`, same 24h default TTL — also used by
+ *   service-prometheus/service-alertmanager) and re-logs-in after a process
+ *   restart — nothing touches the disk. The auth retry judges structured
+ *   HTTP status (401/403) via `isAuthFailureError`, never message text.
  * - `mode: 'jaeger'` (Jaeger native HTTP API, bearer token) is NEW code: the
  *   Python script only implemented the Grafana path and would have crashed on
  *   the production config (`type: jaeger`, token-only credentials). This
@@ -34,6 +36,9 @@ import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
   endpointField,
+  GrafanaSessionKeeper,
+  HttpError,
+  isAuthFailureError,
   resolveCredential,
   secretField,
   timeoutMsField,
@@ -252,21 +257,6 @@ export function buildJaegerQueryRequest(endpoint: string, token: string, traceId
   }
 }
 
-/** Port of `_extract_cookie`: first `Set-Cookie` whose name matches wins. */
-export function extractCookie(headers: Headers, name: string): string | undefined {
-  const withGetSetCookie = headers as Headers & { getSetCookie?: () => string[] }
-  const rawCookies = typeof withGetSetCookie.getSetCookie === 'function'
-    ? withGetSetCookie.getSetCookie()
-    : (headers.get('set-cookie') !== null ? [headers.get('set-cookie')!] : [])
-  for (const cookie of rawCookies) {
-    if (cookie.startsWith(`${name}=`)) {
-      const pair = cookie.split(';', 1)[0]!
-      return pair.slice(pair.indexOf('=') + 1)
-    }
-  }
-  return undefined
-}
-
 /** First tag in the list whose `key` matches; `undefined` when absent. */
 function tagValue(tags: TraceTag[] | undefined, key: string): unknown {
   for (const tag of tags ?? []) {
@@ -460,12 +450,6 @@ export function parseJaegerTraceResponse(response: unknown): ParsedTrace {
   return { ...finalizeParsedTrace(spans), frames_count: data.length }
 }
 
-/** Port of `_looks_like_auth_error`: any "401"/"403" substring counts. */
-export function looksLikeAuthError(error: unknown): boolean {
-  const text = errorMessage(error)
-  return text.includes('401') || text.includes('403')
-}
-
 export class TraceService extends Service {
   static Config: z<Config> = z.object({
     mode: z.union([z.const('grafana-jaeger'), z.const('jaeger')]).default('grafana-jaeger')
@@ -488,13 +472,8 @@ export class TraceService extends Service {
   private readonly timeoutMs: number
   private readonly sessionTtlMs: number
   private readonly config: Config
-
-  /**
-   * In-memory session cache replacing `auth_cache`'s on-disk
-   * `~/.endurance-sentry/auth/{env}.json`. Lazily re-validated on read; the
-   * dispose hook drops it so a reloaded plugin never leaks a stale cookie.
-   */
-  private session: { value: string; expiresAt: number } | undefined
+  /** Shared form-login session keeper (`@dsh-sentry/datasource`). */
+  private readonly keeper: GrafanaSessionKeeper
 
   constructor(ctx: Context, config: Config = { endpoint: '' }) {
     super(ctx, 'trace')
@@ -505,11 +484,15 @@ export class TraceService extends Service {
     this.timeoutMs = config.timeoutMs ?? 30_000
     this.sessionTtlMs = config.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
     this.config = config
+    this.keeper = new GrafanaSessionKeeper({
+      grafanaEndpoint: this.endpoint,
+      resolveCredentials: () => this.credentials(),
+      timeoutMs: this.timeoutMs,
+      sessionTtlMs: this.sessionTtlMs,
+    })
     // The session is in-memory and dies with the fiber anyway; dropping it on
     // teardown just keeps a reloaded plugin from holding a stale cookie.
-    ctx.effect(() => () => {
-      this.session = undefined
-    })
+    ctx.effect(() => () => this.keeper.clearSession())
   }
 
   /** Resolve Grafana login credentials: references win over literal fallbacks. */
@@ -549,49 +532,6 @@ export class TraceService extends Service {
     return token
   }
 
-  private loadSession(): string | undefined {
-    if (this.session === undefined) return undefined
-    if (Date.now() > this.session.expiresAt) {
-      this.session = undefined
-      return undefined
-    }
-    return this.session.value
-  }
-
-  private saveSession(value: string): void {
-    this.session = { value, expiresAt: Date.now() + this.sessionTtlMs }
-  }
-
-  private clearSession(): void {
-    this.session = undefined
-  }
-
-  /** Port of `_login`: POST `/login`, extract `grafana_session` from Set-Cookie. */
-  private async login(username: string, password: string): Promise<string> {
-    const request = buildGrafanaLoginRequest(this.endpoint, username, password)
-    let resp: Response
-    try {
-      resp = await fetch(request.url, {
-        method: request.method,
-        headers: request.headers,
-        body: request.body ?? null,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      })
-    } catch (cause) {
-      throw new Error(`Grafana 登录连接失败: ${errorMessage(cause)}`)
-    }
-    if (!resp.ok) {
-      const detail = await resp.text()
-      throw new Error(`Grafana 登录失败 HTTP ${resp.status}: ${detail}`)
-    }
-    const session = extractCookie(resp.headers, SESSION_COOKIE)
-    if (!session) {
-      const body = await resp.text()
-      throw new Error(`登录成功但未返回 grafana_session cookie，响应: ${body.slice(0, 200)}`)
-    }
-    return session
-  }
-
   /** Port of `_query_trace`'s network half; parsing lives in {@link parseTraceResponse}. */
   private async queryViaGrafana(options: {
     datasourceUid: string
@@ -617,7 +557,7 @@ export class TraceService extends Service {
     }
     if (!resp.ok) {
       const detail = await resp.text()
-      throw new Error(`Grafana query HTTP ${resp.status}: ${detail}`)
+      throw new HttpError(`Grafana query HTTP ${resp.status}: ${detail}`, resp.status)
     }
     try {
       return await resp.json()
@@ -670,7 +610,6 @@ export class TraceService extends Service {
       return parseJaegerTraceResponse(response)
     }
 
-    const { username, password } = await this.credentials()
     const datasourceUid = params.datasourceUid ?? ''
     if (!datasourceUid) {
       throw new Error('traces.datasource_uid 缺失，请检查插件配置')
@@ -692,21 +631,23 @@ export class TraceService extends Service {
       operation: params.operation ?? '',
     })
 
-    let session = this.loadSession()
-    if (session === undefined) {
-      session = await this.login(username, password)
-      this.saveSession(session)
+    // 会话由共享 keeper 管理（缓存/过期/单飞登录）；凭据校验错误从 authSession 冒出
+    const auth = await this.keeper.authSession()
+    if (auth.session === undefined) {
+      throw new Error('traces 凭据缺失，需要 username/password 或凭据引用注入')
     }
 
     try {
-      const response = await this.queryViaGrafana(queryOptions(session))
+      const response = await this.queryViaGrafana(queryOptions(auth.session))
       return parseTraceResponse(response)
     } catch (error) {
-      if (!looksLikeAuthError(error)) throw error
-      this.clearSession()
-      const refreshed = await this.login(username, password)
-      this.saveSession(refreshed)
-      const response = await this.queryViaGrafana(queryOptions(refreshed))
+      if (!auth.retriable || !isAuthFailureError(error)) throw error
+      this.keeper.clearSession()
+      const refreshed = await this.keeper.authSession()
+      if (refreshed.session === undefined) {
+        throw new Error('traces 凭据缺失，需要 username/password 或凭据引用注入')
+      }
+      const response = await this.queryViaGrafana(queryOptions(refreshed.session))
       return parseTraceResponse(response)
     }
   }

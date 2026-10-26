@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { iterConfiguredRepos, iterRepos, codegraphAvailable, CODEGRAPH_DIR } from '../src/search.ts'
-import { buildSyncSummary, inspectRepo, runGitPull, syncRepo } from '../src/sync.ts'
+import { buildSyncSummary, CODEGRAPH_HEAD_MARKER, healAction, inspectRepo, needsReindex, readIndexMarker, runGitPull, syncRepo } from '../src/sync.ts'
 
 /**
  * Sync tests against a REAL git fixture: one bare origin, one working clone
@@ -227,7 +227,7 @@ describe('buildSyncSummary', () => {
     const ok = buildSyncSummary([
       { repo: 'a', path: '/a', status: 'updated', head_before: '1', head_after: '2', codegraph_index: true, index_sync: 'ok' },
     ])
-    expect(ok).toContain('codegraph 索引已随更新同步（a）')
+    expect(ok).toContain('codegraph 索引已同步（a）')
 
     const fail = buildSyncSummary([
       { repo: 'a', path: '/a', status: 'updated', head_before: '1', head_after: '2', codegraph_index: true, index_sync: 'failed', index_error: 'boom' },
@@ -240,4 +240,95 @@ describe('buildSyncSummary', () => {
       buildSyncSummary([{ repo: 'a', path: '/a', status: 'updated', head_before: '1', head_after: '2', codegraph_index: false }]),
     ).toBe('同步 1 个仓库：1 个已更新（a: 1→2）。')
   })
+})
+
+describe('索引标记与自愈（needsReindex + syncRepo 集成）', () => {
+  /** 独立 fixture：从 origin 克隆一个新仓，伪造 .codegraph 索引目录与标记。 */
+  function makeIndexedRepo(name: string, markerSha: string | null): string {
+    const dir = join(base, name)
+    git(base, 'clone', 'origin.git', name)
+    mkdirSync(join(dir, '.codegraph'))
+    writeFileSync(join(dir, '.codegraph', 'index.bin'), 'x')
+    if (markerSha !== null) writeFileSync(join(dir, '.git', CODEGRAPH_HEAD_MARKER), `${markerSha}\n`)
+    return dir
+  }
+  const fullHead = (cwd: string): string =>
+    execFileSync('git', ['rev-parse', 'HEAD'], { cwd }).toString().trim()
+
+  it('needsReindex：updated 恒真；标记缺失/不匹配自愈；标记一致且无更新为假；无索引恒假', () => {
+    expect(needsReindex('updated', true, 'sha', 'sha')).toBe(true)
+    expect(needsReindex('up_to_date', true, 'sha', 'other')).toBe(true)
+    expect(needsReindex('up_to_date', true, undefined, 'sha')).toBe(true)
+    expect(needsReindex('up_to_date', true, 'sha', 'sha')).toBe(false)
+    expect(needsReindex('error', true, 'sha', 'other')).toBe(true)
+    expect(needsReindex('updated', false, undefined, 'sha')).toBe(false)
+    expect(needsReindex('up_to_date', true, 'sha', undefined)).toBe(false)
+  })
+
+  it('healAction：标记缺失 → init（中断的半成品只能全量重建，增量会把残缺索引「洗白」）；标记在但漂移 → sync', () => {
+    expect(healAction(undefined)).toBe('init')
+    expect(healAction('deadbeefdeadbeefdeadbeefdeadbeefdeadbeef')).toBe('sync')
+  })
+
+  it('up_to_date 且标记与 HEAD 一致 → 不重建（index_sync 不出现）', async () => {
+    const repo = makeIndexedRepo('heal-matched', null)
+    writeFileSync(join(repo, '.git', CODEGRAPH_HEAD_MARKER), `${fullHead(repo)}\n`)
+    const result = await syncRepo({ name: 'heal-matched', path: repo })
+    expect(result.status).toBe('up_to_date')
+    expect(result.index_sync).toBeUndefined()
+  })
+
+  // 断言的是「无 codegraph 二进制」的降级结果（sync 必 failed、marker 保持旧值），
+  // 装了 codegraph 的机器前提不成立，跳过（与文件内其他真实二进制用例的互斥门控一致）
+  it.skipIf(hasCodegraph)('标记与 HEAD 不一致 → up_to_date 也尝试重建；无 codegraph 时 failed 且标记保持旧值', async () => {
+    const repo = makeIndexedRepo('heal-drift', 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef')
+    const result = await syncRepo({ name: 'heal-drift', path: repo })
+    expect(result.status).toBe('up_to_date')
+    expect(result.index_sync).toBe('failed')
+    expect(result.index_error).toBeDefined()
+    expect(readIndexMarker(repo)).toBe('deadbeefdeadbeefdeadbeefdeadbeefdeadbeef')
+  })
+
+  it.skipIf(hasCodegraph)('pull error（分叉）+ 标记不一致 → 自愈不因报错中断（仍尝试重建；无 codegraph 时 failed）', async () => {
+    const repo = makeIndexedRepo('heal-diverged', 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef')
+    writeFileSync(join(repo, 'local.txt'), 'local\n') // 本地未推送提交 → 分叉
+    git(repo, 'add', 'local.txt')
+    git(repo, '-c', 'user.email=sentry@test', '-c', 'user.name=sentry', 'commit', '-m', 'diverge')
+    commitFile(helper, 'e.txt', 'five\n', 'fifth')
+    git(helper, 'push', 'origin', 'main')
+
+    const result = await syncRepo({ name: 'heal-diverged', path: repo })
+    expect(result.status).toBe('error')
+    expect(result.index_sync).toBe('failed')
+  })
+})
+
+describe.skipIf(!hasCodegraph)('自愈重建成功路径（真实 codegraph）', () => {
+  it('标记不一致 → codegraph sync 成功 → 标记重写为当前 HEAD', async () => {
+    const dir = join(base, 'heal-real')
+    git(base, 'clone', 'origin.git', 'heal-real')
+    writeFileSync(join(dir, 'svc.go'), 'package main\n')
+    execFileSync('codegraph', ['init', dir], { stdio: 'pipe' })
+    writeFileSync(join(dir, '.git', CODEGRAPH_HEAD_MARKER), 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n')
+
+    const result = await syncRepo({ name: 'heal-real', path: dir })
+    expect(result.status).toBe('up_to_date')
+    expect(result.index_sync).toBe('ok')
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim()
+    expect(readIndexMarker(dir)).toBe(head)
+  }, 120_000)
+
+  it('标记缺失（中断 init 形态）→ heal 走 init 全量重建并落标记 → hasCompleteIndex 为真', async () => {
+    const dir = join(base, 'heal-init-real')
+    git(base, 'clone', 'origin.git', 'heal-init-real')
+    writeFileSync(join(dir, 'svc.go'), 'package main\n')
+    execFileSync('codegraph', ['init', dir], { stdio: 'pipe' })
+    // 模拟中断 bootstrap 的形态：索引目录在、标记未落
+    rmSync(join(dir, '.git', CODEGRAPH_HEAD_MARKER), { force: true })
+
+    const result = await syncRepo({ name: 'heal-init-real', path: dir })
+    expect(result.index_sync).toBe('ok')
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim()
+    expect(readIndexMarker(dir)).toBe(head)
+  }, 300_000)
 })

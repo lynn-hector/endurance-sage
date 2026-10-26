@@ -20,6 +20,7 @@
     "@deepseek-ai/schemastery": "^3.18.1",
     "@dsh-sentry/env-matrix": "workspace:*",
     "@dsh-sentry/evidence": "workspace:*",
+    "@dsh-sentry/service-alertmanager": "workspace:*",
     "@dsh-sentry/service-prometheus": "workspace:*"
   },
   "devDependencies": {

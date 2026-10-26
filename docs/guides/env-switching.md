@@ -45,7 +45,7 @@ pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-1 -- --dry-run
 pnpm --filter @dsh-sentry/agent run regenerate
 ```
 
-**就绪度门**：切换前校验该环境引用的全部凭据键（8 个）在凭据库或进程环境中存在，缺任何一个直接拒绝并列出键名。**补齐凭据 = 启用环境**，矩阵不用动。
+**就绪度门**：切换前按腿校验该环境引用的凭据值在凭据库或进程环境中存在（空值视为未配置）；缺值不拦截切换，随结果返回降级腿与缺失键名，对应工具调用时按需报错。**补齐凭据 = 恢复该腿**，矩阵不用动。
 
 ## 当前环境矩阵（实测状态）
 
@@ -59,6 +59,15 @@ pnpm --filter @dsh-sentry/agent run regenerate
 | `tst-client-hosted-0` | cn-0.test-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
 | `sit-client-hosted-1` | cn-1.sit-byoi.novo-one.com | ⬜ 骨架 | 矩阵已录入（SC1），rocketmq 腿实测通过（2026-09-03），其余腿未实测、凭据未补 |
 | `sit-client-hosted-2` | cn-2.sit-byoi.novo-one.com | ⬜ 骨架 | 矩阵已录入（SC2），rocketmq 腿实测通过（2026-09-03），其余腿未实测、凭据未补 |
+| `pro-br-saas-aws-eks-novo` | br.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-巴西-0」；矩阵已录入（PBO），greptimedb connect token / grafana(liuzw) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
+| `tst-platform-aws-eks-sg-0` | sg-0.pre.novo-one.com | ⬜ 骨架 | 中文名「新加坡-测试0自营环境」；矩阵已录入（TPSG0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
+| `pro-use-saas-aws-eks-novo` | use.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-美国东部-0」；矩阵已录入（PUO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
+| `pro-za-saas-aws-eks-novo` | za.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-南非-0」；矩阵已录入（PZO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
+| `pro-de-saas-aws-eks-novo` | de.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-德国-0」；矩阵已录入（PDO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
+| `pro-sg-saas-aws-eks-novo` | sg.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-新加坡-0」；矩阵已录入（PSO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
+| `tst-platform-aws-eks-de-0` | de-0.pre.novo-one.com | ⬜ 骨架 | 中文名「德国-测试0自营环境-法兰克福」；矩阵已录入（TPDE0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
+| `tst-platform-aws-eks-us-0` | us-0.pre.novo-one.com | ⬜ 骨架 | 中文名「美国-测试0自营环境-俄勒冈州」；矩阵已录入（TPUS0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
+| `tst-platform-aws-eks-au-0` | au-0.pre.novo-one.com | ⬜ 骨架 | 中文名「澳大利亚-测试0自营环境」；矩阵已录入（TPAU0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
 
 「腿」的口径统一为 probe 覆盖的六个随环境切换的数据源：greptimedb（日志）、trace（链路）、prometheus（指标）、dbx（数据库）、rocketmq（MQ）、zadig（CI/CD）。不计入的三条：TAPD 是平台级唯一来源、不随环境切换；Redis 经 dbx 平台中转（dbx 通即通）；代码检索读本机目录、与环境无关。
 

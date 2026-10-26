@@ -85,3 +85,5 @@ export async function resolveCredential(ctx: Context, ref: string): Promise<stri
   const ambient = process.env[ref]
   return ambient !== undefined && ambient.length > 0 ? ambient : undefined
 }
+
+export * from './grafana-session.ts'

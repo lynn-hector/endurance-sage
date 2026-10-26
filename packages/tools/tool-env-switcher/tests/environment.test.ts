@@ -129,15 +129,18 @@ describe('environment tools', () => {
     const tp0 = result.environments.find(environment => environment.name === 'tst-platform-hosted-0')
     expect(tp0?.aliases).toContain('TP0')
     expect(tp0?.missingCredentialRefs).toEqual(['GRAFANA_TP0_USERNAME', 'GRAFANA_TP0_PASSWORD'])
+    expect(tp0?.degradedLegs).toEqual(['grafana'])
   })
 
-  it('rejects switching when credential refs are missing', () => {
-    const result = switchEnvironment('TP0', config)
+  it('switches with degraded legs reported instead of refusing', () => {
+    const result = switchEnvironment('TP0', config, { now: () => '2026-08-27T00:00:00.000Z' })
     expect(result).toMatchObject({
-      ok: false,
-      code: 'MISSING_CREDENTIALS',
+      ok: true,
       environment: 'tst-platform-hosted-0',
+      degradedLegs: [{ leg: 'grafana', missingRefs: ['GRAFANA_TP0_USERNAME', 'GRAFANA_TP0_PASSWORD'] }],
     })
+    // 切换照常写入装配文件：缺凭据只降级该腿，不再拦截
+    expect(readFileSync(config.includePath, 'utf8')).toContain('env: tst-platform-hosted-0')
   })
 
   it('switches by canonical name and reports pending hot reload', () => {

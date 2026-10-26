@@ -57,6 +57,12 @@ const SKILLS: SkillSpec[] = [
       '根据服务、时间范围、关键词和过滤条件从 GreptimeDB 查询 k8s 容器日志，提取异常模式（sentry_query_logs / sentry_list_log_services）。',
   },
   {
+    file: 'callflow-analyzer.md',
+    name: 'callflow-analyzer',
+    description:
+      '按 callid 查询 GreptimeDB hep_1 表的 SIP 信令流，还原 INVITE/180/200/BYE 时序与 PDD，识别错误响应（≥400，401 认证质询不计入）；trace_id 桥接回日志与链路（sentry_query_call_flow）。',
+  },
+  {
     file: 'trace-analyzer.md',
     name: 'trace-analyzer',
     description:
@@ -66,7 +72,9 @@ const SKILLS: SkillSpec[] = [
     file: 'metrics-inspector.md',
     name: 'metrics-inspector',
     description:
-      '查询 Prometheus 指标曲线与 firing 告警，识别异常拐点（sentry_query_metrics / sentry_list_alerts）。',
+      '查询 Prometheus 指标曲线与 firing 告警，识别异常拐点（sentry_query_metrics / sentry_list_alerts）。'
+      + '另含 sentry_get_alert_rule（按名称查规则表达式与 for 时长，告警分析第一步）；'
+      + 'sentry_list_am_alerts / sentry_list_am_silences 查 Alertmanager 活跃告警与静默。',
   },
   {
     file: 'db-inspector.md',
@@ -121,6 +129,12 @@ const SKILLS: SkillSpec[] = [
     name: 'zadig-inspector',
     description:
       '查询 Zadig 环境各服务运行状态、镜像版本与最近一次部署详情，判断故障是否由发布引入（sentry_query_zadig）。',
+  },
+  {
+    file: 'alert-analysis.md',
+    name: 'alert-analysis',
+    description:
+      '飞书告警文本 → 环境切换 → Alertmanager 总览 → 规则表达式下钻 → 指标/日志/Zadig 交叉验证 → diagnosis-report。收到告警卡片（FIRING/恢复、含集群与告警名称字段）或「告警分析/alert」请求时加载。',
   },
 ]
 

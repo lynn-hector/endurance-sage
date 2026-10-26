@@ -5,14 +5,13 @@ import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 import {
   aliasesForEnv,
+  credentialReadiness,
   credentialStorePath,
   extractCurrentEnv,
   type EnvRow,
-  knownCredentialKeys,
   type Matrix,
   renderIncludePatch,
   renderPatch,
-  requiredCredentialRefs,
   resolveEnvName,
 } from '@dsh-sentry/env-matrix'
 
@@ -32,6 +31,8 @@ export interface ListResult {
     aliases: string[]
     ready: boolean
     missingCredentialRefs: string[]
+    /** 凭据缺值的腿名（值感知：空值视为未配置；不拦截切换） */
+    degradedLegs: string[]
     greptimedbEndpoint?: string
   }>
 }
@@ -52,14 +53,13 @@ export type SwitchResult =
       patch?: string
       writtenPaths?: string[]
       switchedAt?: string
+      /** 凭据缺值的腿（不拦截切换，该腿工具调用时按需报错，补值即恢复） */
+      degradedLegs?: Array<{ leg: string; missingRefs: string[] }>
     }
   | {
       ok: false
-      code: 'UNKNOWN_ENV' | 'MISSING_CREDENTIALS'
+      code: 'UNKNOWN_ENV'
       requested: string
-      environment?: string
-      missingCredentialRefs?: string[]
-      credentialStorePath?: string
       error: string
     }
 
@@ -96,23 +96,20 @@ export function readMatrix(path: string): Matrix {
   return parsed
 }
 
-// Single implementation lives in @dsh-sentry/env-matrix (shared with the
-// use-env CLI) so the two readiness checks cannot drift apart again.
-export { knownCredentialKeys }
-
 export function listEnvironments(config: RuntimeConfig): ListResult {
   const matrix = readMatrix(config.envsPath)
-  const known = knownCredentialKeys(config.credentialStorePath)
   const current = currentEnvironment(config).current
   return {
     current,
     environments: Object.entries(matrix).map(([name, row]) => {
-      const missingCredentialRefs = requiredCredentialRefs(row).filter(ref => !known.has(ref))
+      const legs = credentialReadiness(row, config.credentialStorePath)
+      const missingCredentialRefs = legs.flatMap(item => item.missingRefs)
       return {
         name,
         aliases: aliasesForEnv(name),
         ready: missingCredentialRefs.length === 0,
         missingCredentialRefs,
+        degradedLegs: legs.filter(item => !item.ok).map(item => item.leg),
         greptimedbEndpoint: row.greptimedb.endpoint,
       }
     }),
@@ -179,20 +176,11 @@ export function switchEnvironment(
   }
 
   const row = matrix[environment] as EnvRow
-  const known = knownCredentialKeys(config.credentialStorePath)
-  const missingCredentialRefs = requiredCredentialRefs(row).filter(ref => !known.has(ref))
-  if (missingCredentialRefs.length > 0) {
-    return {
-      ok: false,
-      code: 'MISSING_CREDENTIALS',
-      requested,
-      environment,
-      missingCredentialRefs,
-      credentialStorePath: config.credentialStorePath,
-      error: `环境 ${environment} 缺少凭据: ${missingCredentialRefs.join(', ')}`,
-    }
-  }
-
+  // 凭据缺值/空值只降级对应腿并随结果返回，不再拒绝切换——该腿工具调用时
+  // 按需报错，补值即恢复（预检与渲染共享 @dsh-sentry/env-matrix 单一实现）
+  const degradedLegs = credentialReadiness(row, config.credentialStorePath)
+    .filter(item => !item.ok)
+    .map(item => ({ leg: item.leg, missingRefs: item.missingRefs }))
   const aliases = aliasesForEnv(environment)
   if (options?.dryRun === true) {
     return {
@@ -201,6 +189,7 @@ export function switchEnvironment(
       aliases,
       dryRun: true,
       patch: renderPatch(row),
+      ...(degradedLegs.length > 0 ? { degradedLegs } : {}),
     }
   }
 
@@ -225,5 +214,6 @@ export function switchEnvironment(
     dryRun: false,
     writtenPaths,
     switchedAt,
+    ...(degradedLegs.length > 0 ? { degradedLegs } : {}),
   }
 }

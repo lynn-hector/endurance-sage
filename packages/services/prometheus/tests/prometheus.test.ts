@@ -427,3 +427,96 @@ describe('formatPyFloat', () => {
     expect(formatPyFloat(1784714400.5)).toBe('1784714400.5')
   })
 })
+
+describe('PrometheusService.rules — grafana proxy passthrough', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('proxied mode GETs the resources passthrough rules URL and returns the envelope as-is', async () => {
+    const RULES = { status: 'success', data: { groups: [{ name: 'GoServiceL2Alerts', rules: [] }] } }
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(RULES))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const ctx = new Context()
+    const service = new PrometheusService(ctx, {
+      grafanaEndpoint: 'https://grafana.example.com/',
+      datasourceUid: 'prometheus',
+    })
+
+    const raw = await service.rules()
+    expect(lastCall(fetchMock)[0]).toBe(
+      'https://grafana.example.com/api/datasources/uid/prometheus/resources/api/v1/rules',
+    )
+    expect((raw as Record<string, unknown>)['status']).toBe('success')
+  })
+
+  it('direct mode keeps GET {endpoint}/api/v1/rules', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: 'success', data: { groups: [] } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const ctx = new Context()
+    const service = new PrometheusService(ctx, { endpoint: 'http://localhost:9090' })
+
+    await service.rules()
+    expect(lastCall(fetchMock)[0]).toBe('http://localhost:9090/api/v1/rules')
+  })
+
+  it('buildRulesRequest exposes both URL shapes', () => {
+    const proxied = new PrometheusService(new Context(), { grafanaEndpoint: 'https://g.example.com' })
+    expect(proxied.buildRulesRequest().url).toBe(
+      'https://g.example.com/api/datasources/uid/prometheus/resources/api/v1/rules',
+    )
+    const direct = new PrometheusService(new Context(), { endpoint: 'http://localhost:9090' })
+    expect(direct.buildRulesRequest().url).toBe('http://localhost:9090/api/v1/rules')
+  })
+})
+
+describe('PrometheusService.queryInstant — instant query', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('direct mode GETs /api/v1/query with urlencoded query and time', async () => {
+    const VECTOR = { status: 'success', data: { resultType: 'vector', result: [] } }
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(VECTOR))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const ctx = new Context()
+    const service = new PrometheusService(ctx, { endpoint: 'http://localhost:9090' })
+
+    await service.queryInstant('topk(5, up)', 1784714400)
+    expect(lastCall(fetchMock)[0]).toBe(
+      'http://localhost:9090/api/v1/query?query=topk%285%2C+up%29&time=1784714400.0',
+    )
+  })
+
+  it('proxied mode GETs the resources passthrough query URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: 'success', data: { resultType: 'vector', result: [] } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const ctx = new Context()
+    const service = new PrometheusService(ctx, {
+      grafanaEndpoint: 'https://grafana.example.com',
+      datasourceUid: 'prometheus',
+    })
+
+    await service.queryInstant('up', 1784714400)
+    expect(lastCall(fetchMock)[0]).toBe(
+      'https://grafana.example.com/api/datasources/uid/prometheus/resources/api/v1/query?query=up&time=1784714400.0',
+    )
+  })
+
+  it('buildInstantRequest exposes both URL shapes', () => {
+    const direct = new PrometheusService(new Context(), { endpoint: 'http://localhost:9090' })
+    expect(direct.buildInstantRequest('up{job="j"}', 1784714400).url).toBe(
+      'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22j%22%7D&time=1784714400.0',
+    )
+    const proxied = new PrometheusService(new Context(), { grafanaEndpoint: 'https://g.example.com' })
+    expect(proxied.buildInstantRequest('up', 1784714400).url).toBe(
+      'https://g.example.com/api/datasources/uid/prometheus/resources/api/v1/query?query=up&time=1784714400.0',
+    )
+  })
+})

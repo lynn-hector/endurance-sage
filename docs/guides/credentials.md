@@ -14,7 +14,7 @@ TAPD_TOKEN: <token>
 ...
 ```
 
-键名约定 `<SYSTEM>_<ENV>_<FIELD>`；平台级数据源（zadig、tapd）无环境段。每行环境引用哪些键，权威来源是 `apps/agent/envs.yml`（`use-env` 切换前会校验全部键就绪，缺一个拒绝切换）。
+键名约定 `<SYSTEM>_<ENV>_<FIELD>`；平台级数据源（zadig、tapd）无环境段。每行环境引用哪些键，权威来源是 `apps/agent/envs.yml`（`use-env` 切换前按腿校验就绪，缺值或空值只降级对应腿、不拦截切换）。
 
 凭据库有两种形态，就绪校验（`use-env` 与 `sentry_env_list` / `sentry_env_switch`，实现共享于 `@dsh-sentry/env-matrix`）对两种都识别：
 
@@ -23,7 +23,7 @@ TAPD_TOKEN: <token>
 
 往已有文件补键时保持该文件原有形态即可；历史事故：只读顶层键的旧版校验会把嵌套形态下的一切环境误判为缺凭据。
 
-凭据库同时承载**机器本地配置键**（当前只有 `DSH_SENTRY_CODE_BASE`——代码检索腿的仓库根目录，优先级 `envs.yml` > 环境变量 > 凭据库）。这类键不是机密，但放这里能让"一台机器只配一个文件"；dsh 宿主只解析被 `*Ref` 引用的键，其余键对它不可见、互不影响。
+凭据库同时承载**机器本地配置键**（当前只有 `DSH_SENTRY_CODE_BASE`——代码检索腿 backend 组的检出根目录，优先级 `envs.yml` > 环境变量 > 凭据库；引导 clone 见 [onboarding.md](onboarding.md) 第 2 步）。这类键不是机密，但放这里能让"一台机器只配一个文件"；dsh 宿主只解析被 `*Ref` 引用的键，其余键对它不可见、互不影响。
 
 ## 各数据源 token 获取方式
 
@@ -38,6 +38,12 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 ### TAPD
 
 个人令牌：TAPD 网页 → 我的设置 → 个人访问令牌。权限跟账号项目角色走，无需管理员审批。插件直连 `api.tapd.cn`，**不需要安装官方 `mcp-server-tapd`**（已评估否决）。键名：`TAPD_TOKEN`。细节见 [integrations/tapd-integration.md](../integrations/tapd-integration.md)。
+
+### GreptimeDB（connect token 模式）
+
+部分实例发放 dashboard connect token 链接（`…/#/connect?token=…`）。凭据库只存 **token 本身**（`#/connect?token=` 后面的 base64url 串，不存整条 URL）：dashboard 的 `/#/token-generator` 页面生成，本质是 AES 加密的账密，服务端解密后走 Basic。envs.yml 对应环境腿配 `tokenRef`（省略 usernameRef/passwordRef）；token 内 host 与环境 endpoint 不一致时以 envs.yml 为准并告警。
+
+注意：加密密钥内嵌于公开的 dashboard bundle，token 只是一层混淆——connect 链接应与明文密码同等对待，不要贴进聊天或文档。
 
 ### GreptimeDB / Grafana / dbx / RocketMQ
 

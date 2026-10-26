@@ -25,6 +25,11 @@
   config:
     env: local
 
+- id: sentry-tool-callflow-analyzer
+  name: '@dsh-sentry/tool-callflow-analyzer'
+  config:
+    env: local
+
 - id: sentry-trace
   name: '@dsh-sentry/service-trace'
   config:
@@ -43,6 +48,13 @@
   name: '@dsh-sentry/service-prometheus'
   config:
     endpoint: http://prometheus.example.invalid
+
+- id: sentry-alertmanager
+  name: '@dsh-sentry/service-alertmanager'
+  config:
+    grafanaEndpoint: https://grafana.example.invalid
+    usernameRef: GRAFANA_LOCAL_USERNAME
+    passwordRef: GRAFANA_LOCAL_PASSWORD
 
 - id: sentry-tool-metrics-inspector
   name: '@dsh-sentry/tool-metrics-inspector'

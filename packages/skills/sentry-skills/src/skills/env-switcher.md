@@ -49,12 +49,21 @@
 | `TC0` | `tst-client-hosted-0` |
 | `SC1` | `sit-client-hosted-1` |
 | `SC2` | `sit-client-hosted-2` |
+| `PBO` | `pro-br-saas-aws-eks-novo` |
+| `TPSG0` | `tst-platform-aws-eks-sg-0` |
+| `PUO` | `pro-use-saas-aws-eks-novo` |
+| `PZO` | `pro-za-saas-aws-eks-novo` |
+| `PDO` | `pro-de-saas-aws-eks-novo` |
+| `PSO` | `pro-sg-saas-aws-eks-novo` |
+| `TPDE0` | `tst-platform-aws-eks-de-0` |
+| `TPUS0` | `tst-platform-aws-eks-us-0` |
+| `TPAU0` | `tst-platform-aws-eks-au-0` |
 
 ## 执行原则
 
 1. 不确定环境时先调用 `sentry_env_current` 或 `sentry_env_list`。
 2. 用户使用短名时直接传短名，不要自行拼接 endpoint 或文件路径。
-3. 切换前工具会校验该环境全部凭据引用；缺任何一个会拒绝写入并返回缺失键名。
+3. 切换前工具按腿校验凭据值；缺值或空值不拦截切换，随结果返回降级腿（`degradedLegs`）与缺失键名，对应工具调用时按需报错。降级腿的连带范围要向用户说全：`grafana` 腿降级 = trace / prometheus / alertmanager 三家工具同时不可用（共用 grafana 账密）；`dbx` 腿降级连带 Redis 查询（经 dbx 中转）。
 4. 切换成功只表示配置文件已更新；随后依赖 dsh patch watcher 热重载，不需要重启。
 5. 调用 `sentry_env_switch` 后，用 `sentry_env_current` 确认文件环境；若 `hotReloadPending` 持续为 `true`，提示用户重启 dsh web 兜底。
 6. 切换后抽查一次查询的 evidence `env` 标签，应与目标环境一致（标签按调用时读装配文件解析，正常必然一致）；若不一致，说明装配文件不可读，先修复文件再继续。
@@ -68,10 +77,10 @@
 已切换到 TP1（tst-platform-hosted-1）。配置文件已更新，等待 dsh 热重载；当前会话无需重启。
 ```
 
-凭据缺失示例：
+凭据降级示例：
 
 ```text
-TP0 暂不能切换，缺少 GRAFANA_TP0_USERNAME、GRAFANA_TP0_PASSWORD。补齐本地凭据库后再试。
+已切换到 TP0（tst-platform-hosted-0），但 grafana 腿凭据缺失（GRAFANA_TP0_USERNAME、GRAFANA_TP0_PASSWORD），该腿及 trace/prometheus/alertmanager 工具暂不可用。补齐本地凭据库后即恢复，无需重新切换。
 ```
 
 热重载未生效示例：

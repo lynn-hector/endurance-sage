@@ -36,14 +36,16 @@ const fixture: EnvRow = {
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders all 20 plugins in dependency order', () => {
+  it('renders all 22 plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
       'sentry-tool-env-switcher',
       'sentry-greptimedb',
       'sentry-tool-log-analyzer',
+      'sentry-tool-callflow-analyzer',
       'sentry-trace',
       'sentry-tool-trace-analyzer',
       'sentry-prometheus',
+      'sentry-alertmanager',
       'sentry-tool-metrics-inspector',
       'sentry-dbx',
       'sentry-tool-db-inspector',
@@ -78,10 +80,38 @@ describe('renderEntries', () => {
     })
   })
 
+  it('renders the alertmanager service from the grafana leg', () => {
+    const entry = entries.find((e) => e.id === 'sentry-alertmanager')
+    expect(entry?.name).toBe('@dsh-sentry/service-alertmanager')
+    expect(entry?.config).toEqual({
+      grafanaEndpoint: 'https://grafana.cn-0.test.novo-one.com',
+      datasourceUid: 'alertmanager',
+      usernameRef: 'GRAFANA_TEST_USERNAME',
+      passwordRef: 'GRAFANA_TEST_PASSWORD',
+    })
+  })
+
   it('no credential values anywhere — refs only', () => {
     const text = JSON.stringify(entries)
     expect(text).not.toMatch(/password:\s*['"]?\w/i)
     expect(text).not.toMatch(/"(username|password|token)":\s*"(?!.*Ref)/)
+  })
+
+  it('greptimedb token mode renders connectTokenRef only — no username/password refs', () => {
+    const tokenRow: EnvRow = {
+      ...fixture,
+      greptimedb: {
+        endpoint: 'https://greptimedb.br.novoone.com',
+        database: 'public',
+        tokenRef: 'GREPTIMEDB_TEST_CONNECT_TOKEN',
+      },
+    }
+    const entry = renderEntries(tokenRow).find((e) => e.id === 'sentry-greptimedb')
+    expect(entry?.config).toEqual({
+      endpoint: 'https://greptimedb.br.novoone.com',
+      database: 'public',
+      connectTokenRef: 'GREPTIMEDB_TEST_CONNECT_TOKEN',
+    })
   })
 })
 
@@ -97,6 +127,21 @@ describe('requiredCredentialRefs', () => {
       'ROCKETMQ_LOCAL_USERNAME',
       'ZADIG_API_TOKEN',
     ])
+  })
+
+  it('swaps the greptimedb pair for the single connect-token ref in token mode', () => {
+    const tokenRow: EnvRow = {
+      ...fixture,
+      greptimedb: {
+        endpoint: 'https://greptimedb.br.novoone.com',
+        database: 'public',
+        tokenRef: 'GREPTIMEDB_TEST_CONNECT_TOKEN',
+      },
+    }
+    const refs = requiredCredentialRefs(tokenRow)
+    expect(refs).toContain('GREPTIMEDB_TEST_CONNECT_TOKEN')
+    expect(refs).not.toContain('GREPTIMEDB_TEST_USERNAME')
+    expect(refs).toHaveLength(7)
   })
 })
 
@@ -128,7 +173,7 @@ describe('renderPatch', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(20)
+    expect(parsed[0]!.insert).toHaveLength(22)
     const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
     expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
     // direct endpoint field is absent in proxy mode (optional since day one
@@ -153,11 +198,18 @@ describe('envs.yml contract', () => {
     const matrix = parse(readFileSync(join(import.meta.dirname, '..', 'envs.yml'), 'utf8')) as Record<string, EnvRow>
     for (const [name, row] of Object.entries(matrix)) {
       expect(row.envLabel, `${name}.envLabel`).toBe(name)
-      expect(row.greptimedb.usernameRef, `${name}.greptimedb.usernameRef`).toMatch(/^[A-Z0-9_]+$/)
+      // greptimedb 腿两种模式：账密引用，或 connect token 引用（token 模式省略账密）
+      const greptimedbTokenMode = row.greptimedb.tokenRef !== undefined
+      if (greptimedbTokenMode) {
+        expect(row.greptimedb.tokenRef, `${name}.greptimedb.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
+      } else {
+        expect(row.greptimedb.usernameRef, `${name}.greptimedb.usernameRef`).toMatch(/^[A-Z0-9_]+$/)
+        expect(row.greptimedb.passwordRef, `${name}.greptimedb.passwordRef`).toMatch(/^[A-Z0-9_]+$/)
+      }
       expect(row.zadig.tokenRef, `${name}.zadig.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
       // 8 条必备引用：prometheus 腿统一走表单登录（grafana 账号密码），
       // 不再为禁 basic auth 的实例配 service account token
-      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(8)
+      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(greptimedbTokenMode ? 7 : 8)
     }
   })
 })

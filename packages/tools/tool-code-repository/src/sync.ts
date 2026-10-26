@@ -26,19 +26,38 @@
  * `codegraph sync --quiet` so search evidence stays fresh — the reindex is
  * recorded (`index_sync`) and its failure never fails the pull.
  *
+ * Index self-healing: every successful reindex writes the indexed
+ * HEAD into `.git/dsh-codegraph-head` (the marker contract, owned by
+ * @dsh-sentry/env-matrix's codegraph module — clone-repos imports it from
+ * there too, so the two can no longer drift). syncRepo then
+ * reindexes whenever the marker disagrees with the current HEAD, which
+ * covers out-of-band drift (manual branch switches, manual pulls) even
+ * when the pull itself is up-to-date or failed. The heal picks its
+ * command by marker state (see healAction): a missing marker heals with a
+ * full `init` (an interrupted bootstrap's partial index must not be
+ * whitewashed by an incremental sync); a drifted marker heals with an
+ * incremental `sync`. Index CREATION on a repo without any `.codegraph`
+ * is still bootstrap-only (clone-repos' job).
+ *
  * @module @dsh-sentry/tool-code-repository/sync
  */
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { readIndexMarker, writeIndexMarker } from '@dsh-sentry/env-matrix'
 import { codegraphAvailable, type RepoRef } from './search.ts'
 
 const execFileAsync = promisify(execFile)
 
 /** Hard ceiling per git invocation (pull can hit the network). */
 const GIT_TIMEOUT_MS = 120_000
-/** Hard ceiling for the incremental codegraph reindex after an update. */
-const INDEX_TIMEOUT_MS = 180_000
+/** Hard ceiling for codegraph reindexing after a sync (both heal shapes).
+ *  Sized for the worst case, not the common one: a marker-drift heal on a
+ *  large repo (branch switch) reindexes most of it, and the marker-missing
+ *  heal is a full init — the same job bootstrap gives init 600s. Timeouts
+ *  are ceilings, not waits, so the common small fast-forward delta is
+ *  unaffected. */
+const INDEX_TIMEOUT_MS = 600_000
 /** Cap on git output kept in evidence (characters, tail-kept). */
 const DETAIL_LIMIT = 2000
 
@@ -60,7 +79,7 @@ export interface SyncResult {
   error?: string
   /** Whether the repo carries a .codegraph index. */
   codegraph_index?: boolean
-  /** Incremental reindex outcome after an update; absent when not attempted. */
+  /** Reindex outcome after an update or a marker-drift heal; absent when not attempted. */
   index_sync?: 'ok' | 'failed'
   /** codegraph sync's error output when the reindex failed. */
   index_error?: string
@@ -136,6 +155,36 @@ export async function inspectRepo(repo: RepoRef): Promise<SyncResult> {
   return peeked.head_before === undefined ? peeked : { ...peeked, status: 'dry_run' }
 }
 
+// 索引标记契约（文件名/格式、worktree 感知的 git 目录解析、读写）唯一权威源在
+// @dsh-sentry/env-matrix（codegraph.ts）——本包与 apps/agent 的 clone-repos 都从那里
+// import，两份实现曾因此在 worktree 形态上分叉。此处 re-export 维持本包既有导入面。
+export { CODEGRAPH_HEAD_MARKER, gitDirOf, readIndexMarker, writeIndexMarker } from '@dsh-sentry/env-matrix'
+
+/** 是否需要重建索引：有索引且（本次有更新 ∨ 标记缺失 ∨ 标记与当前 HEAD 不一致）。
+ *  与 pull 结果解耦——分叉/脏工作区的 error 仓库若 HEAD 已漂移同样要自愈。 */
+export function needsReindex(
+  status: SyncResult['status'],
+  hasIndex: boolean,
+  marker: string | undefined,
+  currentHead: string | undefined,
+): boolean {
+  if (!hasIndex || currentHead === undefined) return false
+  return status === 'updated' || marker === undefined || marker !== currentHead
+}
+
+/**
+ * Which reindex command a heal should run. A missing marker means the index
+ * may be an interrupted bootstrap's partial write — only a full `init` can
+ * rebuild what the interruption missed; letting an incremental `sync`
+ * succeed there would whitewash the partial index and permanently defeat
+ * clone-repos' hasCompleteIndex re-init guard. A present-but-drifted marker
+ * means the index is complete and merely stale — the incremental `sync` is
+ * the cheap, correct refresh.
+ */
+export function healAction(marker: string | undefined): 'init' | 'sync' {
+  return marker === undefined ? 'init' : 'sync'
+}
+
 /**
  * Incremental codegraph reindex after a fast-forward: `codegraph sync
  * --quiet <path>`. Fixed argv like the git side; never throws. Failure here
@@ -159,19 +208,48 @@ export async function runCodegraphSync(repoPath: string): Promise<{ ok: true } |
   }
 }
 
+/** Full (re)index for the marker-missing heal path: `codegraph init <path>`.
+ *  Fixed argv like the git side; never throws. */
+export async function runCodegraphInit(repoPath: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await execFileAsync('codegraph', ['init', repoPath], {
+      cwd: repoPath,
+      timeout: INDEX_TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+    })
+    return { ok: true }
+  } catch (error) {
+    const err = error as { stderr?: string; message?: string }
+    const parts = [err.stderr, err.message]
+      .filter((part): part is string => typeof part === 'string' && part.length > 0)
+      .map(part => part.trim())
+    return { ok: false, error: tail(parts.join('\n')) }
+  }
+}
+
 /**
  * Pull one repo, then refresh its codegraph index when present. The reindex
- * only runs on a real update — `up_to_date` means the tree did not change —
- * and its outcome is recorded, never fatal.
+ * runs on a real update OR any marker/HEAD drift — see needsReindex; its
+ * outcome is recorded, never fatal. The heal picks its command via
+ * {@link healAction}: marker-missing heals rebuild fully (init), drifted
+ * markers refresh incrementally (sync).
  */
 export async function syncRepo(repo: RepoRef): Promise<SyncResult> {
   const result = await runGitPull(repo)
   result.codegraph_index = codegraphAvailable(repo.path)
-  if (result.status === 'updated' && result.codegraph_index) {
-    const index = await runCodegraphSync(repo.path)
-    result.index_sync = index.ok ? 'ok' : 'failed'
-    if (!index.ok) result.index_error = index.error
-  }
+  if (!result.codegraph_index) return result
+
+  const fullHead = await runGit(repo.path, ['rev-parse', 'HEAD'])
+  const currentHead = fullHead.ok ? fullHead.stdout : undefined
+  const marker = readIndexMarker(repo.path)
+  if (!needsReindex(result.status, result.codegraph_index, marker, currentHead)) return result
+
+  const index = healAction(marker) === 'init'
+    ? await runCodegraphInit(repo.path)
+    : await runCodegraphSync(repo.path)
+  result.index_sync = index.ok ? 'ok' : 'failed'
+  if (!index.ok) result.index_error = index.error
+  else if (currentHead !== undefined) writeIndexMarker(repo.path, currentHead)
   return result
 }
 
@@ -190,13 +268,13 @@ export function buildSyncSummary(results: SyncResult[]): string {
   if (upToDate.length > 0) parts.push(`${upToDate.length} 个已是最新`)
   if (failed.length > 0) parts.push(`${failed.length} 个失败（${failed.map(r => r.repo).join('、')}，详见 error）`)
 
-  const reindexFailed = updated.filter(r => r.index_sync === 'failed')
-  const reindexed = updated.filter(r => r.index_sync === 'ok')
+  const reindexFailed = results.filter(r => r.index_sync === 'failed')
+  const reindexed = results.filter(r => r.index_sync === 'ok')
   let note = '。'
   if (reindexFailed.length > 0) {
     note = `；codegraph 索引同步失败（${reindexFailed.map(r => r.repo).join('、')}，详见 index_error），搜索无结果时会回退 ripgrep。`
   } else if (reindexed.length > 0) {
-    note = `；codegraph 索引已随更新同步（${reindexed.map(r => r.repo).join('、')}）。`
+    note = `；codegraph 索引已同步（${reindexed.map(r => r.repo).join('、')}）。`
   }
   return `同步 ${results.length} 个仓库：${parts.join('、')}${note}`
 }

@@ -254,16 +254,7 @@ export function buildSearchSummary(results: CodeSnippet[], query: string, repoCo
   return `在 ${repoCount} 个仓库中搜索 '${query}'，返回 ${results.length} 处结果，涉及仓库：${repoNames.join(', ')}。`
 }
 
-/** CodeGraph index directory marker (see {@link codegraphAvailable}). */
-export const CODEGRAPH_DIR = '.codegraph'
-
-/** Original `_codegraph_available`: the index directory exists and is non-empty. */
-export function codegraphAvailable(repoPath: string): boolean {
-  const dir = resolve(repoPath, CODEGRAPH_DIR)
-  if (!existsSync(dir)) return false
-  try {
-    return readdirSync(dir).length > 0
-  } catch {
-    return false
-  }
-}
+// 索引可用性契约唯一权威源在 @dsh-sentry/env-matrix（codegraph.ts）——本包与
+// apps/agent 的 clone-repos 都从那里 import，判据不再两处手工同步。此处 re-export
+// 维持本包既有导入面（index.ts / 测试仍可 from './search.ts'）。
+export { CODEGRAPH_DIR, codegraphAvailable } from '@dsh-sentry/env-matrix'

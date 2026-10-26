@@ -2,7 +2,7 @@
  * One-shot connectivity probe for a sentry data-source leg:
  *   pnpm --filter @dsh-sentry/dev exec tsx src/probe.ts <腿> [环境]
  *
- * 腿：greptimedb | trace | prometheus | dbx | rocketmq | zadig | grafana-datasources
+ * 腿：greptimedb | trace | prometheus | alertmanager | dbx | rocketmq | zadig | grafana-datasources
  * 环境：envs.yml 行名或短码（DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2），缺省 dev-platform-hosted-0。
  *
  * Boots the real credentials plane ($DSH_HOME/.credentials.yaml) plus the
@@ -23,9 +23,10 @@ import ZadigService from '@dsh-sentry/service-zadig'
 import DbxService from '@dsh-sentry/service-dbx'
 import TraceService from '@dsh-sentry/service-trace'
 import PrometheusService from '@dsh-sentry/service-prometheus'
+import AlertmanagerService from '@dsh-sentry/service-alertmanager'
 import { parse } from 'yaml'
 
-const LEGS = ['greptimedb', 'trace', 'prometheus', 'dbx', 'rocketmq', 'zadig', 'grafana-datasources'] as const
+const LEGS = ['greptimedb', 'trace', 'prometheus', 'alertmanager', 'dbx', 'rocketmq', 'zadig', 'grafana-datasources'] as const
 type Leg = (typeof LEGS)[number]
 
 const which = process.argv[2] ?? ''
@@ -85,12 +86,14 @@ try {
     await ctx.plugin(GreptimeDbService, {
       endpoint: row.greptimedb.endpoint!,
       database: row.greptimedb.database ?? 'public',
-      usernameRef: row.greptimedb.usernameRef,
-      passwordRef: row.greptimedb.passwordRef,
+      ...(row.greptimedb.tokenRef !== undefined
+        ? { connectTokenRef: row.greptimedb.tokenRef }
+        : { usernameRef: row.greptimedb.usernameRef, passwordRef: row.greptimedb.passwordRef }),
     })
     const rows = await ctx.greptimedb.query('SELECT * FROM k8s_logs LIMIT 1')
     console.log(`GREPTIMEDB PROBE OK — k8s_logs LIMIT 1 returned ${rows.length} row(s)`)
     if (rows.length > 0) console.log(`  columns: ${Object.keys(rows[0]!).join(', ')}`)
+    if (rows.length > 0) console.log(`  greptime_timestamp sample: ${JSON.stringify(rows[0]!['greptime_timestamp'])}`)
   } else if (leg === 'trace') {
     await ctx.plugin(TraceService, {
       mode: 'grafana-jaeger',
@@ -139,6 +142,16 @@ try {
     for (const series of result.slice(0, 3)) {
       console.log(`  labels=${JSON.stringify(series.metric)} points=${series.values.length}`)
     }
+  } else if (leg === 'alertmanager') {
+    await ctx.plugin(AlertmanagerService, {
+      grafanaEndpoint: row.grafana.endpoint!,
+      datasourceUid: row.grafana.alertmanagerDatasourceUid ?? 'alertmanager',
+      usernameRef: row.grafana.usernameRef,
+      passwordRef: row.grafana.passwordRef,
+    })
+    const alerts = await ctx.alertmanager.listAlerts()
+    const count = Array.isArray(alerts) ? alerts.length : -1
+    console.log(`ALERTMANAGER PROBE OK — ${count} active alert(s)`)
   } else if (leg === 'zadig') {
     await ctx.plugin(ZadigService, {
       endpoint: row.zadig.endpoint!,

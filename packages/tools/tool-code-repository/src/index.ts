@@ -42,7 +42,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
+import { hasCompleteIndex, liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import {
   buildRgSnippets,
   buildSearchSummary,
@@ -92,7 +92,7 @@ const DEFAULT_MAX_RESULTS = 20
 
 /** Shared activation hint for the unconfigured case (search and sync agree on wording). */
 const UNCONFIGURED_MSG =
-  '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 把 DSH_SENTRY_CODE_BASE=<novo-commctl 检出路径> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或 ~/.zshrc 后重跑 regenerate（见 docs/guides/onboarding.md）。'
+  '未配置任何代码仓库：插件 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 用 pnpm --filter @dsh-sentry/agent run clone-repos 把 backend 组仓库引导 clone 到 <目录>，把 DSH_SENTRY_CODE_BASE=<该目录> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或环境变量后重跑 regenerate（见 docs/guides/onboarding.md）。'
 
 const execFileAsync = promisify(execFile)
 
@@ -324,7 +324,9 @@ export function apply(ctx: Context, config: Config): void {
       try {
         const all: CodeSnippet[] = []
         for (const repo of repos) {
-          const indexed = codegraphAvailable(repo.path)
+          // 闸门用「完成态」而非「目录非空」：中断 init 留下的部分索引会以高置信度漏掉
+          // 真实匹配（结果非空则 rg fallback 永不触发），宁可走 ripgrep 也不用残缺索引
+          const indexed = hasCompleteIndex(repo.path)
             ? await runCodegraphQuery(repo, args.query, limit)
             : []
           all.push(...(indexed.length > 0 ? indexed : await runRgQuery(repo, args.query, limit, args.language)))
@@ -442,7 +444,9 @@ export function apply(ctx: Context, config: Config): void {
         + 'latest remote. Fast-forward only: never merges, never rewrites history, never discards local '
         + 'changes — a diverged or dirty repository returns its git error instead of being forced. '
         + 'Runs only on repositories from plugin config. When an updated repo carries a .codegraph index, '
-        + 'an incremental codegraph sync refreshes it automatically (per-repo, non-fatal on failure).',
+        + 'an incremental codegraph sync refreshes it automatically (per-repo, non-fatal on failure).'
+        + ' Reindexes on out-of-band HEAD drift (e.g. manual branch switches) by comparing '
+        + 'a .git marker of the indexed HEAD, even when the pull itself is up-to-date or failed.',
       parameters: {
         repo: { type: 'string', description: 'Restrict to one configured repository (name or configured path); omit to sync all.' },
         dryRun: { type: 'boolean', default: false, description: 'List the target repositories with their current HEAD/branch without pulling.' },

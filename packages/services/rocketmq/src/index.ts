@@ -30,6 +30,7 @@ import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
   endpointField,
+  extractCookie,
   resolveCredential,
   secretField,
   timeoutMsField,
@@ -156,17 +157,6 @@ export class RocketMqService extends Service {
     return password
   }
 
-  /** Original `_extract_cookie`: pull one cookie value out of Set-Cookie headers. */
-  private extractCookie(resp: Response, name: string): string | null {
-    const raw = resp.headers.getSetCookie?.() ?? []
-    for (const cookie of raw) {
-      if (cookie.startsWith(`${name}=`)) {
-        return cookie.split(';', 1)[0]?.split('=', 2)[1] ?? null
-      }
-    }
-    return null
-  }
-
   /** Original `_build_cookie`. */
   private buildCookie(jsessionid: string | null, xsrfToken: string): string {
     const parts = [`XSRF-TOKEN=${xsrfToken}`]
@@ -256,7 +246,7 @@ export class RocketMqService extends Service {
       const detail = await resp.text()
       throw new Error(`RocketMQ Console 登录失败 HTTP ${resp.status}: ${detail}`)
     }
-    const jsessionid = this.extractCookie(resp, 'JSESSIONID')
+    const jsessionid = extractCookie(resp.headers, 'JSESSIONID')
     if (!jsessionid) {
       throw new Error(`登录成功但未返回 JSESSIONID cookie，响应: ${(await resp.text()).slice(0, 200)}`)
     }

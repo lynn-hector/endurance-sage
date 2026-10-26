@@ -14,10 +14,12 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DbxService from '@dsh-sentry/service-dbx'
 import GreptimeDbService from '@dsh-sentry/service-greptimedb'
 import PrometheusService from '@dsh-sentry/service-prometheus'
+import AlertmanagerService from '@dsh-sentry/service-alertmanager'
 import TraceService from '@dsh-sentry/service-trace'
 import ZadigService from '@dsh-sentry/service-zadig'
 import * as dbInspector from '@dsh-sentry/tool-db-inspector'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
+import * as callflowAnalyzer from '@dsh-sentry/tool-callflow-analyzer'
 import * as metricsInspector from '@dsh-sentry/tool-metrics-inspector'
 import * as redisInspector from '@dsh-sentry/tool-redis-inspector'
 import * as sentryPersona from '@dsh-sentry/sentry-persona'
@@ -39,6 +41,7 @@ await root.plugin(GreptimeDbService, {
   passwordRef: 'GREPTIMEDB_LOCAL_PASSWORD',
 })
 await root.plugin(logAnalyzer, { env: 'local' })
+await root.plugin(callflowAnalyzer, { env: 'local' })
 await root.plugin(TraceService, {
   endpoint: 'https://grafana.example.invalid',
   usernameRef: 'GRAFANA_LOCAL_USERNAME',
@@ -46,6 +49,11 @@ await root.plugin(TraceService, {
 })
 await root.plugin(traceAnalyzer, { env: 'local', greptimedbJaegerDatasourceUid: 'GreptimeDB-Jaeger' })
 await root.plugin(PrometheusService, { endpoint: 'http://prometheus.example.invalid' })
+await root.plugin(AlertmanagerService, {
+  grafanaEndpoint: 'https://grafana.example.invalid',
+  usernameRef: 'GRAFANA_LOCAL_USERNAME',
+  passwordRef: 'GRAFANA_LOCAL_PASSWORD',
+})
 await root.plugin(metricsInspector, { env: 'local' })
 await root.plugin(DbxService, {
   endpoint: 'https://dbx.example.invalid',
@@ -65,7 +73,9 @@ await root.plugin(mqInspector, { env: 'local' })
 await root.plugin(sentrySkills)
 await root.plugin(sentryPersona)
 
-for (const name of ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq']) {
+const TOOLS = ['sentry_query_logs', 'sentry_list_log_services', 'sentry_query_call_flow', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_get_alert_rule', 'sentry_list_am_alerts', 'sentry_list_am_silences', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq']
+
+for (const name of TOOLS) {
   if (root.tools.get(name) === undefined) {
     throw new Error(`FAIL: tool "${name}" was not registered`)
   }
@@ -84,7 +94,7 @@ for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service
 }
 
 console.log('Phase 0 OK')
-console.log('tools:', ['sentry_query_logs', 'sentry_list_log_services', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq'].join(', '))
+console.log('tools:', TOOLS.join(', '))
 console.log('skills:', skills.map(skill => skill.name).join(', '))
 
 await root.fiber.dispose()

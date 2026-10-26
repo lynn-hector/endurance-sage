@@ -25,6 +25,8 @@ import {
   timeoutMsField,
 } from '@dsh-sentry/datasource'
 
+import { decryptConnectToken } from './connect-token.ts'
+
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
   /** GreptimeDB HTTP base, e.g. `https://greptimedb.example.com`. */
@@ -35,6 +37,10 @@ export interface Config {
   usernameRef?: string
   /** Credential reference for the Basic-auth password. */
   passwordRef?: string
+  /** Credential reference for a dashboard connect token (the bare base64url token, not the whole URL). */
+  connectTokenRef?: string
+  /** Literal connect token fallback when no reference is configured. Discouraged in composition files. */
+  connectToken?: string
   /** Literal username fallback when no reference is configured. Discouraged in composition files. */
   username?: string
   /** Literal password fallback when no reference is configured. Discouraged in composition files. */
@@ -49,6 +55,8 @@ export class GreptimeDbService extends Service {
     database: z.string().default('public').description('SQL 接口的 db 查询参数'),
     usernameRef: credentialRefField('Basic 认证用户名的凭据引用，如 GREPTIMEDB_PRODUCTION_USERNAME'),
     passwordRef: credentialRefField('Basic 认证密码的凭据引用'),
+    connectTokenRef: credentialRefField('dashboard connect token（纯 token）的凭据引用，如 GREPTIMEDB_BR0_CONNECT_TOKEN'),
+    connectToken: secretField('内联 connect token（credential ref 优先；不推荐写在组合文件）'),
     username: secretField('内联用户名（credential ref 优先；不推荐写在组合文件）'),
     password: secretField('内联密码（credential ref 优先；不推荐写在组合文件）'),
     timeoutMs: timeoutMsField(30_000),
@@ -70,8 +78,29 @@ export class GreptimeDbService extends Service {
 
   private readonly config: Config
 
-  /** Resolve Basic-auth credentials: references win over literal fallbacks. */
+  /**
+   * Resolve Basic-auth credentials. A configured connect token (reference
+   * wins over the literal fallback) takes priority and must decrypt — a bad
+   * token fails fast instead of silently falling back to username/password.
+   * An empty-resolving token counts as unconfigured (falls through).
+   */
   private async credentials(): Promise<{ username: string; password: string }> {
+    let connectToken: string | undefined
+    if (this.config.connectTokenRef !== undefined) {
+      connectToken = await resolveCredential(this.ctx, this.config.connectTokenRef)
+    }
+    connectToken ??= this.config.connectToken
+    if (connectToken !== undefined && connectToken.length > 0) {
+      const payload = decryptConnectToken(connectToken)
+      if (!payload.u || !payload.p) {
+        throw new Error('connect token 解出的凭据缺 username/password，token 无效')
+      }
+      if (payload.h !== undefined && this.endpoint.length > 0
+        && payload.h.replace(/\/+$/, '').toLowerCase() !== this.endpoint.toLowerCase()) {
+        this.ctx.logger.warn(`connect token 内 host (${payload.h}) 与配置 endpoint (${this.endpoint}) 不一致，以配置为准`)
+      }
+      return { username: payload.u, password: payload.p }
+    }
     let username: string | undefined
     let password: string | undefined
     if (this.config.usernameRef !== undefined) {
@@ -132,15 +161,69 @@ export class GreptimeDbService extends Service {
 }
 
 /**
+ * Defensive normalization for timestamp columns: whatever unit the backend
+ * returns (nanoseconds is the documented native form; digit-strings and
+ * millisecond values also occur), map integral epoch values to ISO8601 UTC
+ * and leave everything else (date-shaped strings, null, negatives,
+ * unrecognizable) untouched. Formatted by hand — `Date` would truncate to
+ * milliseconds.
+ */
+export function normalizeGreptimeTimestamp(value: unknown): unknown {
+  // Digit-strings go through BigInt directly: big nanosecond values exceed
+  // Number.MAX_SAFE_INTEGER, so a Number round-trip would destroy exactly the
+  // sub-millisecond digits this function exists to preserve. Numbers are
+  // already lossy at the literal; Math.round is the best available.
+  let total: bigint
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) return value
+    total = BigInt(Math.round(value))
+  } else if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    const digits = value.trim()
+    if (digits.startsWith('-')) return value
+    total = BigInt(digits)
+  } else {
+    return value
+  }
+  let nanosPerUnit: bigint
+  let fracDigits: number
+  if (total > 100000000000000000n) {
+    nanosPerUnit = 1n
+    fracDigits = 9
+  } else if (total > 100000000000000n) {
+    nanosPerUnit = 1000n
+    fracDigits = 6
+  } else if (total > 100000000000n) {
+    nanosPerUnit = 1000000n
+    fracDigits = 3
+  } else {
+    nanosPerUnit = 1000000000n
+    fracDigits = 0
+  }
+  const totalNanos = total * nanosPerUnit
+  const seconds = totalNanos / 1000000000n
+  const ms = Number(seconds) * 1000
+  // 超出 Date 表示范围的怪值（误摄入的 ID、垃圾数字串）原样透传：
+  // 归一化的目的是排版，不该让一列脏数据炸掉整条查询
+  if (!Number.isFinite(ms) || Math.abs(ms) > 8.64e15) return value
+  const nanos = totalNanos % 1000000000n
+  const base = new Date(ms).toISOString().replace(/\.\d{3}Z$/, '')
+  return fracDigits === 0 ? `${base}Z` : `${base}.${nanos.toString().padStart(9, '0').slice(0, fracDigits)}Z`
+}
+
+/**
  * Parse the GreptimeDB `/v1/sql` response into row objects.
  *
  * Expected shape:
  * ```json
  * { "output": [ { "records": {
- *   "schema": { "column_schemas": [ { "name": "col1" } ] },
+ *   "schema": { "column_schemas": [ { "name": "col1", "datatype": "..." } ] },
  *   "rows": [ [ "v1" ] ]
  * } } ] }
  * ```
+ *
+ * Columns whose datatype (keyed `datatype` or `data_type`) mentions
+ * "timestamp" case-insensitively are routed through
+ * {@link normalizeGreptimeTimestamp}; everything else passes through as-is.
  */
 export function parseGreptimeRows(body: unknown): Record<string, unknown>[] {
   if (typeof body !== 'object' || body === null) return []
@@ -148,18 +231,24 @@ export function parseGreptimeRows(body: unknown): Record<string, unknown>[] {
   if (!Array.isArray(output) || output.length === 0) return []
   const first = output[0] as { records?: unknown }
   const records = (typeof first === 'object' && first !== null ? first.records : undefined) as
-    | { schema?: { column_schemas?: { name?: string }[] }; rows?: unknown }
+    | { schema?: { column_schemas?: { name?: string; datatype?: unknown; data_type?: unknown }[] }; rows?: unknown }
     | undefined
   if (typeof records !== 'object' || records === null) return []
   const columnSchemas = records.schema?.column_schemas ?? []
   const colNames = columnSchemas.map((col, i) => col.name ?? `col_${i}`)
+  const timestampCols = new Set<number>()
+  for (const [i, col] of columnSchemas.entries()) {
+    const datatype = col.datatype ?? col.data_type
+    if (typeof datatype === 'string' && datatype.toLowerCase().includes('timestamp')) timestampCols.add(i)
+  }
   const rawRows = Array.isArray(records.rows) ? records.rows : []
   const parsed: Record<string, unknown>[] = []
   for (const row of rawRows) {
     if (!Array.isArray(row)) continue
     const record: Record<string, unknown> = {}
     for (const [i, name] of colNames.entries()) {
-      record[name] = i < row.length ? row[i] : null
+      const cell = i < row.length ? row[i] : null
+      record[name] = timestampCols.has(i) ? normalizeGreptimeTimestamp(cell) : cell
     }
     parsed.push(record)
   }

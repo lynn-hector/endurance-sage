@@ -6,6 +6,7 @@
 
 - 用户要求查询某个服务在某个时间段的日志。
 - 用户要求提取错误模式、堆栈或异常趋势。
+- 用户给出 `traceid=xxx` / `requestid=xxx` / `callid=xxx`，要求排查某次请求（见「按 traceId / requestId / callid 精查」）。
 - 排查流程中需要收集日志证据。
 
 跳过场景：
@@ -16,7 +17,7 @@
 执行原则：
 
 - 只读操作，不修改日志数据源。
-- 时间范围尽量精确到症状前后 5-15 分钟，过大会导致返回量过大、噪音多。
+- 时间范围尽量精确到症状前后 5-15 分钟，过大会导致返回量过大、噪音多（按 traceId 精查是例外，见「按 traceId / requestId / callid 精查」）。
 - 优先返回异常模式和重复错误，而不是单条日志。
 - 输出必须可引用到具体的日志行或 traceId。
 
@@ -36,7 +37,7 @@
 | `trace_id` | string | 链路追踪 ID，用于关联 trace-analyzer |
 | `tenant` | string | 租户标识 |
 | `caller` | string | 调用者标识（代码调用位置） |
-| `not_expand` | string | 标记字段，如 `50001` |
+| `not_expand` | string | 扩展字段：不进 `message` 主字段的附加内容（常为 JSON），`sip_call_id`（callid，UUID 形态）、request_id 等关联标识嵌在其中；按这些 id 查询须用 `LIKE`，等值匹配无效 |
 
 > 字段名受白名单保护，`filters` 中只能使用上表字段，非法字段会被拒绝。
 
@@ -138,6 +139,45 @@ LIMIT 1000
 
 `keywords` 是 `message LIKE` 的快捷方式：`["TenantAdapter", "timeout"]` 等价于 `filterOr: ["message LIKE %TenantAdapter%", "message LIKE %timeout%"]`。
 
+## 按 traceId / requestId / callid 精查
+
+用户给出 `traceid=xxx` / `requestid=xxx` 排查某次请求时，直接用 `trace_id=xxx` 作为 `filters` 精确匹配（requestId 与日志 `trace_id` 字段对齐，同 trace-analyzer 的约定），不要再叠加其他过滤条件：
+
+- **不传 `services`**：同一 trace 贯穿多个服务，加 `workload_name` 过滤会把上下游服务的日志漏掉。
+- **不主动指定 `logType`**：`log_type` 是 SQL 强制条件且默认 `go`，同一 trace 的日志可能分散在 `go`/`nginx`/`java` 多种类型下。结果为空时先换 logType 重查，不要直接断定无日志；需要完整链路时按类型各查一次。
+- **放宽时间窗**：trace 的确切发生时间往往未知，不套用「5-15 分钟」原则。优先用用户给的时间线索，没有就用宽窗口（数小时至 24 小时），查不到再逐步扩大。
+
+```json
+{
+  "start": "2026-09-29T00:00:00Z",
+  "end": "2026-09-29T12:00:00Z",
+  "filters": ["trace_id=5f8a3c9e2b7d4a1f"]
+}
+```
+
+单一 trace 的日志量有限，宽窗口 + `trace_id` 精确匹配不会导致返回量失控。
+
+### callid / requestId：从 not_expand 桥接再精查
+
+用户给出的 id 不在 `trace_id` 字段直查命中时——典型是 `callid`，以及与日志 `trace_id` 不同值的 `request_id`——从 `not_expand` 桥接。`not_expand` 存放所有不进 `message` 主字段的扩展内容（不限于 AccessLog，常为 JSON），callid（`sip_call_id`，UUID 形态）、request_id 等关联标识嵌在其中，**等值匹配无效，必须 LIKE 模糊匹配**。分两步：
+
+1. **桥接**：`logType=go` + `filters: ["not_expand LIKE %<id>%"]` 查出关联日志，从命中行提取 `trace_id`（一次呼叫可能对应多个 trace_id，逐个处理）：
+
+   ```json
+   {
+     "start": "2026-09-29T00:00:00Z",
+     "end": "2026-09-29T12:00:00Z",
+     "logType": "go",
+     "filters": ["not_expand LIKE %da8fa007-4639-1240-5982-a210e2cc9671%"]
+   }
+   ```
+
+   DSL 的 LIKE 不会自动加 `%`，两侧要自己写；id 本身不含 `%`/单引号，无转义风险。
+
+2. **精查**：拿 `trace_id` 按上文 traceId 规则查全量关联日志——不传 `services`、不限定 `logType`、放宽时间窗。
+
+桥接查空时不要直接断定无日志：callid 可能是纯 SIP 层 Call-ID（`k8s_logs` 无应用日志关联），改用 `sentry_query_call_flow`（callflow-analyzer）查信令层做信令分析。
+
 ## 输出格式
 
 输出遵循统一 evidence 信封：
@@ -188,14 +228,17 @@ evidence:
 2. 时间范围精确到症状前后 5-15 分钟；过大会导致返回量过大、噪音多。
 3. `keywords` 对 `message` 做 LIKE 匹配，多个关键词内部 OR；需要精确过滤时用 `filters` / `filterOr`。
 4. `filters` / `filterOr` 只能使用字段白名单中的字段（见上表）。
-5. 拿到异常日志后，优先提取 `trace_id` 并交给 trace-analyzer 做链路关联。
-6. 日志为空时，检查时间范围、服务名拼写、`logType`（默认 `go`）是否正确。
+5. traceId / requestId 先试 `trace_id=xxx` 直查；不中或给的是 callid 时，用 `not_expand LIKE %xxx%`（`logType=go`，等值匹配无效）桥接出 `trace_id` 再精查（见「按 traceId / requestId / callid 精查」）。
+6. 拿到异常日志后，优先提取 `trace_id` 并交给 trace-analyzer 做链路关联。
+7. 日志为空时，检查时间范围、服务名拼写、`logType`（默认 `go`）是否正确。
 
 ## 检查清单
 
 - [ ] 时间范围是否覆盖症状发生前后。
 - [ ] 如不确定服务名，先用 `sentry_list_log_services` 获取。
 - [ ] 关键词是否包含 ERROR、FATAL、timeout、exception 等。
+- [ ] 按 traceId / requestId 精查时，是否避免了 `services`、`logType`、窄时间窗漏掉 trace 日志。
+- [ ] 按 callid（或直查不中的 requestId）排查时，是否先用 `not_expand LIKE`（`logType=go`）桥接出 `trace_id` 再全量精查。
 - [ ] 是否提取了重复模式而不是只展示单条日志。
 - [ ] 是否关联了 traceId 或具体调用位置。
 - [ ] `filters` 中的字段是否在白名单内。

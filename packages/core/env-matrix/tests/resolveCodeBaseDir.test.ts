@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { resolveCodeBaseDir } from '../src/index.ts'
@@ -66,5 +66,22 @@ describe('resolveCodeBaseDir', () => {
   it('missing store file leaves the value to the other sources', () => {
     vi.stubEnv('DSH_HOME', join(dir, 'no-such-home'))
     expect(resolveCodeBaseDir()).toBeUndefined()
+  })
+
+  it('expands a leading ~ to the home dir — stored/env values never pass through a shell', () => {
+    stubStore('refs:\n  DSH_SENTRY_CODE_BASE: ~/novoone-backend\n')
+    expect(resolveCodeBaseDir()).toBe(join(homedir(), 'novoone-backend'))
+  })
+
+  it('expands a bare ~ to the home dir', () => {
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', '~')
+    expect(resolveCodeBaseDir()).toBe(homedir())
+  })
+
+  it('leaves paths without a leading ~ untouched (relative or with ~ mid-path)', () => {
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', './rel/code')
+    expect(resolveCodeBaseDir()).toBe('./rel/code')
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', '/srv/~weird')
+    expect(resolveCodeBaseDir()).toBe('/srv/~weird')
   })
 })
