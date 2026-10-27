@@ -1,11 +1,10 @@
 /**
  * Environment switcher tools.
  *
- * Session-routed hosts (the sentry profile) resolve everything through the
- * `envBinding` service: switch rebinds only the calling DSH session
- * (`exec.agent.session`), current reports that session's durable binding, and
- * list interprets "current" per calling session. Legacy hosts without
- * `@dsh-sentry/env-binding` keep the global assembly-file behaviour.
+ * Everything resolves through the `envBinding` service: switch rebinds only
+ * the calling DSH session (`exec.agent.session`), current reports that
+ * session's durable binding, and list interprets "current" per calling
+ * session. Hosts without `@dsh-sentry/env-binding` are not supported.
  *
  * Environment input is restricted to names and aliases defined by
  * apps/agent/envs.yml; endpoint and path injection is not accepted.
@@ -20,37 +19,34 @@ import z from '@deepseek-ai/schemastery'
 import { EnvBindingError } from '@dsh-sentry/env-binding'
 import { aliasesForEnv } from '@dsh-sentry/env-matrix'
 import {
-  currentEnvironment,
   defaultRuntimeConfig,
   listEnvironments,
   resolveRuntimeConfig,
-  switchEnvironment,
 } from './environment.ts'
 
 export * from './environment.ts'
 
 export const name = 'tool-env-switcher'
 
-export const inject = ['tools']
+export const inject = ['tools', 'envBinding']
 
 export interface Config {
+  /**
+   * Assembly anchor only: identifies the startup/default environment of the
+   * generated assembly (`extractCurrentEnv` reads it; the plugin itself no
+   * longer routes by it).
+   */
   env: string
   envsPath?: string
-  patchPath?: string
-  includePath?: string
-  profilePatchPath?: string
   credentialStorePath?: string
 }
 
-const defaults = defaultRuntimeConfig('')
+const defaults = defaultRuntimeConfig()
 
 export const Config: z<Config> = z.object({
-  env: z.string().required().description('旧全局装配的环境标识；仅无 envBinding 宿主的回退路径使用'),
-  envsPath: z.string().default(defaults.envsPath).description('环境矩阵 YAML 路径；仅旧全局回退路径使用'),
-  patchPath: z.string().default(defaults.patchPath).description('直写模式 patch 输出路径；仅旧全局回退路径使用'),
-  includePath: z.string().default(defaults.includePath).description('本地 include 模式输出路径；仅旧全局回退路径使用'),
-  profilePatchPath: z.string().default(defaults.profilePatchPath).description('当前 dsh profile patch；仅旧全局回退路径使用'),
-  credentialStorePath: z.string().default(defaults.credentialStorePath).description('本地凭据库路径；仅旧全局回退路径使用'),
+  env: z.string().required().description('装配锚点：组装的启动/默认环境标识（extractCurrentEnv 读取；不参与路由）'),
+  envsPath: z.string().default(defaults.envsPath).description('环境矩阵 YAML 路径（sentry_env_list 列举用）'),
+  credentialStorePath: z.string().default(defaults.credentialStorePath).description('本地凭据库路径（readiness 预检用）'),
 })
 
 function renderJson(_args: unknown, value: JsonValue) {
@@ -82,11 +78,7 @@ function sessionRequired(): EnvBindingError {
 
 export function apply(ctx: Context, config: Config): void {
   const runtimeConfig = resolveRuntimeConfig({
-    env: config.env,
     envsPath: config.envsPath ?? defaults.envsPath,
-    patchPath: config.patchPath ?? defaults.patchPath,
-    includePath: config.includePath ?? defaults.includePath,
-    profilePatchPath: config.profilePatchPath ?? defaults.profilePatchPath,
     credentialStorePath: config.credentialStorePath ?? defaults.credentialStorePath,
   })
 
@@ -97,16 +89,11 @@ export function apply(ctx: Context, config: Config): void {
     parameters: {},
     output: { schema: { type: 'json' }, render: renderJson },
     async execute(_args, exec) {
-      const binding = ctx.get('envBinding')
-      if (binding !== undefined) {
-        const session = exec.agent?.session
-        if (session === undefined) return failure(sessionRequired())
-        const current = await binding.current(session)
-        // Same matrix/readiness listing as the legacy path; only "current" is
-        // reinterpreted from this session's durable binding.
-        return asJson({ ...listEnvironments(runtimeConfig), current: current.env })
-      }
-      return asJson(listEnvironments(runtimeConfig))
+      const session = exec.agent?.session
+      if (session === undefined) return failure(sessionRequired())
+      const current = await ctx.envBinding.current(session)
+      // "Current" is reinterpreted from this session's durable binding.
+      return asJson({ ...listEnvironments(runtimeConfig), current: current.env })
     },
   }))
 
@@ -118,33 +105,29 @@ export function apply(ctx: Context, config: Config): void {
     parameters: {},
     output: { schema: { type: 'json' }, render: renderJson },
     async execute(_args, exec) {
-      const binding = ctx.get('envBinding')
-      if (binding !== undefined) {
-        const session = exec.agent?.session
-        if (session === undefined) return failure(sessionRequired())
-        try {
-          const resolved = await binding.current(session)
-          return asJson({
-            current: resolved.env,
-            source: resolved.source,
-            changedAt: resolved.changedAt,
-            ...(resolved.recoveredFrom !== undefined ? { recoveredFrom: resolved.recoveredFrom } : {}),
-            ...(resolved.persisted !== undefined
-              ? {
-                  persisted: resolved.persisted,
-                  ...(resolved.persistenceError !== undefined
-                    ? { persistenceError: resolved.persistenceError }
-                    : {}),
-                }
-              : {}),
-            readiness: resolved.readiness,
-            degradedLegs: resolved.degradedLegs,
-          })
-        } catch (error) {
-          return failure(error)
-        }
+      const session = exec.agent?.session
+      if (session === undefined) return failure(sessionRequired())
+      try {
+        const resolved = await ctx.envBinding.current(session)
+        return asJson({
+          current: resolved.env,
+          source: resolved.source,
+          changedAt: resolved.changedAt,
+          ...(resolved.recoveredFrom !== undefined ? { recoveredFrom: resolved.recoveredFrom } : {}),
+          ...(resolved.persisted !== undefined
+            ? {
+                persisted: resolved.persisted,
+                ...(resolved.persistenceError !== undefined
+                  ? { persistenceError: resolved.persistenceError }
+                  : {}),
+              }
+            : {}),
+          readiness: resolved.readiness,
+          degradedLegs: resolved.degradedLegs,
+        })
+      } catch (error) {
+        return failure(error)
       }
-      return asJson(currentEnvironment(runtimeConfig))
     },
   }))
 
@@ -161,34 +144,30 @@ export function apply(ctx: Context, config: Config): void {
     },
     output: { schema: { type: 'json' }, render: renderJson },
     async execute(args, exec) {
-      const binding = ctx.get('envBinding')
-      if (binding !== undefined) {
-        const session = exec.agent?.session
-        if (session === undefined) return failure(sessionRequired())
-        try {
-          const result = await binding.switch(session, { env: args.env, dryRun: args.dryRun ?? false }, 'tool')
-          return asJson({
-            ok: true,
-            env: result.env,
-            previousEnv: result.previousEnv,
-            aliases: aliasesForEnv(result.env),
-            dryRun: result.dryRun,
-            ...(result.dryRun === false
-              ? {
-                  changedAt: result.changedAt,
-                  persisted: result.persisted,
-                  ...(result.persistenceError !== undefined
-                    ? { persistenceError: result.persistenceError }
-                    : {}),
-                }
-              : {}),
-            degradedLegs: result.degradedLegs,
-          })
-        } catch (error) {
-          return failure(error, args.env)
-        }
+      const session = exec.agent?.session
+      if (session === undefined) return failure(sessionRequired(), args.env)
+      try {
+        const result = await ctx.envBinding.switch(session, { env: args.env, dryRun: args.dryRun ?? false }, 'tool')
+        return asJson({
+          ok: true,
+          env: result.env,
+          previousEnv: result.previousEnv,
+          aliases: aliasesForEnv(result.env),
+          dryRun: result.dryRun,
+          ...(result.dryRun === false
+            ? {
+                changedAt: result.changedAt,
+                persisted: result.persisted,
+                ...(result.persistenceError !== undefined
+                  ? { persistenceError: result.persistenceError }
+                  : {}),
+              }
+            : {}),
+          degradedLegs: result.degradedLegs,
+        })
+      } catch (error) {
+        return failure(error, args.env)
       }
-      return asJson(switchEnvironment(args.env, runtimeConfig, { dryRun: args.dryRun ?? false }))
     },
   }))
 }

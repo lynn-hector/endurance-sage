@@ -183,6 +183,9 @@ importers:
       '@dsh-sentry/service-dbx':
         specifier: workspace:*
         version: link:../../packages/services/dbx
+      '@dsh-sentry/service-env-provider':
+        specifier: workspace:*
+        version: link:../../packages/services/env-provider
       '@dsh-sentry/service-greptimedb':
         specifier: workspace:*
         version: link:../../packages/services/greptimedb
@@ -852,13 +855,13 @@ importers:
       '@dsh-sentry/callflow-store':
         specifier: workspace:*
         version: link:../../core/callflow-store
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
     devDependencies:
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/service-env-provider':
         specifier: workspace:*
         version: link:../../services/env-provider
@@ -923,13 +926,13 @@ importers:
       '@dsh-sentry/db-store':
         specifier: workspace:*
         version: link:../../core/db-store
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
     devDependencies:
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/service-env-provider':
         specifier: workspace:*
         version: link:../../services/env-provider
@@ -994,9 +997,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -1004,6 +1004,15 @@ importers:
         specifier: workspace:*
         version: link:../../core/log-store
     devDependencies:
+      '@deepseek-ai/dsh-session-projection':
+        specifier: 0.2.1-rc.3
+        version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))
+      '@dsh-sentry/env-binding':
+        specifier: workspace:*
+        version: link:../../core/env-binding
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/service-env-provider':
         specifier: workspace:*
         version: link:../../services/env-provider
@@ -1031,9 +1040,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -1044,6 +1050,9 @@ importers:
         specifier: workspace:*
         version: link:../../services/alertmanager
     devDependencies:
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/service-env-provider':
         specifier: workspace:*
         version: link:../../services/env-provider
@@ -1071,9 +1080,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -1081,6 +1087,9 @@ importers:
         specifier: workspace:*
         version: link:../../core/mq-store
     devDependencies:
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/service-env-provider':
         specifier: workspace:*
         version: link:../../services/env-provider
@@ -1111,9 +1120,6 @@ importers:
       '@dsh-sentry/cache-store':
         specifier: workspace:*
         version: link:../../core/cache-store
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -1127,6 +1133,9 @@ importers:
       '@dsh-sentry/env-binding':
         specifier: workspace:*
         version: link:../../core/env-binding
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
@@ -1185,9 +1194,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -1195,6 +1201,15 @@ importers:
         specifier: workspace:*
         version: link:../../core/trace-store
     devDependencies:
+      '@deepseek-ai/dsh-session-projection':
+        specifier: 0.2.1-rc.3
+        version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))
+      '@dsh-sentry/env-binding':
+        specifier: workspace:*
+        version: link:../../core/env-binding
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/service-env-provider':
         specifier: workspace:*
         version: link:../../services/env-provider
@@ -1222,9 +1237,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
-      '@dsh-sentry/env-matrix':
-        specifier: workspace:*
-        version: link:../../core/env-matrix
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
@@ -1232,6 +1244,9 @@ importers:
         specifier: workspace:*
         version: link:../../services/zadig
     devDependencies:
+      '@dsh-sentry/env-matrix':
+        specifier: workspace:*
+        version: link:../../core/env-matrix
       '@dsh-sentry/service-env-provider':
         specifier: workspace:*
         version: link:../../services/env-provider

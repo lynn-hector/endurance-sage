@@ -49,9 +49,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError, nowIso } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type { MetricsStore } from '@dsh-sentry/metrics-store'
-import type {} from '@dsh-sentry/metrics-store'
 import type {} from '@dsh-sentry/service-alertmanager'
 import type {} from '@dsh-sentry/service-env-provider'
 import { extractAmAlerts, extractAmSilences } from './am.ts'
@@ -61,21 +59,12 @@ import { buildPromql, metricUnit, parseIso8601 } from './promql.ts'
 export const name = 'tool-metrics-inspector'
 
 /** The seams this plugin registers into. */
-export const inject = ['tools', 'metricsStore', 'alertmanager']
+export const inject = ['tools', 'envProviders']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
-export interface Config {
-  /**
-   * Env label fallback when the assembly files are unreadable (local dev
-   * hosts set it explicitly; matrix assemblies omit it). Evidence metadata
-   * only — the loaded datasource config already is one environment.
-   */
-  env?: string
-}
+export interface Config {}
 
-export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-})
+export const Config: z<Config> = z.object({})
 
 const SOURCE = 'metrics-inspector'
 const TYPE_METRIC = 'metric'
@@ -91,12 +80,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Register the metrics-inspector tools (metrics + alerts). */
-export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-
+export function apply(ctx: Context, _config: Config): void {
   /** The store, env label and lease one call fixed at its start. */
   interface MetricsCall {
     env: string
@@ -111,24 +95,16 @@ export function apply(ctx: Context, config: Config): void {
     release: () => Promise<void>
   }
 
-  // Session-routed hosts resolve the Provider through the calling session's
-  // binding; legacy hosts keep the global services and assembly env label.
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
   const routeMetrics = async (exec: ToolRunContext): Promise<MetricsCall> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('metricsStore'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.metricsStore, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('metricsStore'), release: lease.release }
   }
 
   const routeAlertmanager = async (exec: ToolRunContext): Promise<AmCall> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('alertmanager'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.alertmanager, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('alertmanager'), release: lease.release }
   }
 
   /** Original endpoint guard, shared by both scripts, original wording kept. */

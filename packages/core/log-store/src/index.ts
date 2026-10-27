@@ -45,7 +45,27 @@ export interface LogQueryResult {
   timestampField: string
 }
 
+/**
+ * Filter-DSL field whitelist of the standard `k8s_logs` schema every matrix
+ * environment renders (same schema/table in `renderEntries`). The Provider
+ * still owns runtime validation via `logFilterFields`; Consumers need the
+ * list at registration time to describe the DSL before any Provider is
+ * leased, so the shared schema contract lives here as the single source.
+ */
+export const K8S_LOG_FILTER_FIELDS = [
+  'greptime_timestamp',
+  'log_type',
+  'workload_name',
+  'message',
+  'not_expand',
+  'trace_id',
+  'tenant',
+  'caller',
+  'level',
+] as const
+
 /** Exactly one log Provider occupies this slot in a Context. */
+
 export abstract class LogStore extends Service {
   constructor(ctx: Context) {
     super(ctx, 'logStore')

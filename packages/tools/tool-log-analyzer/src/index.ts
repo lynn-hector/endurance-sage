@@ -1,11 +1,13 @@
 /**
  * Log analyzer Tool Consumer.
  *
- * Depends only on the LogStore Definition. Log SQL, table names, schema
- * names, field whitelist, endpoint and credentials belong to the Provider.
- * The tool keeps the two model-facing entrypoints (`sentry_query_logs` and
- * `sentry_list_log_services`), the filter DSL syntax, evidence envelope and
- * the pure anomaly-pattern extraction.
+ * Depends only on the LogStore Definition and the Session environment
+ * Provider router. Log SQL, table names, schema names, field whitelist,
+ * endpoint and credentials belong to the Provider; the Provider for one
+ * call is the calling session's bound environment, leased through
+ * `envProviders`. The tool keeps the two model-facing entrypoints
+ * (`sentry_query_logs` and `sentry_list_log_services`), the filter DSL
+ * syntax, evidence envelope and the pure anomaly-pattern extraction.
  *
  * @module @dsh-sentry/tool-log-analyzer
  */
@@ -15,9 +17,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
-import type { LogStore } from '@dsh-sentry/log-store'
-import type {} from '@dsh-sentry/log-store'
+import { K8S_LOG_FILTER_FIELDS, type LogStore } from '@dsh-sentry/log-store'
 import type {} from '@dsh-sentry/service-env-provider'
 import { extractLogPatterns } from './patterns.ts'
 
@@ -25,22 +25,15 @@ import { extractLogPatterns } from './patterns.ts'
 export const name = 'tool-log-analyzer'
 
 /** The capability slots this plugin registers into. */
-export const inject = ['tools', 'logStore']
+export const inject = ['tools', 'envProviders']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
-  /**
-   * Env label fallback when the assembly files are unreadable (local dev
-   * hosts set it explicitly; matrix assemblies omit it). Evidence metadata
-   * only — the loaded Provider already is one environment.
-   */
-  env?: string
   /** How many aggregated patterns a query returns. Defaults to 5. */
   patternsTopN?: number
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
   patternsTopN: z.number().step(1).min(1).default(5).description('聚合模式返回个数'),
 })
 
@@ -68,21 +61,15 @@ function filterDslGuide(fields: readonly string[]): string {
 
 /** Register the two log tools against the backend-neutral seam. */
 export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-  const guide = filterDslGuide(ctx.logStore.logFilterFields)
+  // The DSL whitelist is registration-time static: every environment renders
+  // the same k8s_logs schema, and the shared contract lives on the Definition.
+  const guide = filterDslGuide(K8S_LOG_FILTER_FIELDS)
 
-  // Session-routed hosts resolve the Provider through the calling session's
-  // binding; legacy hosts keep the global store and assembly env label.
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
   const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('logStore'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.logStore, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('logStore'), release: lease.release }
   }
 
   ctx.tools.register(defineTool({

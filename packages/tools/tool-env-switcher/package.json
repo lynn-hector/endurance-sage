@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Model-facing environment tools that validate, render, and hot-switch the dsh-sentry assembly from the shared environment matrix.",
+  "description": "Model-facing environment tools: list the matrix and rebind the calling DSH session's environment binding (Session-scoped, persisted in the session log).",
   "exports": {
     ".": {
       "types": "./src/index.ts",

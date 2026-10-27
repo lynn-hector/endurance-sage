@@ -29,6 +29,31 @@ class StubSystemPrompt extends Service {
   }
 }
 
+/**
+ * Session Provider router stub: leases whatever service this test context
+ * mounted globally under a fixed env label. The Session routing itself is
+ * covered by tests/session-env.test.ts against the real stack.
+ */
+class StubEnvProviders extends Service {
+  constructor(ctx: Context, private readonly options: { env: string }) {
+    super(ctx, 'envProviders')
+  }
+
+  async forCall(): Promise<unknown> {
+    const ctx = this.ctx
+    return {
+      env: this.options.env,
+      unavailableLegs: [],
+      release: async () => {},
+      require(slot: string): unknown {
+        const instance = ctx.get(slot)
+        if (instance === undefined) throw new Error(`stub lease: ${slot} 未加载`)
+        return instance
+      },
+    }
+  }
+}
+
 const POINTS: MetricDataPoint[] = [
   { timestamp: '2026-10-01T00:00:00Z', value: 12.5, labels: { app: 'push' } },
   { timestamp: '2026-10-01T00:15:00Z', value: 13.1, labels: { app: 'push' } },
@@ -125,7 +150,8 @@ beforeEach(async () => {
   await ctx.plugin(FakeMetricsStore)
   store = ctx.metricsStore as FakeMetricsStore
   await ctx.plugin(AlertmanagerService, { grafanaEndpoint: 'https://grafana.example.invalid' })
-  await ctx.plugin(metricsInspector, { env: 'test' })
+  await ctx.plugin(StubEnvProviders, { env: 'test' })
+  await ctx.plugin(metricsInspector)
 })
 
 afterEach(async () => {

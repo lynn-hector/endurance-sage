@@ -1,4 +1,4 @@
-# env-switcher：环境查看与热切换
+# env-switcher：环境查看与会话切换
 
 ## 使用边界
 
@@ -13,29 +13,36 @@
 
 不要为了普通日志、指标、链路查询而主动切换环境；只有用户明确表达切换意图，或排查目标与当前环境不一致并征得用户确认后才切换。
 
+## 语义
+
+环境是**当前会话（Session）的绑定**，不是全局状态：切换只影响本会话后续调用，其他并行会话保持各自环境，已写入历史的证据保持原样。绑定持久化在 Session 日志里，runtime 重启、resume、fork 后自动恢复，无需重传环境。切换不重启、不重建会话，也不写任何共享配置文件。
+
 ## 工具
 
 ### sentry_env_list — 列出环境
 
 无参数。返回：
 
-- `current`：当前生成装配中的环境。
+- `current`：**当前会话**绑定的环境。
 - `environments[]`：环境名、短名、凭据是否就绪、缺失凭据键、GreptimeDB endpoint。
 
 ### sentry_env_current — 确认当前环境
 
 无参数。返回：
 
-- `current`：从 `cordis.include.yml`/`cordis.patch.yml` 文件头读取的环境——唯一事实源。
-- `loadedEnv`：本插件自身 config 的环境。本插件不注入数据源 service，热重载必然到达它。
-- `hotReloadPending`：`true` 表示重载连本插件都没到达（patch watcher 死亡或重载在途），需重启 dsh web 兜底。`false` 不代表所有插件实例都已重启——注入 service 的工具实例可能仍冻结在启动 config（cordis 静默分支），但其 evidence `env` 标签与环境相关参数已改为调用时读装配文件，不受冻结影响；service 插件本身热重载正确。
+- `current`：当前会话恢复后的绑定（canonical 环境名）。
+- `source`：绑定来源——`tool`（模型显式切换）/ `sdk`（外层初始化）/ `default`（新会话默认）/ `migration`（旧会话无记录补写）/ `recovery`（绑定环境已下线，回退默认并报告 `recoveredFrom`）。
+- `readiness` / `degradedLegs`：逐腿凭据就绪度与降级腿。
+- `persisted`：最近一条绑定记录的持久化确认（`false` 表示本进程已生效但落盘未确认）。
 
 ### sentry_env_switch — 切换环境
 
 | 参数 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `env` | 是 | - | 环境全名或短名：`DP0`、`DP1`、`DC0`、`TP0`、`TP1`、`TC0`、`SC1`、`SC2` |
-| `dryRun` | 否 | `false` | 只返回渲染结果，不写文件 |
+| `dryRun` | 否 | `false` | 只校验目标与凭据就绪度，不改绑定 |
+
+成功返回 `previousEnv`、`env`、`changedAt`、`persisted` 与 `degradedLegs`。
 
 短名映射：
 
@@ -64,27 +71,20 @@
 1. 不确定环境时先调用 `sentry_env_current` 或 `sentry_env_list`。
 2. 用户使用短名时直接传短名，不要自行拼接 endpoint 或文件路径。
 3. 切换前工具按腿校验凭据值；缺值或空值不拦截切换，随结果返回降级腿（`degradedLegs`）与缺失键名，对应工具调用时按需报错。降级腿的连带范围要向用户说全：`grafana` 腿降级 = trace / prometheus / alertmanager 三家工具同时不可用（共用 grafana 账密）；`dbx` 腿降级连带 Redis 查询（经 dbx 中转）。
-4. 切换成功只表示配置文件已更新；随后依赖 dsh patch watcher 热重载，不需要重启。
-5. 调用 `sentry_env_switch` 后，用 `sentry_env_current` 确认文件环境；若 `hotReloadPending` 持续为 `true`，提示用户重启 dsh web 兜底。
-6. 切换后抽查一次查询的 evidence `env` 标签，应与目标环境一致（标签按调用时读装配文件解析，正常必然一致）；若不一致，说明装配文件不可读，先修复文件再继续。
-7. 工具会识别当前 profile 形态：include 桩只更新仓库装配；直写 sentry 装配会同步更新 profile patch。不要手工改路径。
+4. 切换成功即对本会话生效（`persisted: true` 表示已确认落盘）；无需等待热重载，也无需重启。
+5. 切换后抽查一次查询的 evidence `env` 标签，应与目标环境一致——每次调用的环境身份在查询前固定，进行中的旧查询仍标注原环境，属正常语义。
+6. `persisted: false` 表示本进程已生效但持久化未确认；可重试一次切换或提示用户检查持久化后端，不要谎报已落盘。
 
 ## 输出话术
 
 成功示例：
 
 ```text
-已切换到 TP1（tst-platform-hosted-1）。配置文件已更新，等待 dsh 热重载；当前会话无需重启。
+已切换到 TP1（tst-platform-hosted-1），本会话后续查询即走 TP1；其他会话不受影响，绑定已随会话持久化。
 ```
 
 凭据降级示例：
 
 ```text
 已切换到 TP0（tst-platform-hosted-0），但 grafana 腿凭据缺失（GRAFANA_TP0_USERNAME、GRAFANA_TP0_PASSWORD），该腿及 trace/prometheus/alertmanager 工具暂不可用。补齐本地凭据库后即恢复，无需重新切换。
-```
-
-热重载未生效示例：
-
-```text
-文件已经是 TP1，但插件仍显示旧环境。请重启 dsh web 后再查询，避免拿到旧环境数据。
 ```

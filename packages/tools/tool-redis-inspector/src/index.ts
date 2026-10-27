@@ -1,9 +1,10 @@
 /**
  * Redis inspector Tool Consumer.
  *
- * Session-routed hosts resolve a leased Provider through envProviders. Legacy
- * hosts without that module keep using the global CacheStore and assembly env
- * label. Backend authentication and wire decoding stay in the Provider.
+ * Depends only on the CacheStore Definition and the Session environment
+ * Provider router: the Provider for one call is the calling session's
+ * bound environment, leased through `envProviders`. Backend authentication
+ * and wire decoding stay in the Provider.
  *
  * @module @dsh-sentry/tool-redis-inspector
  */
@@ -13,25 +14,21 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type { CacheStore } from '@dsh-sentry/cache-store'
 import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-redis-inspector'
 
-/** ToolRuntime is required; Provider seams are selected per call. */
-export const inject = ['tools']
+/** ToolRuntime and the Session Provider router are required. */
+export const inject = ['tools', 'envProviders']
 
 export interface Config {
-  /** Legacy env label fallback when no Session Provider router is mounted. */
-  env?: string
   /** Default Redis db index. */
   db?: number
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().description('旧全局装配的环境标签回退值'),
   db: z.number().step(1).min(0).default(0).description('默认 Redis db 索引'),
 })
 
@@ -50,8 +47,6 @@ interface CallProvider {
 
 /** Register the Redis query tool against the backend-neutral seam. */
 export function apply(ctx: Context, config: Config): void {
-  const legacyEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-
   ctx.tools.register(defineTool({
     name: 'sentry_query_redis',
     description:
@@ -69,20 +64,12 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, exec) {
       let call: CallProvider | undefined
       try {
-        const envProviders = ctx.get('envProviders')
-        let resolved: CallProvider
-        if (envProviders !== undefined) {
-          const lease = await envProviders.forCall(exec)
-          resolved = { env: lease.env, store: lease.require('cacheStore'), release: lease.release }
-        } else {
-          const store = ctx.get('cacheStore')
-          if (store === undefined) throw new Error('Redis Provider 未加载，且 Session 环境 Provider 不可用')
-          resolved = { env: legacyEnv(), store, release: async () => {} }
-        }
+        // The Provider is the calling session's bound environment: env,
+        // backend identity and lease are fixed before the first backend await.
+        const lease = await ctx.envProviders.forCall(exec)
+        const resolved: CallProvider = { env: lease.env, store: lease.require('cacheStore'), release: lease.release }
         call = resolved
 
-        // Env, backend identity and Provider are fixed before the first await
-        // on backend I/O. A concurrent Session switch affects only later calls.
         const { env, store } = resolved
         const backendRef = store.backendRef
         const refs = [backendRef, `env:${env}:redis`]

@@ -15,20 +15,18 @@
  * @module @dsh-sentry/service-greptimedb/log-sql
  */
 
-/** Known columns of `public.k8s_logs`; the filter DSL whitelist (injection guard). */
-export const ALLOWED_LOG_FIELDS = [
-  'greptime_timestamp',
-  'log_type',
-  'workload_name',
-  'message',
-  'not_expand',
-  'trace_id',
-  'tenant',
-  'caller',
-  'level',
-] as const
+import { K8S_LOG_FILTER_FIELDS } from '@dsh-sentry/log-store'
+
+/**
+ * Filter-DSL whitelist (injection guard) for `public.k8s_logs`. The schema
+ * contract lives on the Definition (`K8S_LOG_FILTER_FIELDS`) so Consumers can
+ * describe the DSL without a leased Provider; this alias keeps the SQL
+ * builder's local name.
+ */
+export const ALLOWED_LOG_FIELDS = K8S_LOG_FILTER_FIELDS
 
 const ALLOWED = new Set<string>(ALLOWED_LOG_FIELDS)
+
 
 /** Escape single quotes in a SQL string literal. */
 export function escapeSqlLiteral(value: string): string {

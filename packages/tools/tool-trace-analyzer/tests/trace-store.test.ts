@@ -18,6 +18,31 @@ class StubSystemPrompt extends Service {
   }
 }
 
+/**
+ * Session Provider router stub: leases whatever service this test context
+ * mounted globally under a fixed env label. The Session routing itself is
+ * covered by tests/session-env.test.ts against the real stack.
+ */
+class StubEnvProviders extends Service {
+  constructor(ctx: Context, private readonly options: { env: string }) {
+    super(ctx, 'envProviders')
+  }
+
+  async forCall(): Promise<unknown> {
+    const ctx = this.ctx
+    return {
+      env: this.options.env,
+      unavailableLegs: [],
+      release: async () => {},
+      require(slot: string): unknown {
+        const instance = ctx.get(slot)
+        if (instance === undefined) throw new Error(`stub lease: ${slot} 未加载`)
+        return instance
+      },
+    }
+  }
+}
+
 const RESULT: ParsedTrace = {
   duration_ms: 125,
   status: 'ok',
@@ -60,7 +85,8 @@ beforeEach(async () => {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(FakeTraceStore)
   store = ctx.traceStore as FakeTraceStore
-  await ctx.plugin(traceAnalyzer, { env: 'test' })
+  await ctx.plugin(StubEnvProviders, { env: 'test' })
+  await ctx.plugin(traceAnalyzer)
 })
 
 afterEach(async () => {

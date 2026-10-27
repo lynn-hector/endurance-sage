@@ -35,6 +35,7 @@
     "@dsh-sentry/service-alertmanager": "workspace:*",
     "@dsh-sentry/service-code-repository": "workspace:*",
     "@dsh-sentry/service-dbx": "workspace:*",
+    "@dsh-sentry/service-env-provider": "workspace:*",
     "@dsh-sentry/service-greptimedb": "workspace:*",
     "@dsh-sentry/service-prometheus": "workspace:*",
     "@dsh-sentry/service-rocketmq": "workspace:*",

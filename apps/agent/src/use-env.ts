@@ -1,18 +1,19 @@
 /**
- * use-env —— 环境切换器（CLI）。
+ * use-env —— 启动装配生成器（CLI）。
  *
  * 用法：
- *   pnpm --filter @dsh-sentry/agent run use-env local            # 写入 web profile（热重载）
- *   pnpm --filter @dsh-sentry/agent run use-env test -- --dry-run # 只打印，不写文件
+ *   pnpm --filter @dsh-sentry/agent run use-env local            # 写入 web profile（下次启动生效）
+ *   pnpm --filter @dsh-sentry/agent run use-env local -- --dry-run # 只打印，不写文件
  *   pnpm --filter @dsh-sentry/agent run use-env local -- --out apps/profile/cordis.patch.yml
  *   pnpm --filter @dsh-sentry/agent run use-env test -- --profile sentry-test
  *
+ * 证据环境是 Session 级绑定（见 docs/architecture/session-env-routing.md）：
+ * 本 CLI 只生成/更新启动装配与 runtime 默认环境（env-binding 的 defaultEnv
+ * 锚点），不覆盖任何在线 Session 的已有绑定。运行期切换用 sentry_env_switch。
+ *
  * 切换前按腿校验该环境引用的凭据值（envs.yml 的 *Ref 字段）在
  * $DSH_HOME/.credentials.yaml 或进程环境中就绪——缺值或空值只降级对应腿
- * 并告警，不拦截切换（该腿工具调用时按需报错，补值即恢复）。
- *
- * 写入目标 profile 的 cordis.patch.yml 后，dsh 的 patch watcher 会就地
- * 重组插件：不重启进程、不中断会话。
+ * 并告警，不拦截（该腿工具调用时按需报错，补值即恢复）。
  *
  * @module @dsh-sentry/agent/use-env
  */
@@ -142,7 +143,7 @@ function main(): void {
     writeFileSync(includeTarget, renderIncludePatch(row))
     console.log(`✓ include 格式 → ${includeTarget}`)
   }
-  console.log('  dsh 的 patch watcher 会自动热重载；无需重启，对话不中断。')
+  console.log(`  启动装配/默认环境 ${envName} 已生成；运行期按 Session 用 sentry_env_switch 切换。`)
 }
 
 main()

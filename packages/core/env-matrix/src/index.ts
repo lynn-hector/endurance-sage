@@ -283,10 +283,12 @@ export function renderEntries(row: EnvRow): Entry[] {
   const codeBaseDir = resolveCodeBaseDir(row)
   return [
     // Session 绑定与 Provider 池是宿主级入口（docs/architecture/session-env-routing.md）：
-    // 装配后证据 Tool 自动走 Session 路由分支，legacy 全局服务条目退居回退路径。
+    // 装配只声明宿主栈与工具，环境 Provider 由 EnvProviderPool 按各 Session
+    // 绑定懒创建（renderProviderEntries），不再有全局单例 Provider 条目。
     // defaultEnv 跟随本组装环境，作为新 Session 与失效绑定恢复的 runtime 默认；
     // 矩阵路径由两端共享的 defaultEnvsPath()（支持 DSH_SENTRY_ENVS_PATH 覆盖），
-    // 组装不重复该路径。
+    // 组装不重复该路径。env-switcher 条目的 config.env 是装配环境锚点
+    // （extractCurrentEnv/liveAssemblyEnv 读取），不参与 Session 路由。
     {
       id: 'sentry-env-binding',
       name: '@dsh-sentry/env-binding',
@@ -298,6 +300,48 @@ export function renderEntries(row: EnvRow): Entry[] {
       name: '@dsh-sentry/tool-env-switcher',
       config: { env },
     },
+    { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },
+    { id: 'sentry-tool-callflow-analyzer', name: '@dsh-sentry/tool-callflow-analyzer' },
+    { id: 'sentry-tool-trace-analyzer', name: '@dsh-sentry/tool-trace-analyzer' },
+    { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector' },
+    {
+      id: 'sentry-tool-db-inspector',
+      name: '@dsh-sentry/tool-db-inspector',
+      config: { database: row.db?.database ?? DEFAULT_DB_DATABASE },
+    },
+    { id: 'sentry-tool-redis-inspector', name: '@dsh-sentry/tool-redis-inspector' },
+    { id: 'sentry-tool-zadig-inspector', name: '@dsh-sentry/tool-zadig-inspector' },
+    { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector' },
+    {
+      id: 'sentry-tapd',
+      name: '@dsh-sentry/service-tapd',
+      config: {
+        workspaceId: '63822673',
+        tokenRef: 'TAPD_TOKEN',
+      },
+    },
+    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector' },
+    {
+      id: 'sentry-code-repository',
+      name: '@dsh-sentry/service-code-repository',
+      config: codeBaseDir === undefined ? undefined : { baseDir: codeBaseDir },
+    },
+    { id: 'sentry-tool-code-repository', name: '@dsh-sentry/tool-code-repository' },
+    { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
+    { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
+    { id: 'sentry-git-guard', name: '@dsh-sentry/guard-git' },
+  ]
+}
+
+/**
+ * Per-leg Provider service entries one environment mounts inside
+ * `EnvProviderPool` — pool-only input, never rendered into a host assembly.
+ * The derivation stays shared with `renderEntries`'s single source (envs.yml
+ * rows), so a Session-routed Provider can never drift from what a
+ * regenerated assembly for the same environment would load.
+ */
+export function renderProviderEntries(row: EnvRow): Entry[] {
+  return [
     {
       id: 'sentry-greptimedb',
       name: '@dsh-sentry/service-greptimedb',
@@ -316,8 +360,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         callflowTimestampCol: 'greptime_timestamp',
       },
     },
-    { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },
-    { id: 'sentry-tool-callflow-analyzer', name: '@dsh-sentry/tool-callflow-analyzer' },
     {
       id: 'sentry-trace',
       name: '@dsh-sentry/service-trace',
@@ -329,7 +371,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         datasourceUid: row.grafana.greptimedbJaegerDatasourceUid,
       },
     },
-    { id: 'sentry-tool-trace-analyzer', name: '@dsh-sentry/tool-trace-analyzer' },
     {
       id: 'sentry-prometheus',
       name: '@dsh-sentry/service-prometheus',
@@ -354,7 +395,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.grafana.passwordRef,
       },
     },
-    { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector' },
     {
       id: 'sentry-dbx',
       name: '@dsh-sentry/service-dbx',
@@ -363,12 +403,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.dbx.passwordRef,
       },
     },
-    {
-      id: 'sentry-tool-db-inspector',
-      name: '@dsh-sentry/tool-db-inspector',
-      config: { database: row.db?.database ?? DEFAULT_DB_DATABASE },
-    },
-    { id: 'sentry-tool-redis-inspector', name: '@dsh-sentry/tool-redis-inspector' },
     {
       id: 'sentry-zadig',
       name: '@dsh-sentry/service-zadig',
@@ -379,7 +413,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         tokenRef: row.zadig.tokenRef,
       },
     },
-    { id: 'sentry-tool-zadig-inspector', name: '@dsh-sentry/tool-zadig-inspector' },
     {
       id: 'sentry-service-rocketmq',
       name: '@dsh-sentry/service-rocketmq',
@@ -389,25 +422,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.rocketmq.passwordRef,
       },
     },
-    { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector' },
-    {
-      id: 'sentry-tapd',
-      name: '@dsh-sentry/service-tapd',
-      config: {
-        workspaceId: '63822673',
-        tokenRef: 'TAPD_TOKEN',
-      },
-    },
-    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector' },
-    {
-      id: 'sentry-code-repository',
-      name: '@dsh-sentry/service-code-repository',
-      config: codeBaseDir === undefined ? undefined : { baseDir: codeBaseDir },
-    },
-    { id: 'sentry-tool-code-repository', name: '@dsh-sentry/tool-code-repository' },
-    { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
-    { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
-    { id: 'sentry-git-guard', name: '@dsh-sentry/guard-git' },
   ]
 }
 

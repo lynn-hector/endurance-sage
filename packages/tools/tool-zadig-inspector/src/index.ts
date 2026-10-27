@@ -35,7 +35,6 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import { parseImageTag, type ZadigServiceRow, type ZadigWorkflowTask } from '@dsh-sentry/service-zadig'
 import type {} from '@dsh-sentry/service-zadig'
 import type {} from '@dsh-sentry/service-env-provider'
@@ -44,17 +43,12 @@ import type {} from '@dsh-sentry/service-env-provider'
 export const name = 'tool-zadig-inspector'
 
 /** The seams this plugin registers into. */
-export const inject = ['tools', 'zadig']
+export const inject = ['tools', 'envProviders']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
-export interface Config {
-  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
-  env?: string
-}
+export interface Config {}
 
-export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-})
+export const Config: z<Config> = z.object({})
 
 const SOURCE = 'zadig-inspector'
 const TYPE = 'cicd'
@@ -196,12 +190,7 @@ export function demoLatestDeployment(service: string): Record<string, unknown> {
 }
 
 /** Register the Zadig query tool. */
-export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-
+export function apply(ctx: Context, _config: Config): void {
   // The service, env label and lease one call fixed at its start. Typed
   // through the Cordis slot (Context['zadig']) — tools never bind the
   // Provider class name itself.
@@ -211,15 +200,11 @@ export function apply(ctx: Context, config: Config): void {
     release: () => Promise<void>
   }
 
-  // Session-routed hosts resolve the Provider through the calling session's
-  // binding; legacy hosts keep the global service and assembly env label.
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
   const routeService = async (exec: ToolRunContext): Promise<CallProvider> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('zadig'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.zadig, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('zadig'), release: lease.release }
   }
 
   ctx.tools.register(defineTool({

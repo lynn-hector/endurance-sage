@@ -1,11 +1,13 @@
 /**
  * Call-flow analyzer Tool Consumer.
  *
- * Depends only on the CallflowStore Definition. Signaling SQL, the `hep_1`
- * table, schema/timestamp configuration, endpoint and credentials belong to
- * the Provider. The Provider returns rows plus the backend-neutral summary;
- * this tool keeps the model-facing `sentry_query_call_flow` contract and the
- * evidence envelope.
+ * Depends only on the CallflowStore Definition and the Session environment
+ * Provider router: the Provider for one call is the calling session's bound
+ * environment. Signaling SQL, the `hep_1` table, schema/timestamp
+ * configuration, endpoint and credentials belong to the Provider. The
+ * Provider returns rows plus the backend-neutral summary; this tool keeps
+ * the model-facing `sentry_query_call_flow` contract and the evidence
+ * envelope.
  *
  * @module @dsh-sentry/tool-callflow-analyzer
  */
@@ -15,32 +17,22 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type { CallflowStore } from '@dsh-sentry/callflow-store'
-import type {} from '@dsh-sentry/callflow-store'
 import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-callflow-analyzer'
 
 /** The capability slots this plugin registers into. */
-export const inject = ['tools', 'callflowStore']
+export const inject = ['tools', 'envProviders']
 
 /** Default message cap; the query-window default lives in the Definition. */
 const DEFAULT_LIMIT = 1000
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
-export interface Config {
-  /**
-   * Env label fallback when the assembly files are unreadable; evidence
-   * metadata only (same contract as tool-log-analyzer).
-   */
-  env?: string
-}
+export interface Config {}
 
-export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-})
+export const Config: z<Config> = z.object({})
 
 const SOURCE = 'callflow-analyzer'
 const TYPE = 'callflow'
@@ -57,21 +49,12 @@ interface CallProvider {
 }
 
 /** Register the call-flow tool against the backend-neutral seam. */
-export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-
-  // Session-routed hosts resolve the Provider through the calling session's
-  // binding; legacy hosts keep the global store and assembly env label.
+export function apply(ctx: Context, _config: Config): void {
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
   const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('callflowStore'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.callflowStore, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('callflowStore'), release: lease.release }
   }
 
   ctx.tools.register(defineTool({

@@ -1,8 +1,8 @@
 # Session 级环境绑定、持久化与 Provider 池方案
 
-> 状态：Session 绑定、Provider 池与全部证据腿路由已实施并通过真实组件探针；web 宿主接线（组装条目）已生成，待 web 端验收 · 2026-10-27  
+> 状态：Session 绑定、Provider 池与全部证据腿路由已实施并通过真实组件探针；双环境验收完成后已删除 legacy 全局装配路径（全局 Provider 条目、Tool 回退分支与写共享文件的切换实现）· 2026-10-27  
 > 目标宿主：DSH `v0.2.1-rc.3`  
-> 当前实现：`env-binding`、`EnvProviderPool` 与 8 个证据 Tool 的 Session 路由已落地；`regenerate` 组装已包含 env-binding/env-provider 宿主条目（legacy 全局装配条目保留为回退路径，验收后删除）；`pnpm --filter @dsh-sentry/dev run probe:session-env` 通过（双 Session 并发、fork、compact、跨进程 resume 恢复）  
+> 当前实现：`env-binding`、`EnvProviderPool` 与 8 个证据 Tool 全部经 `envProviders.forCall(exec)` 走 Session 路由（`renderEntries` 只输出宿主栈与工具，Provider 配置由 `renderProviderEntries` 供池消费）；`pnpm --filter @dsh-sentry/dev run probe:session-env` 通过（双 Session 并发、fork、compact、跨进程 resume 恢复）；redis/trace/log 三腿有 session-env 测试（并发凭据分流、切换中查询保持原环境快照）  
 > 替代关系：本文取代 `skills-refactor-plan.md` 中“profile 级共享 Env”的运行时语义；Definition / Provider / Consumer 与 Skills 迁移方向不变
 
 ## 1. 结论
@@ -26,18 +26,18 @@
 
 本文选择 **plugin record + projection**，不采用自定义正式 `SessionEventMap` 事件，也不引入 `dsh-storage-domain` KV 副本。plugin record 已提供 `ignorable: true`、随 resume/fork 携带和不进入模型可见消息面的语义，无须修改正式 Session 格式。KV 或 BFF 数据库可以保存用户、conversation 与 DSH Session 的产品关系，但不再复制一份 Env 绑定事实。
 
-## 2. 旧全局链路与待迁移问题
+## 2. 旧全局链路（已删除）
 
-除已接入 Session Provider 路由的 Redis 外，其余正式证据链路仍是 runtime 全局切换：
+> 本节保留历史背景。双环境验收通过后，下列全局切换链路已随 legacy 路径删除：
+> `switchEnvironment()` 及其 patch/include 文件写入、装配中的全局 Provider 服务条目、
+> Tool 内“无 envProviders 时回退全局插槽 + `liveAssemblyEnv()` 标签”的分支。
+
+切换时代的运行方式（历史）：
 
 1. `sentry_env_switch` 调用 `switchEnvironment()`，重写生成的 `cordis.patch.yml`、`cordis.include.yml`，并可能同步写真实 profile patch。
 2. DSH watcher 根据共享装配文件重建 Provider。
 3. Tool 通过 `ctx.traceStore`、`ctx.logStore` 等 Cordis 插槽取得当前单例 Provider。
 4. 因而同一 runtime 中的所有 Session 最终都会走到当前装配的环境。
-
-证据还有独立的一致性问题：多个 Tool 使用 `liveAssemblyEnv()` 读取文件标签，而查询由 Provider 执行。文件标签和 Provider 实例不是同一个原子快照，切换竞态下可能把 A 的数据标成 B。trace Tool 当前还把执行上下文命名为 `_exec` 并忽略它，无法按调用方路由。
-
-所以，当前架构支持“全局热切换”，不支持“Session 级环境隔离”。仅在内存增加 `sessionId → envName` 也不完整：进程重启后 Map 丢失，所有 Session 会回到默认环境；只增加标签而没有 Provider 池，底层查询仍会串环境。
 
 ## 3. 目标语义与状态归属
 
@@ -442,7 +442,7 @@ plugin record 本身不进入模型可见消息面；可见审计信息来自 To
 5. **配置变更新建代际**：同一 Env 的 endpoint 或凭据配置变化时，以配置版本创建新 Provider 代际；旧调用继续完成，旧代际排空后释放，不能原地修改正在使用的配置。
 6. **环境无关能力不强行复制**：TAPD、代码仓库等不随 Env 切换的能力可以保留共享 Service，不为了形式统一进入每 Env 池。
 
-当前 Pool 已装配全部七条 Provider 腿（DBX→cache/db、GreptimeDB→logs/callflow、trace、prometheus→metrics、alertmanager、rocketmq→MQ、zadig），8 个证据 Tool 全部通过 `envProviders.forCall(exec)` 走 Session 路由（无该服务的宿主回退全局装配）；TAPD、代码仓库等环境无关能力保留共享 Service。共享传输的 Provider 在同一个 Env 上下文内继续共享。每个隔离服务名使用独立 label；Cordis 按 label 注册 Provider，同一 Env 的 `cacheStore` 与 `dbStore` 不能共用同一个 label。
+当前 Pool 已装配全部七条 Provider 腿（DBX→cache/db、GreptimeDB→logs/callflow、trace、prometheus→metrics、alertmanager、rocketmq→MQ、zadig），8 个证据 Tool 全部通过 `envProviders.forCall(exec)` 走 Session 路由（legacy 全局回退分支已删除，Tool `inject` 直接依赖 `envProviders`）；TAPD、代码仓库等环境无关能力保留共享 Service。共享传输的 Provider 在同一个 Env 上下文内继续共享。每个隔离服务名使用独立 label；Cordis 按 label 注册 Provider，同一 Env 的 `cacheStore` 与 `dbStore` 不能共用同一个 label。Provider 配置推导独立为 `renderProviderEntries()`，仅供池消费；`renderEntries()` 输出的宿主装配不再包含任何全局 Provider 条目。
 
 ## 11. 失败与降级语义
 
@@ -521,14 +521,14 @@ plugin record 本身不进入模型可见消息面；可见审计信息来自 To
 
 在证据 Tool 尚未按绑定路由前，不提前删除旧全局切换，避免出现“绑定显示 B、实际查询仍是 A”。同样，不能只迁移 `switch` 而让 `current/list` 继续读取共享文件。
 
-### 阶段 5：证据身份、其他证据腿与旧路径删除
+### 阶段 5：证据身份、其他证据腿与旧路径删除（已完成）
 
-1. 删除 trace Tool 对 `liveAssemblyEnv()` 和启动时 Env 配置的依赖，固定单次调用快照。
-2. 补充“A 查询延迟返回期间 S1 切到 B”的测试，断言进行中的结果仍为 A，下一次结果才为 B。
-3. 按 logs/callflow → trace → metrics/alerts → MQ/Zadig 的顺序接入 Pool；环境无关能力单独说明。
-4. 所有依赖 Session 绑定的证据路径完成迁移后，再删除旧全局 patch/include 切换路径。
-5. 明确 CLI `use-env` 的过渡语义：它可设置启动装配或 runtime 默认 Env，但不覆盖某个在线 Session 的已有绑定。
-6. 最后更新使用指南、env-switcher skill 和重构总计划，移除“profile 级共享 Env”的旧说明。
+1. ✅ 删除全部证据 Tool 对 `liveAssemblyEnv()` 和启动时 Env 配置的依赖，固定单次调用快照。
+2. ✅ “A 查询延迟返回期间 S1 切到 B”的测试：redis/trace/log 三腿 `tests/session-env.test.ts` 覆盖（进行中的结果仍标 A，下一次结果才标 B）。
+3. ✅ logs/callflow → trace → metrics/alerts → MQ/Zadig 全部接入 Pool；环境无关能力（TAPD、代码仓库）保留共享 Service。
+4. ✅ 双环境验收后删除旧全局切换路径：`switchEnvironment()`/`currentEnvironment()` 与 patch/include 写入、装配中的全局 Provider 条目（`renderEntries` 不再输出）、Tool 内全局插槽回退分支一并移除；`liveAssemblyEnv()` 仅供环境无关共享服务的证据标签使用。
+5. ✅ CLI `use-env` 语义收敛：只生成/更新启动装配与 runtime 默认 Env（`defaultEnv` 锚点），不覆盖任何在线 Session 的已有绑定。
+6. ✅ 使用指南、env-switcher skill 与重构总计划已按 Session 语义更新。
 
 ## 14. 测试与验收
 

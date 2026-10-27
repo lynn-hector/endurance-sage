@@ -1,8 +1,10 @@
 /**
  * Trace analyzer Tool Consumer.
  *
- * Depends only on the TraceStore Definition. Backend mode, datasource,
- * endpoint, credentials and transport details belong to the Provider.
+ * Depends only on the TraceStore Definition and the Session environment
+ * Provider router. Backend mode, datasource, endpoint, credentials and
+ * transport details belong to the Provider; the Provider for one call is
+ * the calling session's bound environment, leased through `envProviders`.
  *
  * @module @dsh-sentry/tool-trace-analyzer
  */
@@ -12,22 +14,15 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type { TraceStore } from '@dsh-sentry/trace-store'
-import type {} from '@dsh-sentry/trace-store'
 import type {} from '@dsh-sentry/service-env-provider'
 
 export const name = 'tool-trace-analyzer'
-export const inject = ['tools', 'traceStore']
+export const inject = ['tools', 'envProviders']
 
-export interface Config {
-  /** Env label fallback for local development; matrix assemblies omit it. */
-  env?: string
-}
+export interface Config {}
 
-export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-})
+export const Config: z<Config> = z.object({})
 
 const SOURCE = 'trace-analyzer'
 const TYPE = 'trace'
@@ -44,18 +39,12 @@ interface CallProvider {
 }
 
 /** Register the trace fetch tool against the backend-neutral seam. */
-export function apply(ctx: Context, config: Config): void {
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-
-  // Session-routed hosts resolve the Provider through the calling session's
-  // binding; legacy hosts keep the global store and assembly env label.
+export function apply(ctx: Context, _config: Config): void {
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
   const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('traceStore'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.traceStore, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('traceStore'), release: lease.release }
   }
 
   ctx.tools.register(defineTool({

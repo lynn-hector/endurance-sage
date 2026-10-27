@@ -2,7 +2,7 @@ import type { Context, Fiber } from '@deepseek-ai/cordis'
 import type { CacheStore } from '@dsh-sentry/cache-store'
 import type { CallflowStore } from '@dsh-sentry/callflow-store'
 import type { DbStore } from '@dsh-sentry/db-store'
-import { readMatrix, renderEntries, type EnvRow } from '@dsh-sentry/env-matrix'
+import { readMatrix, renderProviderEntries, type EnvRow } from '@dsh-sentry/env-matrix'
 import type { LogStore } from '@dsh-sentry/log-store'
 import type { MetricsStore } from '@dsh-sentry/metrics-store'
 import type { MqStore } from '@dsh-sentry/mq-store'
@@ -205,7 +205,7 @@ export class EnvProviderPool {
 
   /** Version bumps whenever any Provider leg's derived config changes. */
   private deriveConfigVersion(row: EnvRow): string {
-    const rendered = renderEntries(row)
+    const rendered = renderProviderEntries(row)
     return JSON.stringify(PROVIDER_SERVICES.map(spec =>
       rendered.find(entry => entry.name === spec.packageName)?.config ?? null,
     ))
@@ -220,7 +220,7 @@ export class EnvProviderPool {
       envCtx = envCtx.isolate(slot, Symbol(`dsh-sentry-env:${env}:${slot}`))
     }
 
-    const rendered = renderEntries(row)
+    const rendered = renderProviderEntries(row)
     const fibers: Fiber[] = []
     const bundle: EnvProviderBundle = {}
     const unavailableLegs: Array<{ leg: string; error: string }> = []

@@ -23,6 +23,31 @@ class StubSystemPrompt extends Service {
   }
 }
 
+/**
+ * Session Provider router stub: leases whatever service this test context
+ * mounted globally under a fixed env label. The Session routing itself is
+ * covered by tests/session-env.test.ts against the real stack.
+ */
+class StubEnvProviders extends Service {
+  constructor(ctx: Context, private readonly options: { env: string }) {
+    super(ctx, 'envProviders')
+  }
+
+  async forCall(): Promise<unknown> {
+    const ctx = this.ctx
+    return {
+      env: this.options.env,
+      unavailableLegs: [],
+      release: async () => {},
+      require(slot: string): unknown {
+        const instance = ctx.get(slot)
+        if (instance === undefined) throw new Error(`stub lease: ${slot} 未加载`)
+        return instance
+      },
+    }
+  }
+}
+
 const MESSAGES = [
   { greptime_timestamp: '2026-06-01T10:00:00.000Z', sip_method: 'INVITE', call_id: 'call-1', trace_id: 't-1' },
   { greptime_timestamp: '2026-06-01T10:00:02.000Z', sip_method: '200', call_id: 'call-1', trace_id: 't-1' },
@@ -68,7 +93,8 @@ beforeEach(async () => {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(FakeCallflowStore)
   store = ctx.callflowStore as FakeCallflowStore
-  await ctx.plugin(callflowAnalyzer, { env: 'test' })
+  await ctx.plugin(StubEnvProviders, { env: 'test' })
+  await ctx.plugin(callflowAnalyzer)
 })
 
 afterEach(async () => {

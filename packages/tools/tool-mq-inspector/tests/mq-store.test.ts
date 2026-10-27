@@ -1,7 +1,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { MqStore, type MqMessageDetailRequest, type MqMessageDetailResult, type MqMessageListRequest, type MqMessageListResult } from '@dsh-sentry/mq-store'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as mqInspector from '../src/index.ts'
 
 class StubSystemPrompt extends Service {
@@ -15,6 +15,31 @@ class StubSystemPrompt extends Service {
 
   async assemble(): Promise<{ sections: unknown[] }> {
     return { sections: [] }
+  }
+}
+
+/**
+ * Session Provider router stub: leases whatever service this test context
+ * mounted globally under a fixed env label. The Session routing itself is
+ * covered by tests/session-env.test.ts against the real stack.
+ */
+class StubEnvProviders extends Service {
+  constructor(ctx: Context, private readonly options: { env: string }) {
+    super(ctx, 'envProviders')
+  }
+
+  async forCall(): Promise<unknown> {
+    const ctx = this.ctx
+    return {
+      env: this.options.env,
+      unavailableLegs: [],
+      release: async () => {},
+      require(slot: string): unknown {
+        const instance = ctx.get(slot)
+        if (instance === undefined) throw new Error(`stub lease: ${slot} 未加载`)
+        return instance
+      },
+    }
   }
 }
 
@@ -72,19 +97,16 @@ let ctx: Context
 let store: FakeMqStore
 
 beforeEach(async () => {
-  // Isolate from the machine's real assembly files so config.env ('test') is
-  // the env label the evidence carries.
-  vi.stubEnv('DSH_SENTRY_ASSEMBLY_DIR', '/nonexistent-assembly-dir')
   ctx = new Context()
   await ctx.plugin(StubSystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(FakeMqStore)
   store = ctx.mqStore as FakeMqStore
-  await ctx.plugin(mqInspector, { env: 'test' })
+  await ctx.plugin(StubEnvProviders, { env: 'test' })
+  await ctx.plugin(mqInspector)
 })
 
 afterEach(async () => {
-  vi.unstubAllEnvs()
   await ctx.fiber.dispose()
 })
 

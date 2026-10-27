@@ -35,26 +35,19 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import { parseTimeMs, type MqMessageDetailResult, type MqMessageListResult, type MqStore } from '@dsh-sentry/mq-store'
-import type {} from '@dsh-sentry/mq-store'
 import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-mq-inspector'
 
 /** The capability slots this plugin registers into. */
-export const inject = ['tools', 'mqStore']
+export const inject = ['tools', 'envProviders']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
-export interface Config {
-  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
-  env?: string
-}
+export interface Config {}
 
-export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-})
+export const Config: z<Config> = z.object({})
 
 const SOURCE = 'mq-inspector'
 const TYPE = 'mq'
@@ -186,21 +179,12 @@ interface CallProvider {
 }
 
 /** Register the MQ query tool against the backend-neutral seam. */
-export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-
-  // Session-routed hosts resolve the Provider through the calling session's
-  // binding; legacy hosts keep the global store and assembly env label.
+export function apply(ctx: Context, _config: Config): void {
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
   const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('mqStore'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.mqStore, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('mqStore'), release: lease.release }
   }
 
   ctx.tools.register(defineTool({

@@ -22,6 +22,31 @@ class StubSystemPrompt extends Service {
 }
 
 /**
+ * Session Provider router stub: leases whatever service this test context
+ * mounted globally under a fixed env label. The Session routing itself is
+ * covered by tests/session-env.test.ts against the real stack.
+ */
+class StubEnvProviders extends Service {
+  constructor(ctx: Context, private readonly options: { env: string }) {
+    super(ctx, 'envProviders')
+  }
+
+  async forCall(): Promise<unknown> {
+    const ctx = this.ctx
+    return {
+      env: this.options.env,
+      unavailableLegs: [],
+      release: async () => {},
+      require(slot: string): unknown {
+        const instance = ctx.get(slot)
+        if (instance === undefined) throw new Error(`stub lease: ${slot} 未加载`)
+        return instance
+      },
+    }
+  }
+}
+
+/**
  * Execute-level harness: boots the real registration spine (ToolRuntime +
  * PrometheusService, now occupying ctx.metricsStore, + the named
  * alertmanager service, with example.invalid endpoints) and calls tool
@@ -39,7 +64,8 @@ beforeAll(async () => {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(PrometheusService, { endpoint: 'http://prometheus.example.invalid' })
   await ctx.plugin(AlertmanagerService, { grafanaEndpoint: 'https://grafana.example.invalid' })
-  await ctx.plugin(metricsInspector, { env: 'local' })
+  await ctx.plugin(StubEnvProviders, { env: 'local' })
+  await ctx.plugin(metricsInspector)
 })
 
 afterAll(async () => {
@@ -138,7 +164,8 @@ describe('半配置宿主的 demo 边界（execute 层）', () => {
     // direct 模式且 endpoint 为空——半配置宿主；alertmanager 无关本组用例
     await bareCtx.plugin(PrometheusService, {})
     await bareCtx.plugin(AlertmanagerService, { grafanaEndpoint: 'https://grafana.example.invalid' })
-    await bareCtx.plugin(metricsInspector, { env: 'local' })
+    await bareCtx.plugin(StubEnvProviders, { env: 'local' })
+    await bareCtx.plugin(metricsInspector)
   })
 
   afterAll(async () => {
@@ -163,7 +190,8 @@ describe('proxied 装配的 dry-run（execute 层）', () => {
     await proxiedCtx.plugin(ToolRuntime)
     await proxiedCtx.plugin(PrometheusService, { grafanaEndpoint: 'https://grafana.example.invalid' })
     await proxiedCtx.plugin(AlertmanagerService, { grafanaEndpoint: 'https://grafana.example.invalid' })
-    await proxiedCtx.plugin(metricsInspector, { env: 'local' })
+    await proxiedCtx.plugin(StubEnvProviders, { env: 'local' })
+    await proxiedCtx.plugin(metricsInspector)
   })
 
   afterAll(async () => {

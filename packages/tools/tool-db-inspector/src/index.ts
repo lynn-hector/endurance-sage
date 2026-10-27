@@ -30,21 +30,17 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import type { DbStore } from '@dsh-sentry/db-store'
-import type {} from '@dsh-sentry/db-store'
 import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-db-inspector'
 
 /** The capability slots this plugin registers into. */
-export const inject = ['tools', 'dbStore']
+export const inject = ['tools', 'envProviders']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
-  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
-  env?: string
   /**
    * Default database name, from the original `db.database` / `db.schema`
    * config fields. Calls may override it per query. This is caller intent
@@ -54,7 +50,6 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
   database: z.string().description('默认数据库名（原 db.database / db.schema）'),
 })
 
@@ -75,20 +70,11 @@ interface CallProvider {
 
 /** Register the SQL query tool against the backend-neutral seam. */
 export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-
-  // Session-routed hosts resolve the Provider through the calling session's
-  // binding; legacy hosts keep the global store and assembly env label.
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
   const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
-    const envProviders = ctx.get('envProviders')
-    if (envProviders !== undefined) {
-      const lease = await envProviders.forCall(exec)
-      return { env: lease.env, store: lease.require('dbStore'), release: lease.release }
-    }
-    return { env: liveEnv(), store: ctx.dbStore, release: async () => {} }
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('dbStore'), release: lease.release }
   }
 
   ctx.tools.register(defineTool({

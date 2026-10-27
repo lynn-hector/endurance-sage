@@ -1,6 +1,10 @@
 # Phase 0/2 declarative composition, loaded by `tsx src/bin-loader.ts` through
 # the Cordis loader: plugin names resolve via Node resolution from this file's
 # directory.
+#
+# 证据 Provider 不再全局装配：Session 环境栈（env-binding + env-provider）按
+# 各 Session 绑定从 envs.yml（defaultEnvsPath）懒创建 Provider。本宿主只验证
+# 注册，不发起查询。
 
 - id: system-prompt
   name: '@deepseek-ai/dsh-system-prompt'
@@ -11,101 +15,45 @@
 - id: skills
   name: '@deepseek-ai/dsh-skill'
 
-# Placeholder endpoint: the dev host verifies registration only, it never
-# queries. Real environments override via settings or an env-specific patch.
-- id: sentry-greptimedb
-  name: '@dsh-sentry/service-greptimedb'
+- id: sessions
+  name: '@deepseek-ai/dsh-session'
+
+- id: session-projections
+  name: '@deepseek-ai/dsh-session-projection'
+
+- id: sentry-env-binding
+  name: '@dsh-sentry/env-binding'
   config:
-    endpoint: https://greptimedb.example.invalid
-    usernameRef: GREPTIMEDB_LOCAL_USERNAME
-    passwordRef: GREPTIMEDB_LOCAL_PASSWORD
-    logSchema: public
-    logTable: k8s_logs
-    logTimestampCol: greptime_timestamp
-    callflowSchema: public
-    callflowTable: hep_1
-    callflowTimestampCol: greptime_timestamp
+    defaultEnv: dev-platform-hosted-0
+
+- id: sentry-env-provider
+  name: '@dsh-sentry/service-env-provider'
 
 - id: sentry-tool-log-analyzer
   name: '@dsh-sentry/tool-log-analyzer'
-  config:
-    env: local
 
 - id: sentry-tool-callflow-analyzer
   name: '@dsh-sentry/tool-callflow-analyzer'
-  config:
-    env: local
-
-- id: sentry-trace
-  name: '@dsh-sentry/service-trace'
-  config:
-    mode: grafana-jaeger
-    endpoint: https://grafana.example.invalid
-    usernameRef: GRAFANA_LOCAL_USERNAME
-    passwordRef: GRAFANA_LOCAL_PASSWORD
-    datasourceUid: GreptimeDB-Jaeger
 
 - id: sentry-tool-trace-analyzer
   name: '@dsh-sentry/tool-trace-analyzer'
-  config:
-    env: local
-
-- id: sentry-prometheus
-  name: '@dsh-sentry/service-prometheus'
-  config:
-    endpoint: http://prometheus.example.invalid
-
-- id: sentry-alertmanager
-  name: '@dsh-sentry/service-alertmanager'
-  config:
-    grafanaEndpoint: https://grafana.example.invalid
-    usernameRef: GRAFANA_LOCAL_USERNAME
-    passwordRef: GRAFANA_LOCAL_PASSWORD
 
 - id: sentry-tool-metrics-inspector
   name: '@dsh-sentry/tool-metrics-inspector'
-  config:
-    env: local
-
-- id: sentry-dbx
-  name: '@dsh-sentry/service-dbx'
-  config:
-    endpoint: https://dbx.example.invalid
-    passwordRef: DBX_REDIS_PASSWORD
 
 - id: sentry-tool-db-inspector
   name: '@dsh-sentry/tool-db-inspector'
   config:
-    env: local
     database: novo_commctl_config
 
 - id: sentry-tool-redis-inspector
   name: '@dsh-sentry/tool-redis-inspector'
-  config:
-    env: local
-
-- id: sentry-zadig
-  name: '@dsh-sentry/service-zadig'
-  config:
-    endpoint: https://zadig.example.invalid
-    project: novo-one
-    envName: dev-env
 
 - id: sentry-tool-zadig-inspector
   name: '@dsh-sentry/tool-zadig-inspector'
-  config:
-    env: local
-
-- id: sentry-service-rocketmq
-  name: '@dsh-sentry/service-rocketmq'
-  config:
-    endpoint: https://rocketmq.example.invalid
-    username: admin
 
 - id: sentry-tool-mq-inspector
   name: '@dsh-sentry/tool-mq-inspector'
-  config:
-    env: local
 
 - id: sentry-code-repository
   name: '@dsh-sentry/service-code-repository'
