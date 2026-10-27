@@ -1,17 +1,17 @@
-# dsh-sentry 组装（env: dev-platform-hosted-0）——由 apps/agent/envs.yml 生成，勿手改。
+# dsh-sentry 组装（env: tst-platform-hosted-0）——由 apps/agent/envs.yml 生成，勿手改。
 # 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate
 
 - insert:
     - id: sentry-env-binding
       name: '@dsh-sentry/env-binding'
       config:
-        defaultEnv: dev-platform-hosted-0
+        defaultEnv: tst-platform-hosted-0
     - id: sentry-env-provider
       name: '@dsh-sentry/service-env-provider'
     - id: sentry-tool-env-switcher
       name: '@dsh-sentry/tool-env-switcher'
       config:
-        env: dev-platform-hosted-0
+        env: tst-platform-hosted-0
     - id: sentry-tool-log-analyzer
       name: '@dsh-sentry/tool-log-analyzer'
     - id: sentry-tool-callflow-analyzer
@@ -39,8 +39,6 @@
       name: '@dsh-sentry/tool-tapd-inspector'
     - id: sentry-code-repository
       name: '@dsh-sentry/service-code-repository'
-      config:
-        baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
     - id: sentry-tool-code-repository
       name: '@dsh-sentry/tool-code-repository'
     - id: sentry-persona

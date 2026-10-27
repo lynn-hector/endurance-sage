@@ -27,7 +27,7 @@ description: 跨仓代码检索、读取与 ff-only 同步：sentry_search_code�
 
 为什么是工具而不是模型直接读文件：会话沙箱把原生文件工具限制在会话工作区内，产品仓库在别处；工具在宿主进程内执行受控只读检索，是对沙箱的受控豁免。sentry_sync_code 同在宿主进程执行、不经 bash 管线（git-guard 拦不到它），因此护栏内建于工具本身：固定参数的 `git pull --ff-only` + 只操作配置发现的仓库，模型无法注入命令或指定任意路径。
 
-来源纪律：代码腿的检索根目录（baseDir，regenerate 时从 `DSH_SENTRY_CODE_BASE` 烘焙）与对话工作区互不相干。不要把会话工作区里的检出当代码事实来源——两者版本/行号可能漂移；代码证据一律以 `sentry_search_code` / `sentry_read_code` 返回为准。
+来源纪律：代码腿的检索根目录（baseDir，服务构造期从 `DSH_SENTRY_CODE_BASE` 解析，不烘焙进装配）与对话工作区互不相干。不要把会话工作区里的检出当代码事实来源——两者版本/行号可能漂移；代码证据一律以 `sentry_search_code` / `sentry_read_code` 返回为准。
 
 ## 工具
 

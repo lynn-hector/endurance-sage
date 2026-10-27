@@ -74,7 +74,7 @@ const DEFAULT_MAX_RESULTS = 20
 
 /** Shared activation hint for the unconfigured case (search and sync agree on wording). */
 const UNCONFIGURED_MSG =
-  '未配置任何代码仓库：服务 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 用 pnpm --filter @dsh-sentry/agent run clone-repos 把 backend 组仓库引导 clone 到 <目录>，把 DSH_SENTRY_CODE_BASE=<该目录> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或环境变量后重跑 regenerate（见 docs/guides/onboarding.md）。'
+  '未配置任何代码仓库：服务 Config 未设置 repos/baseDir/repoPath。装配管线启用方式: 用 pnpm --filter @dsh-sentry/agent run clone-repos 把 backend 组仓库引导 clone 到 <目录>，把 DSH_SENTRY_CODE_BASE=<该目录> 写入 $DSH_HOME/.credentials.yaml（refs: 下，推荐）或环境变量后重启宿主（服务构造期解析，无需 regenerate；见 docs/guides/onboarding.md）。'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

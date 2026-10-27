@@ -51,11 +51,11 @@ RocketMQ）都在里面。键名清单以 `apps/agent/envs.yml` 为准。
 
 ```bash
 pnpm --filter @dsh-sentry/agent run clone-repos -- --target /srv/novoone-backend
-# 目标也可走 DSH_SENTRY_CODE_BASE（环境变量 / $DSH_HOME/.credentials.yaml 同名键），脚本会自动解析
-# 检出根目录必须同时告知 regenerate，否则 clone 完 code 腿仍报「未配置」（三来源优先级: envs.yml > 环境变量 > 凭据库，
-# 从本地 scp 过来的凭据库里若带旧机器路径，环境变量这一层会覆盖它）:
+# 目标也可走 DSH_SENTRY_CODE_BASE（环境变量 / $DSH_HOME/.credentials.yaml 同名键），脚本会自动解析。
+# 检出根目录不需要 regenerate 传递：装配不携带该路径，服务构造期按
+# 三来源优先级（envs.yml > 环境变量 > 凭据库）解析——服务器上推荐 export 进
+# systemd unit（从本地 scp 过来的凭据库里若带旧机器路径，环境变量这一层会覆盖它）:
 export DSH_SENTRY_CODE_BASE=/srv/novoone-backend
-pnpm --filter @dsh-sentry/agent run regenerate
 ```
 
 装有 codegraph 的服务器上，clone 脚本会自动初始化各仓索引（老检出无索引会补建）；未装则检索回退 ripgrep。

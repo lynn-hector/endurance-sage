@@ -10,8 +10,13 @@
  * configured repos only — see ./sync.ts).
  *
  * Repo discovery (repos map / baseDir glob / repoPath) is service Config,
- * so the tool layer holds only schemas and evidence envelopes. The pure
- * vocabulary (discovery, rg event parsing, snippet merging, sync results
+ * so the tool layer holds only schemas and evidence envelopes; when Config
+ * omits every discovery source the constructor falls back to the shared
+ * machine-local chain via resolveCodeBaseDir() (env var > credential
+ * store — envs.yml row values are committed team config and reach the
+ * service as assembly Config instead), so personal paths never need to be
+ * baked into assemblies. The pure vocabulary (discovery, rg event parsing,
+ * snippet merging, sync results
  * and their summary wording) lives in ./search.ts and ./sync.ts with their
  * golden tests; the summary builders are re-exported for the Consumer the
  * way the reference seam convention allows for named domain services.
@@ -36,7 +41,7 @@ import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { hasCompleteIndex } from '@dsh-sentry/env-matrix'
+import { hasCompleteIndex, resolveCodeBaseDir } from '@dsh-sentry/env-matrix'
 import {
   buildRgSnippets,
   codegraphAvailable,
@@ -240,7 +245,7 @@ export async function runRgQuery(
 export class CodeRepositoryService extends Service {
   static Config: z<Config> = z.object({
     repos: z.dict(z.string()).description('仓库名 → 路径映射（原 datasources.code.repos）'),
-    baseDir: z.string().description('仓库根目录，配合 repoNamePattern 通配（原 base_dir）'),
+    baseDir: z.string().description('仓库根目录，配合 repoNamePattern 通配（原 base_dir）；缺省且未配 repos/repoPath 时构造期按 envs.yml > 环境变量 > 凭据库 DSH_SENTRY_CODE_BASE 回退解析，不进装配'),
     repoNamePattern: z.string().default('novo-*').description('baseDir 下的仓库目录通配符，默认 novo-*'),
     repoPath: z.string().description('单一仓库路径（原 repo_path）'),
   })
@@ -249,7 +254,14 @@ export class CodeRepositoryService extends Service {
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'codeRepository')
-    this.config = config
+    // 回退只在 Config 完全没有发现来源时触发（repos/baseDir/repoPath 均缺省），
+    // 不打乱 iterRepos 的优先级；机器层来源（环境变量/凭据库）本就在同一台
+    // 机器上，构造期解析与烘焙等价，还让个人路径留在机器本地、不进装配。
+    this.config = config.baseDir === undefined
+        && config.repos === undefined
+        && config.repoPath === undefined
+      ? { ...config, baseDir: resolveCodeBaseDir() }
+      : config
   }
 
   /**

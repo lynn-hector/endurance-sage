@@ -269,6 +269,13 @@ export function expandHome(value: string): string {
  *
  * No hardcoded fallback: an unset value leaves the code leg unconfigured,
  * the CLI warns, and the plugin reports an actionable message.
+ *
+ * Consumers split by layer: `renderEntries` renders ONLY the envs.yml row
+ * value (committed team config may enter the tracked assemblies); the
+ * service-code-repository constructor falls back to this full chain when
+ * its Config omits every discovery source, so machine-local paths (layers
+ * 2–3) never enter the repository. clone-repos and the use-env readiness
+ * warning also use the full chain.
  */
 export function resolveCodeBaseDir(row?: Pick<EnvRow, 'codeRepository'>): string | undefined {
   const fromStore = readCredentialStore(credentialStorePath())['DSH_SENTRY_CODE_BASE']
@@ -280,7 +287,13 @@ export function resolveCodeBaseDir(row?: Pick<EnvRow, 'codeRepository'>): string
 
 export function renderEntries(row: EnvRow): Entry[] {
   const env = row.envLabel
-  const codeBaseDir = resolveCodeBaseDir(row)
+  // baseDir 只渲染 envs.yml 行内值（已提交的团队配置，允许进装配）。机器层
+  // 来源（环境变量 / 凭据库 DSH_SENTRY_CODE_BASE）是个人路径，由 service
+  // 构造时运行时回退解析（resolveCodeBaseDir），不烘焙进版本库生成物。
+  const inlineBaseDir = row.codeRepository?.baseDir
+  const codeBaseDir = inlineBaseDir === undefined || inlineBaseDir === ''
+    ? undefined
+    : expandHome(inlineBaseDir)
   return [
     // Session 绑定与 Provider 池是宿主级入口（docs/architecture/session-env-routing.md）：
     // 装配只声明宿主栈与工具，环境 Provider 由 EnvProviderPool 按各 Session

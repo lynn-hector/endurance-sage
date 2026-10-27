@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { parse } from 'yaml'
 import { join } from 'node:path'
 import { type EnvRow, renderEntries, renderProviderEntries, renderPatch, requiredCredentialRefs } from '../src/render.ts'
@@ -205,20 +206,26 @@ describe('code leg baseDir', () => {
     expect(consumer?.config).toBeUndefined()
   })
 
-  it('bakes DSH_SENTRY_CODE_BASE into the service Provider, not its Consumer', () => {
+  it('never bakes machine-level sources (env var / credential store) — the service resolves them at runtime', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/novo-commctl')
     const entries = renderEntries(fixture)
     const service = entries.find((e) => e.id === 'sentry-code-repository')
     const consumer = entries.find((e) => e.id === 'sentry-tool-code-repository')
-    expect(service?.config).toEqual({ baseDir: '/tmp/novo-commctl' })
+    expect(service?.config).toBeUndefined()
     expect(consumer?.config).toBeUndefined()
   })
 
-  it('envs.yml codeRepository.baseDir wins over the environment variable', () => {
+  it('renders only the committed envs.yml codeRepository.baseDir row (team config may enter the assembly)', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/from-env')
     const row: EnvRow = { ...fixture, codeRepository: { baseDir: '/tmp/from-matrix' } }
     const entry = renderEntries(row).find((e) => e.id === 'sentry-code-repository')
     expect(entry?.config).toEqual({ baseDir: '/tmp/from-matrix' })
+  })
+
+  it('expands a leading ~ in the row value — stored paths never pass through a shell', () => {
+    const row: EnvRow = { ...fixture, codeRepository: { baseDir: '~/novoone-backend' } }
+    const entry = renderEntries(row).find((e) => e.id === 'sentry-code-repository')
+    expect(entry?.config).toEqual({ baseDir: join(homedir(), 'novoone-backend') })
   })
 })
 

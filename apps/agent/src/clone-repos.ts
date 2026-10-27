@@ -11,7 +11,8 @@
  * 日常更新不走本脚本——sentry_sync_code 对配置内仓库做 ff-only pull。
  *
  * 目标目录解析优先级：--target > DSH_SENTRY_CODE_BASE 环境变量 > 凭据库同名键
- * （复用 resolveCodeBaseDir，与 regenerate 烘焙 baseDir 的来源一致（本脚本无环境行上下文，不含 envs.yml 行内值））。
+ * （复用 resolveCodeBaseDir，与 service 构造期回退解析 baseDir 的来源一致
+ * （本脚本无环境行上下文，不含 envs.yml 行内值；行内值经装配进 Config，不走本层））。
  *
  * 认证完全交给 git（credential helper / SSH key），脚本不经手任何凭据，
  * 也不提供 --token 类参数（token 会进 shell 历史与进程列表）。

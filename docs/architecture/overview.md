@@ -118,7 +118,7 @@ flowchart TB
     src1["envs.yml 的 codeRepository.baseDir"]
     src2["环境变量 DSH_SENTRY_CODE_BASE"]
     src3["凭据库同名键"]
-    basedir["检出根目录<br/>（三来源优先级解析；无硬编码回退，<br/>未配置则 code 腿以错误证据回报）"]
+    basedir["检出根目录<br/>（三来源优先级解析：行内值是团队配置、进装配；<br/>环境变量/凭据库是机器本地路径、服务构造期解析不烘焙；<br/>无硬编码回退，未配置则 code 腿以错误证据回报）"]
     src1 --> basedir
     src2 --> basedir
     src3 --> basedir

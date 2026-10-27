@@ -16,18 +16,18 @@ dsh-sentry 的插件通过 DSH **profile + patch 叠加层**机制加载。本�
 ## 方式一：headless（一次性任务，适合快速验证）
 
 ```bash
-cd /Users/yangfm/workspace/labs/deepseek-harness
+cd <deepseek-harness 检出目录>   # dsh 宿主源码仓；也可用 npm i -g dsh 后直接 dsh
 
 # 首次：初始化 profile 并安装 sentry 插件（只需一次）
 pnpm dsh plugin --profile headless add \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/core/evidence \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/core/datasource \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/services/greptimedb \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/tools/tool-log-analyzer
+  <dsh-sentry 仓库>/packages/core/evidence \
+  <dsh-sentry 仓库>/packages/core/datasource \
+  <dsh-sentry 仓库>/packages/services/greptimedb \
+  <dsh-sentry 仓库>/packages/tools/tool-log-analyzer
 
 # 每次运行：带 sentry 叠加层启动一个一次性会话
 pnpm dsh --profile headless \
-  --patch /Users/yangfm/workspace/work/dsh-sentry/apps/agent/sentry.cordis.patch.yml \
+  --patch <dsh-sentry 仓库>/apps/agent/sentry.cordis.patch.yml \
   "<排查任务>"
 ```
 
@@ -40,14 +40,14 @@ pnpm dsh --profile headless \
 > 现行默认接入方式已改为**独立 sentry profile**（`pnpm run profile:link sentry` → `dsh --profile sentry --port 3090`），见 [onboarding.md](onboarding.md)。本节保留手工往 web profile 装插件的原始步骤，供调试加载机制时参考。
 
 ```bash
-cd /Users/yangfm/workspace/labs/deepseek-harness
+cd <deepseek-harness 检出目录>
 
 # 首次：安装 sentry 插件到 web profile（只需一次）
 pnpm dsh plugin --profile web add \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/core/evidence \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/core/datasource \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/services/greptimedb \
-  /Users/yangfm/workspace/work/dsh-sentry/packages/tools/tool-log-analyzer
+  <dsh-sentry 仓库>/packages/core/evidence \
+  <dsh-sentry 仓库>/packages/core/datasource \
+  <dsh-sentry 仓库>/packages/services/greptimedb \
+  <dsh-sentry 仓库>/packages/tools/tool-log-analyzer
 ```
 
 然后把 sentry 行写进 `~/.dsh/profiles/web/cordis.patch.yml`（已配置好，内容如下）：
