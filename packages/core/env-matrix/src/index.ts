@@ -255,8 +255,13 @@ export function expandHome(value: string): string {
   return value
 }
 
+/** Empty/whitespace-only settings are absent; preserve all other path text verbatim. */
+function expandConfiguredPath(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? expandHome(value) : undefined
+}
+
 /**
- * Resolve the code-search base dir. Three machine-local sources, highest
+ * Resolve the code-search base dir. Three configuration sources, highest
  * precedence first:
  *
  * 1. an explicit `codeRepository.baseDir` row in envs.yml (committed team
@@ -278,11 +283,13 @@ export function expandHome(value: string): string {
  * warning also use the full chain.
  */
 export function resolveCodeBaseDir(row?: Pick<EnvRow, 'codeRepository'>): string | undefined {
+  const fromRow = expandConfiguredPath(row?.codeRepository?.baseDir)
+  if (fromRow !== undefined) return fromRow
+  const fromEnv = expandConfiguredPath(process.env.DSH_SENTRY_CODE_BASE)
+  if (fromEnv !== undefined) return fromEnv
+  // 低优先级来源惰性读取：行内值或环境变量已生效时，坏凭据库不应产生无关告警。
   const fromStore = readCredentialStore(credentialStorePath())['DSH_SENTRY_CODE_BASE']
-  const value = row?.codeRepository?.baseDir
-    ?? process.env.DSH_SENTRY_CODE_BASE
-    ?? (typeof fromStore === 'string' ? fromStore : undefined)
-  return value === undefined || value === '' ? undefined : expandHome(value)
+  return expandConfiguredPath(fromStore)
 }
 
 export function renderEntries(row: EnvRow): Entry[] {
@@ -291,9 +298,7 @@ export function renderEntries(row: EnvRow): Entry[] {
   // 来源（环境变量 / 凭据库 DSH_SENTRY_CODE_BASE）是个人路径，由 service
   // 构造时运行时回退解析（resolveCodeBaseDir），不烘焙进版本库生成物。
   const inlineBaseDir = row.codeRepository?.baseDir
-  const codeBaseDir = inlineBaseDir === undefined || inlineBaseDir === ''
-    ? undefined
-    : expandHome(inlineBaseDir)
+  const codeBaseDir = expandConfiguredPath(inlineBaseDir)
   return [
     // Session 绑定与 Provider 池是宿主级入口（docs/architecture/session-env-routing.md）：
     // 装配只声明宿主栈与工具，环境 Provider 由 EnvProviderPool 按各 Session

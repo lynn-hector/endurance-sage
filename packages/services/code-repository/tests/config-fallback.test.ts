@@ -36,7 +36,7 @@ afterEach(() => vi.unstubAllEnvs())
 /** Point DSH_HOME at the tmp store home, remove the env var, write the store. */
 function stubStore(text: string): void {
   vi.stubEnv('DSH_HOME', storeHome)
-  // undefined 删除该键：resolveCodeBaseDir 的 ?? 链里空字符串会遮蔽凭据库层
+  // undefined 删除该键；空字符串也应继续回退到凭据库层
   vi.stubEnv('DSH_SENTRY_CODE_BASE', undefined)
   writeFileSync(join(storeHome, '.credentials.yaml'), text)
 }

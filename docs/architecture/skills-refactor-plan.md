@@ -1,6 +1,6 @@
 # Sentry 插件 seam、Session/Env 解耦与 Skills 重构计划
 
-> 状态：实施中；Definition/Provider/Consumer seam 迁移与 Session/Env 运行时闭环已完成（见 [Session 级环境路由方案](session-env-routing.md)），第 8 章 Skills 原生骨架迁移已完成；待实施：code-repository Provider 化（§7.2）与第 9 章逐 skill 内容整理 · 2026-10-27
+> 状态：实施中；Definition/Provider/Consumer seam 迁移、code-repository Provider 化与 Session/Env 运行时闭环已完成（见 [Session 级环境路由方案](session-env-routing.md)），第 8 章 Skills 原生骨架迁移已完成；待实施：第 9 章逐 skill 内容整理 · 2026-10-27
 > 代码基线：`1d797f3`（已纳入 Alertmanager、Callflow、connect token、代码索引自愈与按腿降级）
 > 真实宿主基线：DSH `v0.2.1-rc.3`（2026-10-26 确认）；双 Session 验收与 Skill 原生加载均以该版本为准
 > 包依赖现状：直接依赖声明主要为 `@deepseek-ai/dsh-* ^0.1.0-rc.7`，lockfile 同时解析出 `0.1.0-rc.7/rc.8` 与 `dsh-context` 引入的 `0.1.1-rc.2`；这些是分包版本，不等同于宿主版本
@@ -444,7 +444,7 @@ trace 闭环通过后，按依赖组逐个复制同一运行时身份契约，�
 - [x] metrics + alerts：抽出 `MetricsStore`，Tool 改为同时注入 `metricsStore` 与具名 `alertmanager`；保留指标、规则、AM 告警和静默全部工具，以及两种不同 Grafana proxy 路径。dry-run 证据改为后端中立请求（promql + 窗口 + backend_ref），URL/method 不再穿越 seam；Alertmanager 具名服务暴露 `backendRef`，Tool 不再拼接 grafana endpoint；半配置宿主的 demo 边界经 Definition 的 `configured` 可用性契约保留原文案。
 - [x] db/redis：dbx 共享客户端，分别提供 `DbStore`、`CacheStore`；共同生命周期一并释放。dry-run 证据改为后端中立请求（sql+database 或 key+db 加 backend_ref），URL/cookie/连接挑选词汇不再穿越 seam；两个 inspector 的 `connectionId` 配置并入 Provider（`postgresConnectionId`/`redisConnectionId`）；redis 值解码归 `CacheStore` Provider，双插槽共享同一平台客户端与 `dbx:<endpoint>` backendRef，dev 探针改走 `ctx.dbStore.querySql`。
 - [x] mq：RocketMQ 提供 `MqStore`；消息列表与消费轨迹沿用 Definition 词汇。dry-run 证据改为后端中立请求（list：topic+时间窗+分页+keyword；detail：topic+msgId，均带 backend_ref），console URL/wire body 不再穿越 seam；`parseTimeMs` 归 Definition（消费者侧时间归一化）；ctx 插槽 `rocketmq` → `mqStore`；refs 修正为 `backendRef + env:<label>:mq`（原 `env:<endpoint>` 是移植期笔误，证据数据新增 backend_ref）；dev 探针改走 `ctx.mqStore`。
-- [ ] code repository：把当前 Tool 中的仓库发现、搜索、读取、ff-only 同步与 Codegraph 自愈迁入 `ctx.codeRepository`；保留 `apps/agent/clone-repos.ts` 的首次引导职责及 core 中 marker 契约，不把 CLI 搬进 Provider。
+- [x] code repository：仓库发现、搜索、读取、ff-only 同步与 Codegraph 自愈已迁入 `ctx.codeRepository`；保留 `apps/agent/clone-repos.ts` 的首次引导职责及 core 中 marker 契约，不把 CLI 搬进 Provider。`baseDir` 的团队行内配置与机器本地回退已分层，个人路径不进入装配。
 - [x] TAPD/Zadig：保持具名领域 Service，移除 Tool 中残留传输细节，不新增假想 Store。TAPD Tool 仅保留后端中立过滤参数、评论 HTML 清洗和证据封装；Zadig dry-run 仅返回后端中立请求与 `backend_ref`，URL、method、query 和 endpoint 拼接的 refs 均归 Provider。
 
 每条腿都先加“fake Definition 可替换真实 Provider”的 Tool 测试，再改实现。禁止以复制参考目录代替这些契约测试。

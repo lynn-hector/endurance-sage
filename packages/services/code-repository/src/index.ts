@@ -245,7 +245,7 @@ export async function runRgQuery(
 export class CodeRepositoryService extends Service {
   static Config: z<Config> = z.object({
     repos: z.dict(z.string()).description('仓库名 → 路径映射（原 datasources.code.repos）'),
-    baseDir: z.string().description('仓库根目录，配合 repoNamePattern 通配（原 base_dir）；缺省且未配 repos/repoPath 时构造期按 envs.yml > 环境变量 > 凭据库 DSH_SENTRY_CODE_BASE 回退解析，不进装配'),
+    baseDir: z.string().description('仓库根目录，配合 repoNamePattern 通配（原 base_dir）；repos/baseDir/repoPath 全部缺省时，构造期按环境变量 > 凭据库 DSH_SENTRY_CODE_BASE 回退解析，机器路径不进装配'),
     repoNamePattern: z.string().default('novo-*').description('baseDir 下的仓库目录通配符，默认 novo-*'),
     repoPath: z.string().description('单一仓库路径（原 repo_path）'),
   })

@@ -52,10 +52,11 @@ RocketMQ）都在里面。键名清单以 `apps/agent/envs.yml` 为准。
 ```bash
 pnpm --filter @dsh-sentry/agent run clone-repos -- --target /srv/novoone-backend
 # 目标也可走 DSH_SENTRY_CODE_BASE（环境变量 / $DSH_HOME/.credentials.yaml 同名键），脚本会自动解析。
-# 检出根目录不需要 regenerate 传递：装配不携带该路径，服务构造期按
-# 三来源优先级（envs.yml > 环境变量 > 凭据库）解析——服务器上推荐 export 进
-# systemd unit（从本地 scp 过来的凭据库里若带旧机器路径，环境变量这一层会覆盖它）:
+# 检出根目录不需要 regenerate 传递：机器路径不进装配，服务构造期按
+# envs.yml 行内值 > 环境变量 > 凭据库 解析。手工启动可在当前 shell export：
 export DSH_SENTRY_CODE_BASE=/srv/novoone-backend
+# systemd 不继承这个 shell；常驻部署必须在 unit 的 [Service] 中配置同名 Environment=。
+# 环境变量会覆盖从本地 scp 带来的凭据库旧路径。
 ```
 
 装有 codegraph 的服务器上，clone 脚本会自动初始化各仓索引（老检出无索引会补建）；未装则检索回退 ripgrep。
@@ -101,6 +102,8 @@ Type=simple
 User=<user>
 Environment=DSH_HOME=/home/<user>/.dsh
 Environment=DSH_TELEMETRY_DISABLED=1
+# 可选代码检索腿：使用机器路径时显式注入，不继承交互 shell 的 export
+Environment=DSH_SENTRY_CODE_BASE=/srv/novoone-backend
 WorkingDirectory=/home/<user>/dsh-sentry
 ExecStart=/usr/local/bin/dsh --profile sentry --port 3090
 Restart=always
@@ -116,6 +119,7 @@ WantedBy=multi-user.target
 |---|---|
 | `User` | **必须**是部署时的普通用户——凭据在 `/home/<user>/.dsh/`，跑成 root 会读不到 |
 | `DSH_HOME` | 显式指向该用户的 `~/.dsh`，避免 systemd 环境下 `$HOME` 解析差异 |
+| `DSH_SENTRY_CODE_BASE` | 可选代码检索腿的检出根目录；不启用该腿可删除此行。修改后 `daemon-reload` 并重启服务，无需 regenerate |
 | `ExecStart` | `which dsh` 的实际输出；**不能用** `~` 或 `$HOME` |
 | `WorkingDirectory` | 约定非依赖：dsh 解析 profile/凭据全走 `DSH_HOME`，不用 cwd。写仓库目录只为与更新流程（git pull 所在处）对齐、给潜在的相对路径落盘一个可预期位置，改成 `/home/<user>` 亦可 |
 | `Restart=always` + `RestartSec=5` | 崩溃 5 秒后自动拉起；日常更新流程本身就要停进程，不受它干扰 |
@@ -213,8 +217,7 @@ dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090
 - 凭据、模型配置在 `$DSH_HOME` 级共享（`.credentials.yaml` / `settings.yaml`），
   新 profile 直接复用，不用重配。
 - profile 是仓库符号链接 → 纯 sentry 核心，GUI 市场插件装不进去（隔离即目的）。
-- 对话内切环境照常工作：切换写入仓库 `apps/profile/cordis.patch.yml`，经符号链接
-  即该 profile 的 patch 文件，watcher 热重载生效；web profile 的 include 桩不受影响。
+- 对话内切环境照常工作：`sentry_env_switch` 只更新当前 Session 的持久化绑定，不写仓库装配文件，也不影响 web profile 或其他 Session。
 - 预检命令换成对应 profile 名：`dsh --profile sentry --dump-config | grep sentry-`。
 - 更新流程同服务器模式：停进程 → git pull → pnpm install →（插件增删时重跑
   `pnpm run profile:link sentry`）→ 重启。
