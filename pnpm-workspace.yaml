@@ -3,3 +3,6 @@ packages:
   - 'apps/*'
 allowBuilds:
   esbuild: true
+  koffi: true
+minimumReleaseAgeExclude:
+  - dsh-context@0.77.0

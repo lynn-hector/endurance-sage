@@ -1,7 +1,11 @@
 /**
- * MQ inspector tool: query a topic's message list, or one message's detail
- * and consumption tracks, via the RocketMQ Console — in the unified
- * evidence envelope.
+ * MQ inspector Tool Consumer.
+ *
+ * Depends only on the MqStore Definition. The console protocol, session
+ * handshake and re-login choreography belong to the Provider. The tool
+ * keeps the model-facing entrypoint (`sentry_query_mq`), the two modes
+ * (list vs detail-by-msgId), time-argument normalization and the evidence
+ * aggregation ported field-for-field from the original.
  *
  * Port of the original `skills/mq-inspector` (SKILL.md +
  * scripts/inspect.py). The CLI's two modes collapse into one JSON-Schema
@@ -9,45 +13,41 @@
  * `--page-num`/`--page-size`/`--keyword`); providing it fetches the message
  * detail with consumption tracks. `--dry-run` is kept as a parameter.
  *
- * The original already printed the standard `{"evidence": ...}` envelope,
- * so no envelope normalization was needed — the aggregation in
- * `_build_evidence` (summary wording, consumed/not-online/filtered group
- * extraction, `confidence 0.95 if status == 0 else 0.5`) is ported
- * field-for-field.
- *
  * Deliberate deviations:
  * - `--env` disappeared: deployment-fixed, evidence metadata only;
  * - the JSESSIONID/XSRF-TOKEN disk cache is service-managed now (the
  *   checklist line "JSESSIONID 和 XSRF-TOKEN 是否已正确缓存" is moot);
- * - dry-run returns an evidence envelope (original printed raw JSON).
+ * - dry-run returns an evidence envelope (original printed raw JSON), and
+ *   since the seam migration it carries the backend-neutral request
+ *   (topic/time window or msgId + backend_ref) — console URLs and wire
+ *   bodies no longer cross the seam;
+ * - evidence refs change shape with the seam migration: the previous
+ *   `rocketmq-console: <endpoint>` + `env:<endpoint>` pair (the second was
+ *   a porting bug — an env ref carrying an endpoint) becomes
+ *   `<backendRef>` + `env:<label>:mq`, matching the other evidence legs;
+ *   list/detail evidence data gains `backend_ref`.
  *
  * @module @dsh-sentry/tool-mq-inspector
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
-import { RocketMqService } from '@dsh-sentry/service-rocketmq'
-import type {} from '@dsh-sentry/service-rocketmq'
+import { parseTimeMs, type MqMessageDetailResult, type MqMessageListResult, type MqStore } from '@dsh-sentry/mq-store'
+import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-mq-inspector'
 
-/** The seams this plugin registers into. */
-export const inject = ['tools', 'rocketmq']
+/** The capability slots this plugin registers into. */
+export const inject = ['tools', 'envProviders']
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
-export interface Config {
-  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
-  env?: string
-}
+export interface Config {}
 
-export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-})
+export const Config: z<Config> = z.object({})
 
 const SOURCE = 'mq-inspector'
 const TYPE = 'mq'
@@ -60,28 +60,16 @@ function asEvidence(value: unknown): JsonValue {
   return value as JsonValue
 }
 
-function refs(ctx: Context): string[] {
-  return [
-    `rocketmq-console: ${ctx.rocketmq.endpoint}`,
-    `env:${ctx.rocketmq.endpoint}`,
-  ]
-}
-
 /**
  * Port of the detail-mode branch of `_build_evidence`: consumed /
  * not-online / filtered consumer groups and the summary wording.
  */
 export function detailEvidence(
   env: string,
+  backendRef: string,
   topic: string,
   msgIdArg: string,
-  result: {
-    status: unknown
-    errMsg: string | null
-    messageView: Record<string, unknown>
-    messageTrackList: Record<string, unknown>[]
-    raw: Record<string, unknown>
-  },
+  result: MqMessageDetailResult,
 ): JsonValue {
   const consumedGroups: unknown[] = []
   const notOnlineGroups: unknown[] = []
@@ -111,6 +99,7 @@ export function detailEvidence(
     type: TYPE,
     data: {
       env,
+      backend_ref: backendRef,
       topic,
       msg_id: msgIdArg,
       status: result.status,
@@ -124,7 +113,7 @@ export function detailEvidence(
     },
     summary,
     confidence: result.status === 0 ? 0.95 : 0.5,
-    refs: [`msg:${topic}:${msgIdArg}`],
+    refs: [backendRef, `env:${env}:mq`],
   }))
 }
 
@@ -134,6 +123,7 @@ export function detailEvidence(
  */
 export function listEvidence(
   env: string,
+  backendRef: string,
   args: {
     topic: string
     beginMs: number
@@ -142,17 +132,7 @@ export function listEvidence(
     pageSize: number
     keyword: string
   },
-  result: {
-    status: unknown
-    errMsg: string | null
-    taskId: unknown
-    truncated: boolean
-    scanned: number
-    totalElements: number | null
-    totalPages: number | null
-    messages: Record<string, unknown>[]
-    raw: Record<string, unknown>
-  },
+  result: MqMessageListResult,
 ): JsonValue {
   const rowCount = result.messages.length
   let summary = `topic \`${args.topic}\` 查询完成，返回 ${rowCount} 条`
@@ -165,6 +145,7 @@ export function listEvidence(
     type: TYPE,
     data: {
       env,
+      backend_ref: backendRef,
       topic: args.topic,
       begin: String(args.beginMs),
       end: String(args.endMs),
@@ -186,16 +167,25 @@ export function listEvidence(
     },
     summary,
     confidence: result.status === 0 ? 0.95 : 0.5,
-    refs: [`topic:${args.topic}`],
+    refs: [backendRef, `env:${env}:mq`],
   }))
 }
 
-/** Register the MQ query tool. */
-export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
+/** The store, env label and lease one call fixed at its start. */
+interface CallProvider {
+  env: string
+  store: MqStore
+  release: () => Promise<void>
+}
+
+/** Register the MQ query tool against the backend-neutral seam. */
+export function apply(ctx: Context, _config: Config): void {
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
+  const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('mqStore'), release: lease.release }
+  }
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_mq',
@@ -217,54 +207,75 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      // Original defaults: end = now, begin = 1 hour ago.
-      const endMs = RocketMqService.parseTimeMs(args.end, Date.now())
-      const beginMs = RocketMqService.parseTimeMs(args.begin, endMs - 3_600_000)
-      const pageNum = args.pageNum ?? 1
-      const pageSize = args.pageSize ?? 10
-      const keyword = args.keyword ?? ''
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
+        call = await routeStore(exec)
+        // Env, backend identity and Provider are fixed before the first await
+        // on backend I/O. A concurrent Session switch affects only later calls.
+        const { env, store } = call
+        const backendRef = store.backendRef
+        const refs = (): string[] => [backendRef, `env:${env}:mq`]
+
+        // Original defaults: end = now, begin = 1 hour ago.
+        const endMs = parseTimeMs(args.end, Date.now())
+        const beginMs = parseTimeMs(args.begin, endMs - 3_600_000)
+        const pageNum = args.pageNum ?? 1
+        const pageSize = args.pageSize ?? 10
+        const keyword = args.keyword ?? ''
+
         if (args.dryRun === true) {
+          // Backend-neutral request only: console URLs and wire bodies are
+          // Provider internals (module doc records the drift).
           const request = args.msgId !== undefined
-            ? ctx.rocketmq.buildDetailRequest(args.topic, args.msgId)
-            : ctx.rocketmq.buildListRequest({
-              topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword,
-            })
+            ? { mode: 'detail' as const, topic: args.topic, msg_id: args.msgId }
+            : {
+              mode: 'list' as const,
+              topic: args.topic,
+              begin_ms: beginMs,
+              end_ms: endMs,
+              page_num: pageNum,
+              page_size: pageSize,
+              keyword,
+            }
           return asEvidence(buildEvidence({
             source: SOURCE,
             type: TYPE,
-            data: { env: liveEnv(), dry_run: true, request },
+            data: { env, dry_run: true, backend_ref: backendRef, request },
             summary: 'DRY-RUN：只构造请求，不发送',
             confidence: 0.5,
-            refs: refs(ctx),
+            refs: refs(),
           }))
         }
 
         if (args.msgId !== undefined) {
-          const result = await ctx.rocketmq.queryMessageDetail(args.topic, args.msgId)
-          return detailEvidence(liveEnv(), args.topic, args.msgId, result)
+          const result = await store.queryMessageDetail({ topic: args.topic, msgId: args.msgId })
+          return detailEvidence(env, backendRef, args.topic, args.msgId, result)
         }
 
-        const result = await ctx.rocketmq.queryMessages({
+        const result = await store.queryMessages({
           topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword,
         })
-        return listEvidence(liveEnv(), { topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword }, result)
+        return listEvidence(env, backendRef, { topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword }, result)
       } catch (error) {
         return asEvidence(buildEvidence({
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env: call?.env ?? 'unknown',
+            backend_ref: call?.store.backendRef ?? null,
             topic: args.topic,
             msg_id: args.msgId ?? null,
             error: errorMessage(error),
           },
           summary: `查询 RocketMQ 消息失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs: refs(ctx),
+          refs: call?.store.backendRef === undefined
+            ? []
+            : [call.store.backendRef, `env:${call.env}:mq`],
         }))
+      } finally {
+        await call?.release()
       }
     },
   }))

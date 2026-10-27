@@ -22,11 +22,38 @@ class StubSystemPrompt extends Service {
 }
 
 /**
+ * Session Provider router stub: leases whatever service this test context
+ * mounted globally under a fixed env label. The Session routing itself is
+ * covered by tests/session-env.test.ts against the real stack.
+ */
+class StubEnvProviders extends Service {
+  constructor(ctx: Context, private readonly options: { env: string }) {
+    super(ctx, 'envProviders')
+  }
+
+  async forCall(): Promise<unknown> {
+    const ctx = this.ctx
+    return {
+      env: this.options.env,
+      unavailableLegs: [],
+      release: async () => {},
+      require(slot: string): unknown {
+        const instance = ctx.get(slot)
+        if (instance === undefined) throw new Error(`stub lease: ${slot} 未加载`)
+        return instance
+      },
+    }
+  }
+}
+
+/**
  * Execute-level harness: boots the real registration spine (ToolRuntime +
- * prometheus + alertmanager services with example.invalid endpoints) and
- * calls tool execute() directly. Covers behavior that lives in the execute
- * layer (demo shapes, argument validation) the pure-function suites cannot
- * reach; demo/error paths never touch the network.
+ * PrometheusService, now occupying ctx.metricsStore, + the named
+ * alertmanager service, with example.invalid endpoints) and calls tool
+ * execute() directly. Covers behavior that lives in the execute layer
+ * (demo shapes, argument validation) the pure-function suites cannot reach;
+ * demo/error paths never touch the network. The fake-Definition Consumer
+ * contract lives in metrics-store.test.ts.
  */
 
 let ctx: Context
@@ -37,7 +64,8 @@ beforeAll(async () => {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(PrometheusService, { endpoint: 'http://prometheus.example.invalid' })
   await ctx.plugin(AlertmanagerService, { grafanaEndpoint: 'https://grafana.example.invalid' })
-  await ctx.plugin(metricsInspector, { env: 'local' })
+  await ctx.plugin(StubEnvProviders, { env: 'local' })
+  await ctx.plugin(metricsInspector)
 })
 
 afterAll(async () => {
@@ -118,11 +146,11 @@ describe('sentry_list_am_silences state 参数（execute 层）', () => {
 })
 
 describe('AM 证据可溯源性（execute 层）', () => {
-  it('sentry_list_am_alerts/silences 的 refs 引用真实数据源（grafana + uid），而非 proxied 下为空的 prometheus endpoint', async () => {
+  it('sentry_list_am_alerts/silences 的 refs 引用 alertmanager backendRef（grafana + uid）', async () => {
     const alerts = await runTool('sentry_list_am_alerts', { demo: true })
-    expect(alerts.evidence.refs).toContain('https://grafana.example.invalid/datasources/uid/alertmanager')
+    expect(alerts.evidence.refs).toContain('grafana:https://grafana.example.invalid/datasources/uid/alertmanager')
     const silences = await runTool('sentry_list_am_silences', { demo: true })
-    expect(silences.evidence.refs).toContain('https://grafana.example.invalid/datasources/uid/alertmanager')
+    expect(silences.evidence.refs).toContain('grafana:https://grafana.example.invalid/datasources/uid/alertmanager')
   })
 })
 
@@ -136,7 +164,8 @@ describe('半配置宿主的 demo 边界（execute 层）', () => {
     // direct 模式且 endpoint 为空——半配置宿主；alertmanager 无关本组用例
     await bareCtx.plugin(PrometheusService, {})
     await bareCtx.plugin(AlertmanagerService, { grafanaEndpoint: 'https://grafana.example.invalid' })
-    await bareCtx.plugin(metricsInspector, { env: 'local' })
+    await bareCtx.plugin(StubEnvProviders, { env: 'local' })
+    await bareCtx.plugin(metricsInspector)
   })
 
   afterAll(async () => {
@@ -161,7 +190,8 @@ describe('proxied 装配的 dry-run（execute 层）', () => {
     await proxiedCtx.plugin(ToolRuntime)
     await proxiedCtx.plugin(PrometheusService, { grafanaEndpoint: 'https://grafana.example.invalid' })
     await proxiedCtx.plugin(AlertmanagerService, { grafanaEndpoint: 'https://grafana.example.invalid' })
-    await proxiedCtx.plugin(metricsInspector, { env: 'local' })
+    await proxiedCtx.plugin(StubEnvProviders, { env: 'local' })
+    await proxiedCtx.plugin(metricsInspector)
   })
 
   afterAll(async () => {
@@ -174,7 +204,7 @@ describe('proxied 装配的 dry-run（execute 层）', () => {
     return (await tool.execute(args, {} as never)) as Envelope
   }
 
-  it('range dry-run 显示真实请求形状（POST /api/ds/query + body），不再显示从未发送的直连 /api/v1/query_range', async () => {
+  it('range dry-run 展示后端中立请求（promql + 窗口 + step），transport URL 不再穿越 seam', async () => {
     const out = await runProxied('sentry_query_metrics', {
       start: '2026-10-01T00:00:00Z',
       end: '2026-10-01T00:30:00Z',
@@ -183,18 +213,22 @@ describe('proxied 装配的 dry-run（execute 层）', () => {
     const requests = out.evidence.data.requests
     expect(requests.length).toBeGreaterThan(0)
     for (const req of requests) {
-      expect(req.url).toBe('https://grafana.example.invalid/api/ds/query')
-      expect(req.method).toBe('POST')
-      expect(req.body.queries[0].expr).toBeTruthy()
+      expect(req.query).toBeTruthy()
+      expect(req.mode).toBe('range')
+      expect(typeof req.start_sec).toBe('number')
+      expect(typeof req.end_sec).toBe('number')
+      expect(req).not.toHaveProperty('url')
+      expect(req).not.toHaveProperty('body')
     }
+    expect(out.evidence.data.backend_ref).toBe('grafana:https://grafana.example.invalid/datasources/uid/prometheus')
   })
 
-  it('proxied 装配下 prometheus 工具的证据 refs 也引用真实数据源（grafana + uid），不只 env', async () => {
+  it('proxied 装配下 prometheus 工具的证据 refs 引用 Provider backendRef，不只 env', async () => {
     const out = await runProxied('sentry_query_metrics', {
       start: '2026-10-01T00:00:00Z',
       end: '2026-10-01T00:30:00Z',
       dryRun: true,
     })
-    expect(out.evidence.refs).toContain('https://grafana.example.invalid/datasources/uid/prometheus')
+    expect(out.evidence.refs).toContain('grafana:https://grafana.example.invalid/datasources/uid/prometheus')
   })
 })

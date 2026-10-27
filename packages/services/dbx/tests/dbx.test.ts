@@ -2,6 +2,9 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import DbxService, {
   DBX_BASE_HEADERS,
+  DbxCacheStore,
+  DbxDbStore,
+  DbxPlatformClient,
   extractCookie,
   pickDbxConnection,
 } from '../src/index.ts'
@@ -11,7 +14,8 @@ import DbxService, {
  * `skills/lib/dbx.py` field by field (login headers, execute-multi body,
  * verbatim query-string join, browser headers), and the session/fallback
  * choreography is pinned to `ensure_session` + the two scripts'
- * `_*_with_fallback` loops.
+ * `_*_with_fallback` loops. The two Provider slots are exercised through
+ * their backend-neutral seams (`querySql` / `getValue`) over fetch mocks.
  */
 
 const ENDPOINT = 'https://dbx.example.com'
@@ -45,17 +49,26 @@ function lastCall(mock: ReturnType<typeof vi.fn>): [string, RequestInit] {
   return call as [string, RequestInit]
 }
 
-function makeService(ctx: Context, extra: Record<string, unknown> = {}): DbxService {
-  return new DbxService(ctx, {
+/** Contexts created by tests, disposed together in afterEach. */
+const contexts: Context[] = []
+
+function makeClient(extra: Record<string, unknown> = {}): DbxPlatformClient {
+  const ctx = new Context()
+  contexts.push(ctx)
+  return new DbxPlatformClient(ctx, {
     endpoint: ENDPOINT,
     password: 'dbx-secret',
     ...extra,
   })
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
+  while (contexts.length > 0) {
+    const ctx = contexts.pop()
+    await ctx!.fiber.dispose()
+  }
 })
 
 describe('extractCookie', () => {
@@ -93,13 +106,105 @@ describe('pickDbxConnection — port of _pick_connection', () => {
   })
 })
 
-describe('DbxService login — golden request construction', () => {
+describe('DbxService provider slots', () => {
+  it('mounts dbStore and cacheStore over one shared platform client', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    await ctx.plugin(DbxService, { endpoint: ENDPOINT, password: 'dbx-secret' })
+
+    expect(ctx.dbStore.backendRef).toBe(`dbx:${ENDPOINT}`)
+    expect(ctx.dbStore.backendRef).toBe(ctx.cacheStore.backendRef)
+  })
+})
+
+describe('DbxDbStore.querySql — provider choreography behind the seam', () => {
+  it('discovers, warms the database list, executes, and returns neutral results', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginResponse('S1')) // login (discovery)
+      .mockResolvedValueOnce(jsonResponse([{ id: 'conn-pg-1', db_type: 'postgres', name: 'prod pg' }]))
+      .mockResolvedValueOnce(jsonResponse({ id: 'conn-pg-1' })) // connect
+      .mockResolvedValueOnce(jsonResponse({ authenticated: true })) // auth/check (listDatabases)
+      .mockResolvedValueOnce(jsonResponse(['novo_cfg', 'novo_commctl_config'])) // schema/databases
+      .mockResolvedValueOnce(jsonResponse({ authenticated: true })) // auth/check (executeQuery)
+      .mockResolvedValueOnce(jsonResponse({ results: [{ columns: ['probe'], rows: [[1]] }] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = makeClient({ postgresConnectionId: 'conn-pg-1' })
+    const ctx = contexts.at(-1)!
+    const store = new DbxDbStore(ctx, { client, preferredConnectionId: 'conn-pg-1' })
+
+    const result = await store.querySql({ sql: 'SELECT 1', database: 'novo_cfg', maxRows: 50 })
+
+    expect(result).toEqual({
+      database: 'novo_cfg',
+      connectionId: 'conn-pg-1',
+      results: [{ columns: ['probe'], rows: [[1]] }],
+    })
+    // Discovery warm-up (login + list + connect), database-list warm-up with
+    // its auth re-check, another auth re-check, then execute-multi.
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+      `${ENDPOINT}/api/auth/login`,
+      `${ENDPOINT}/api/connection/list`,
+      `${ENDPOINT}/api/connection/connect`,
+      `${ENDPOINT}/api/auth/check`,
+      `${ENDPOINT}/api/schema/databases?connection_id=conn-pg-1`,
+      `${ENDPOINT}/api/auth/check`,
+      `${ENDPOINT}/api/query/execute-multi`,
+    ])
+    const body = JSON.parse(lastCall(fetchMock)[1].body as string) as Record<string, unknown>
+    expect(body['database']).toBe('novo_cfg')
+    expect(body['maxRows']).toBe(50)
+  })
+})
+
+describe('DbxCacheStore.getValue — provider decoding behind the seam', () => {
+  it('runs the redis wire call and returns the decoded neutral entry', async () => {
+    const valueB64 = Buffer.from('{"tenant":"a"}', 'utf8').toString('base64')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginResponse('S1'))
+      .mockResolvedValueOnce(jsonResponse({
+        key_display: 'session:user:1',
+        key_raw: 'a2V5',
+        ttl: 300,
+        redis_type: 'string',
+        data: { content: { encoding: 'utf8', raw_base64: valueB64 } },
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = makeClient({ redisConnectionId: 'conn-redis-1' })
+    const ctx = contexts.at(-1)!
+    const store = new DbxCacheStore(ctx, { client, preferredConnectionId: 'conn-redis-1' })
+
+    const entry = await store.getValue({ key: 'session:user:1', db: 3 })
+
+    expect(entry).toMatchObject({
+      key: 'session:user:1',
+      db: 3,
+      connectionId: 'conn-redis-1',
+      keyDisplay: 'session:user:1',
+      ttl: 300,
+      redisType: 'string',
+      value: { tenant: 'a' },
+      valueEncoding: 'utf8',
+      valueRawBase64: valueB64,
+    })
+    const [url, init] = lastCall(fetchMock)
+    expect(url).toBe(`${ENDPOINT}/api/redis/get-value`)
+    expect(JSON.parse(init.body as string)).toEqual({
+      connectionId: 'conn-redis-1',
+      db: 3,
+      keyRaw: 'c2Vzc2lvbjp1c2VyOjE=',
+    })
+  })
+})
+
+describe('DbxPlatformClient login — golden request construction', () => {
   it('POSTs the password JSON with the script-era headers and extracts the session cookie', async () => {
     const fetchMock = vi.fn().mockResolvedValue(loginResponse('S1'))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    const session = await service.ensureSession()
+    const client = makeClient()
+    const session = await client.ensureSession()
 
     expect(session).toBe('S1')
     const [url, init] = lastCall(fetchMock)
@@ -116,27 +221,27 @@ describe('DbxService login — golden request construction', () => {
 
   it('keeps the original error wordings', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 403 })))
-    const service = makeService(new Context())
-    await expect(service.ensureSession()).rejects.toThrow('dbx 登录失败 HTTP 403: nope')
+    const client = makeClient()
+    await expect(client.ensureSession()).rejects.toThrow('dbx 登录失败 HTTP 403: nope')
   })
 
   it('throws when the login succeeds without a session cookie', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(loginResponse(undefined)))
-    const service = makeService(new Context())
-    await expect(service.ensureSession()).rejects.toThrow('登录成功但未返回 dbx_session cookie')
+    const client = makeClient()
+    await expect(client.ensureSession()).rejects.toThrow('登录成功但未返回 dbx_session cookie')
   })
 })
 
-describe('DbxService session cache', () => {
+describe('DbxPlatformClient session cache', () => {
   it('reuses a cached session when /api/auth/check passes, without re-login', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginResponse('S1')) // login
       .mockResolvedValueOnce(jsonResponse({ authenticated: true })) // check
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    await service.ensureSession()
-    const again = await service.ensureSession()
+    const client = makeClient()
+    await client.ensureSession()
+    const again = await client.ensureSession()
 
     expect(again).toBe('S1')
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -150,9 +255,9 @@ describe('DbxService session cache', () => {
       .mockResolvedValueOnce(loginResponse('S2'))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    await service.ensureSession()
-    const refreshed = await service.ensureSession()
+    const client = makeClient()
+    await client.ensureSession()
+    const refreshed = await client.ensureSession()
 
     expect(refreshed).toBe('S2')
     expect(fetchMock).toHaveBeenCalledTimes(3)
@@ -167,9 +272,9 @@ describe('DbxService session cache', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    const first = service.ensureSession()
-    const second = service.ensureSession()
+    const client = makeClient()
+    const first = client.ensureSession()
+    const second = client.ensureSession()
     // Let the login microtask chain reach the fetch call before resolving it.
     await new Promise(resolve => setTimeout(resolve, 0))
     resolveLogin?.(loginResponse('S1'))
@@ -180,16 +285,16 @@ describe('DbxService session cache', () => {
   })
 })
 
-describe('DbxService.request — port of dbx_request', () => {
+describe('DbxPlatformClient.request — port of dbx_request', () => {
   it('forces origin/referer over caller headers and joins params verbatim', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginResponse('S1'))
       .mockResolvedValueOnce(jsonResponse({ ok: 1 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    const session = await service.ensureSession()
-    await service.request('/api/schema/databases', {
+    const client = makeClient()
+    const session = await client.ensureSession()
+    await client.request('/api/schema/databases', {
       params: { connection_id: 'auto-init-pg' },
       headers: { referer: 'https://evil.example/' },
       session,
@@ -207,21 +312,21 @@ describe('DbxService.request — port of dbx_request', () => {
 
   it('wraps failures with the original wordings', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNRESET')))
-    const service = makeService(new Context())
-    await expect(service.request('/api/auth/check', { session: 'x' }))
+    const client = makeClient()
+    await expect(client.request('/api/auth/check', { session: 'x' }))
       .rejects.toThrow('dbx 连接失败: ECONNRESET')
   })
 })
 
-describe('DbxService.executeQuery — golden execute-multi body', () => {
+describe('DbxPlatformClient.executeQuery — golden execute-multi body', () => {
   it('sends the script-era body fields and applies the empty-results fallback quirk', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginResponse('S1'))
       .mockResolvedValueOnce(jsonResponse({ results: [] }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    const results = await service.executeQuery('auto-init-pg', 'novo_cfg', 'SELECT 1', { maxRows: 50 })
+    const client = makeClient()
+    const results = await client.executeQuery('auto-init-pg', 'novo_cfg', 'SELECT 1', { maxRows: 50 })
 
     const [url, init] = lastCall(fetchMock)
     expect(url).toBe(`${ENDPOINT}/api/query/execute-multi`)
@@ -240,7 +345,7 @@ describe('DbxService.executeQuery — golden execute-multi body', () => {
   })
 })
 
-describe('DbxService.discoverConnection', () => {
+describe('DbxPlatformClient.discoverConnection', () => {
   it('lists, picks by type, connects, and caches the result', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginResponse('S1'))
@@ -248,8 +353,8 @@ describe('DbxService.discoverConnection', () => {
       .mockResolvedValueOnce(jsonResponse({ id: 'conn-redis-1' }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    const discovered = await service.discoverConnection('redis')
+    const client = makeClient()
+    const discovered = await client.discoverConnection('redis')
 
     expect(discovered.id).toBe('conn-redis-1')
     const [connectUrl, connectInit] = lastCall(fetchMock)
@@ -258,7 +363,7 @@ describe('DbxService.discoverConnection', () => {
       .toEqual({ config: { id: 'conn-redis-1', db_type: 'redis', name: 'main redis' } })
 
     // Second call is served from the in-memory cache: no further fetches.
-    const again = await service.discoverConnection('redis')
+    const again = await client.discoverConnection('redis')
     expect(again.id).toBe('conn-redis-1')
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
@@ -269,21 +374,21 @@ describe('DbxService.discoverConnection', () => {
       .mockResolvedValueOnce(jsonResponse([{ id: 'conn-mysql', db_type: 'mysql' }]))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    await expect(service.discoverConnection('redis'))
+    const client = makeClient()
+    await expect(client.discoverConnection('redis'))
       .rejects.toThrow('dbx 未找到类型 redis 的连接，可用连接: ["conn-mysql"]')
   })
 })
 
-describe('DbxService.redisGetValue', () => {
+describe('DbxPlatformClient.redisGetValue', () => {
   it('base64-encodes the key into keyRaw, like _query_value', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginResponse('S1'))
       .mockResolvedValueOnce(jsonResponse({ key_display: 'session:user:1' }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
-    await service.redisGetValue('conn-redis-1', 3, 'session:user:1')
+    const client = makeClient()
+    await client.redisGetValue('conn-redis-1', 3, 'session:user:1')
 
     const [url, init] = lastCall(fetchMock)
     expect(url).toBe(`${ENDPOINT}/api/redis/get-value`)
@@ -295,11 +400,11 @@ describe('DbxService.redisGetValue', () => {
   })
 })
 
-describe('DbxService.runWithFallback — port of the scripts\' *_with_fallback loops', () => {
+describe('DbxPlatformClient.runWithFallback — port of the scripts\' *_with_fallback loops', () => {
   it('returns the first success without any fallback', async () => {
-    const service = makeService(new Context())
+    const client = makeClient()
     const fn = vi.fn().mockResolvedValue('ok')
-    const result = await service.runWithFallback('postgres', 'conn-1', undefined, fn)
+    const result = await client.runWithFallback('postgres', 'conn-1', undefined, fn)
     expect(result).toEqual({ value: 'ok', connectionId: 'conn-1' })
     expect(fn).toHaveBeenCalledTimes(1)
   })
@@ -308,12 +413,12 @@ describe('DbxService.runWithFallback — port of the scripts\' *_with_fallback l
     const fetchMock = vi.fn().mockResolvedValue(loginResponse('S2'))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
+    const client = makeClient()
     const fn = vi.fn()
       .mockRejectedValueOnce(new Error('dbx HTTP 401: expired'))
       .mockResolvedValueOnce('retried')
 
-    const result = await service.runWithFallback('postgres', 'conn-1', undefined, fn)
+    const result = await client.runWithFallback('postgres', 'conn-1', undefined, fn)
     expect(result).toEqual({ value: 'retried', connectionId: 'conn-1' })
     expect(fn).toHaveBeenCalledTimes(2)
     // Re-login went through the login endpoint (session cache was cleared).
@@ -328,12 +433,12 @@ describe('DbxService.runWithFallback — port of the scripts\' *_with_fallback l
       .mockResolvedValueOnce(jsonResponse({ id: 'conn-new' }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
+    const client = makeClient()
     const fn = vi.fn()
       .mockRejectedValueOnce(new Error('dbx HTTP 500: boom'))
       .mockResolvedValueOnce('discovered-ok')
 
-    const result = await service.runWithFallback('postgres', 'conn-dead', undefined, fn)
+    const result = await client.runWithFallback('postgres', 'conn-dead', undefined, fn)
     expect(result).toEqual({ value: 'discovered-ok', connectionId: 'conn-new' })
     expect(fn.mock.calls.map(call => call[0])).toEqual(['conn-dead', 'conn-new'])
   })
@@ -346,13 +451,13 @@ describe('DbxService.runWithFallback — port of the scripts\' *_with_fallback l
       .mockResolvedValueOnce(jsonResponse({ id: 'conn-new' }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const service = makeService(new Context())
+    const client = makeClient()
     const fn = vi.fn()
       .mockRejectedValueOnce(new Error('dbx HTTP 401: expired'))
       .mockRejectedValueOnce(new Error('dbx HTTP 403: still no'))
       .mockResolvedValueOnce('finally')
 
-    const result = await service.runWithFallback('postgres', 'conn-1', undefined, fn)
+    const result = await client.runWithFallback('postgres', 'conn-1', undefined, fn)
     expect(result.connectionId).toBe('conn-new')
     expect(result.value).toBe('finally')
     expect(fn).toHaveBeenCalledTimes(3)

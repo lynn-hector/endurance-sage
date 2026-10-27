@@ -1,50 +1,28 @@
 /**
- * Trace analyzer tool: fetch one distributed trace by id and return the
- * parsed analysis (spans, slow spans, errors) in the unified evidence
- * envelope.
+ * Trace analyzer Tool Consumer.
  *
- * Port of the original `skills/trace-analyzer` (SKILL.md + fetch_traces.py).
- * The CLI flags collapse into one JSON-Schema tool; the environment
- * descriptors (`datasource_uid` / `datasource_id`) moved into this plugin's
- * `Config`, and `--env` became the `env` evidence label.
- *
- * Deliberate normalization: the Python `_build_evidence` returned the
- * evidence fields bare, without the `{ evidence: ... }` envelope the
- * project's own `templates/evidence-format.md` mandates (recorded drift).
- * This tool emits the standard envelope via `@dsh-sentry/evidence`.
+ * Depends only on the TraceStore Definition and the Session environment
+ * Provider router. Backend mode, datasource, endpoint, credentials and
+ * transport details belong to the Provider; the Provider for one call is
+ * the calling session's bound environment, leased through `envProviders`.
  *
  * @module @dsh-sentry/tool-trace-analyzer
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv, liveAssemblyEntryConfig } from '@dsh-sentry/env-matrix'
-import type {} from '@dsh-sentry/service-trace'
+import type { TraceStore } from '@dsh-sentry/trace-store'
+import type {} from '@dsh-sentry/service-env-provider'
 
-/** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-trace-analyzer'
+export const inject = ['tools', 'envProviders']
 
-/** The seams this plugin registers into. */
-export const inject = ['tools', 'trace']
+export interface Config {}
 
-/** Plugin configuration; the schema defaults optional fields at load time. */
-export interface Config {
-  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
-  env?: string
-  /** Grafana 内 GreptimeDB-Jaeger 数据源 uid（grafana-jaeger 模式）。 */
-  greptimedbJaegerDatasourceUid?: string
-  /** Grafana numeric datasource id (grafana-jaeger mode; from the original config, e.g. 6). */
-  datasourceId?: number
-}
-
-export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-  greptimedbJaegerDatasourceUid: z.string().description('Grafana 内 GreptimeDB-Jaeger 数据源 uid（grafana-jaeger 模式必填）'),
-  datasourceId: z.number().step(1).description('Grafana 数据源数字 id（可选，原 config 为 6）'),
-})
+export const Config: z<Config> = z.object({})
 
 const SOURCE = 'trace-analyzer'
 const TYPE = 'trace'
@@ -53,24 +31,21 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-const TRACE_ANALYZER_ENTRY_ID = 'sentry-tool-trace-analyzer'
+/** The store, env label and lease one call fixed at its start. */
+interface CallProvider {
+  env: string
+  store: TraceStore
+  release: () => Promise<void>
+}
 
-/** Register the trace fetch tool. */
-export function apply(ctx: Context, config: Config): void {
-  // Env-bound values resolve per call from the assembly files: this plugin
-  // injects the trace service, so a service config swap can leave this
-  // instance frozen on boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
-  const liveJaegerUid = (): string | undefined => {
-    const fromAssembly = liveAssemblyEntryConfig(TRACE_ANALYZER_ENTRY_ID)?.greptimedbJaegerDatasourceUid
-    return typeof fromAssembly === 'string' && fromAssembly.length > 0
-      ? fromAssembly
-      : config.greptimedbJaegerDatasourceUid
+/** Register the trace fetch tool against the backend-neutral seam. */
+export function apply(ctx: Context, _config: Config): void {
+  // The Provider is the calling session's bound environment: env, backend
+  // identity and lease are fixed per call before the first backend await.
+  const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
+    const lease = await ctx.envProviders.forCall(exec)
+    return { env: lease.env, store: lease.require('traceStore'), release: lease.release }
   }
-  const refs = (): string[] => [
-    `grafana:${liveJaegerUid() ?? 'jaeger'}`,
-    `env:${liveEnv()}:traces`,
-  ]
 
   ctx.tools.register(defineTool({
     name: 'sentry_fetch_trace',
@@ -89,17 +64,22 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
-        const datasourceUid = liveJaegerUid()
-        const parsed = await ctx.trace.queryTrace({
+        call = await routeStore(exec)
+        // Env, backend identity and Provider are fixed before the first await
+        // on backend I/O. A concurrent Session switch affects only later calls.
+        const { env, store } = call
+        const backendRef = store.backendRef
+        const refs = (): string[] => [backendRef, `env:${env}:traces`]
+
+        const parsed = await store.queryTrace({
           traceId: args.traceId,
           ...args.start !== undefined ? { start: args.start } : {},
           ...args.end !== undefined ? { end: args.end } : {},
           ...args.service !== undefined ? { service: args.service } : {},
           ...args.operation !== undefined ? { operation: args.operation } : {},
-          ...datasourceUid !== undefined ? { datasourceUid } : {},
-          ...config.datasourceId !== undefined ? { datasourceId: config.datasourceId } : {},
         })
 
         const summaryParts = [`trace ${args.traceId} 查询完成`]
@@ -112,10 +92,9 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env,
             trace_id: args.traceId,
-            endpoint: ctx.trace.endpoint,
-            datasource_uid: datasourceUid ?? '',
+            backend_ref: backendRef,
             frames_count: parsed.frames_count,
             duration_ms: parsed.duration_ms,
             status: parsed.status,
@@ -134,14 +113,19 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env: call?.env ?? 'unknown',
             trace_id: args.traceId,
+            backend_ref: call?.store.backendRef ?? null,
             error: errorMessage(error),
           },
           summary: `查询失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs: refs(),
+          refs: call?.store.backendRef === undefined
+            ? []
+            : [call.store.backendRef, `env:${call.env}:traces`],
         }) as unknown as JsonValue
+      } finally {
+        await call?.release()
       }
     },
   }))

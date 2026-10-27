@@ -1,12 +1,13 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import RocketMqService, { type QueryMessagesInput } from '../src/index.ts'
+import RocketMqService from '../src/index.ts'
 
 /**
  * Golden tests pinned to `skills/mq-inspector/scripts/inspect.py`: the
  * login handshake (XSRF cookie/header pair, JSESSIONID extraction), session
- * check via /topic/list.query, the list/detail request shapes, and the
- * 401/403 re-login retry.
+ * check via /topic/list.query, the list/detail wire shapes asserted through
+ * the fetch mock, and the 401/403 re-login retry. Time-argument parsing and
+ * the slot contract live in `@dsh-sentry/mq-store`.
  */
 
 const ENDPOINT = 'https://rocketmq.example.com'
@@ -42,51 +43,14 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('parseTimeMs — port of _parse_time_ms', () => {
-  it('accepts pure-digit milliseconds', () => {
-    expect(RocketMqService.parseTimeMs('1785081600000')).toBe(1785081600000)
-  })
-
-  it('accepts ISO8601 (epoch-true) and defaults', () => {
-    expect(RocketMqService.parseTimeMs('2026-07-27T08:00:00Z')).toBe(Date.UTC(2026, 6, 27, 8, 0, 0))
-    expect(RocketMqService.parseTimeMs(undefined, 12345)).toBe(12345)
-    const before = Date.now()
-    expect(RocketMqService.parseTimeMs(null)).toBeGreaterThanOrEqual(before)
-  })
-})
-
-describe('request construction — port of the request builders', () => {
-  it('buildListRequest matches the original body shape', () => {
+describe('RocketMqService provider slot', () => {
+  it('occupies ctx.mqStore and exposes the console backend identity', async () => {
     const ctx = new Context()
-    const input: QueryMessagesInput = {
-      topic: 'topic_user',
-      beginMs: 1785081600000,
-      endMs: 1785168000000,
-      pageNum: 2,
-      pageSize: 10,
-      keyword: 'error',
-    }
-    expect(makeService(ctx).buildListRequest(input)).toEqual({
-      url: `${ENDPOINT}/message/queryMessagePageByTopic.query`,
-      body: {
-        topic: 'topic_user',
-        begin: 1785081600000,
-        end: 1785168000000,
-        pageNum: 2,
-        pageSize: 10,
-        taskId: '',
-        keyword: 'error',
-      },
-    })
-    void ctx.fiber.dispose()
-  })
+    await ctx.plugin(RocketMqService, { endpoint: ENDPOINT, username: 'admin' })
 
-  it('buildDetailRequest URL-encodes msgId and topic', () => {
-    const ctx = new Context()
-    expect(makeService(ctx).buildDetailRequest('topic user', '7F/01').url).toBe(
-      `${ENDPOINT}/message/viewMessage.query?msgId=7F%2F01&topic=topic%20user`,
-    )
-    void ctx.fiber.dispose()
+    expect(ctx.mqStore.backendRef).toBe(`rocketmq-console:${ENDPOINT}`)
+
+    await ctx.fiber.dispose()
   })
 })
 
@@ -194,7 +158,7 @@ describe('queries — port of _query_messages / _query_message_detail', () => {
       })))
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await makeService(ctx).queryMessageDetail('topic_user', 'M1')
+    const result = await makeService(ctx).queryMessageDetail({ topic: 'topic_user', msgId: 'M1' })
     expect(result.messageView).toEqual({ msgId: 'M1', body: 'hello' })
     expect(result.messageTrackList).toEqual([
       { consumerGroup: 'g1', trackType: 'CONSUMED' },

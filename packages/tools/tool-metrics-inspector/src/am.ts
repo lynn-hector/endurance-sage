@@ -5,7 +5,7 @@
  * @module @dsh-sentry/tool-metrics-inspector/am
  */
 
-import { asRecord } from './promql.ts'
+import { asRecord } from '@dsh-sentry/metrics-store'
 
 /** One active alert instance (fired; carries no rule expression — that lives in Prometheus rules). */
 export interface AmAlertRecord {

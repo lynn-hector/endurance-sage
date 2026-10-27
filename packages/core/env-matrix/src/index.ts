@@ -80,6 +80,15 @@ export function resolveEnvName(input: string, matrix: Matrix): string | undefine
   return canonical !== undefined && Object.hasOwn(matrix, canonical) ? canonical : undefined
 }
 
+/** Read the shared YAML environment matrix without interpreting credentials. */
+export function readMatrix(path: string): Matrix {
+  const parsed = parse(readFileSync(path, 'utf8')) as Matrix | null
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`环境矩阵不是合法对象: ${path}`)
+  }
+  return parsed
+}
+
 export function aliasesForEnv(name: string): string[] {
   return Object.entries(ENV_ALIASES)
     .filter(([, canonical]) => canonical === name)
@@ -246,8 +255,13 @@ export function expandHome(value: string): string {
   return value
 }
 
+/** Empty/whitespace-only settings are absent; preserve all other path text verbatim. */
+function expandConfiguredPath(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? expandHome(value) : undefined
+}
+
 /**
- * Resolve the code-search base dir. Three machine-local sources, highest
+ * Resolve the code-search base dir. Three configuration sources, highest
  * precedence first:
  *
  * 1. an explicit `codeRepository.baseDir` row in envs.yml (committed team
@@ -260,24 +274,92 @@ export function expandHome(value: string): string {
  *
  * No hardcoded fallback: an unset value leaves the code leg unconfigured,
  * the CLI warns, and the plugin reports an actionable message.
+ *
+ * Consumers split by layer: `renderEntries` renders ONLY the envs.yml row
+ * value (committed team config may enter the tracked assemblies); the
+ * service-code-repository constructor falls back to this full chain when
+ * its Config omits every discovery source, so machine-local paths (layers
+ * 2–3) never enter the repository. clone-repos and the use-env readiness
+ * warning also use the full chain.
  */
 export function resolveCodeBaseDir(row?: Pick<EnvRow, 'codeRepository'>): string | undefined {
+  const fromRow = expandConfiguredPath(row?.codeRepository?.baseDir)
+  if (fromRow !== undefined) return fromRow
+  const fromEnv = expandConfiguredPath(process.env.DSH_SENTRY_CODE_BASE)
+  if (fromEnv !== undefined) return fromEnv
+  // 低优先级来源惰性读取：行内值或环境变量已生效时，坏凭据库不应产生无关告警。
   const fromStore = readCredentialStore(credentialStorePath())['DSH_SENTRY_CODE_BASE']
-  const value = row?.codeRepository?.baseDir
-    ?? process.env.DSH_SENTRY_CODE_BASE
-    ?? (typeof fromStore === 'string' ? fromStore : undefined)
-  return value === undefined || value === '' ? undefined : expandHome(value)
+  return expandConfiguredPath(fromStore)
 }
 
 export function renderEntries(row: EnvRow): Entry[] {
   const env = row.envLabel
-  const codeBaseDir = resolveCodeBaseDir(row)
+  // baseDir 只渲染 envs.yml 行内值（已提交的团队配置，允许进装配）。机器层
+  // 来源（环境变量 / 凭据库 DSH_SENTRY_CODE_BASE）是个人路径，由 service
+  // 构造时运行时回退解析（resolveCodeBaseDir），不烘焙进版本库生成物。
+  const inlineBaseDir = row.codeRepository?.baseDir
+  const codeBaseDir = expandConfiguredPath(inlineBaseDir)
   return [
+    // Session 绑定与 Provider 池是宿主级入口（docs/architecture/session-env-routing.md）：
+    // 装配只声明宿主栈与工具，环境 Provider 由 EnvProviderPool 按各 Session
+    // 绑定懒创建（renderProviderEntries），不再有全局单例 Provider 条目。
+    // defaultEnv 跟随本组装环境，作为新 Session 与失效绑定恢复的 runtime 默认；
+    // 矩阵路径由两端共享的 defaultEnvsPath()（支持 DSH_SENTRY_ENVS_PATH 覆盖），
+    // 组装不重复该路径。env-switcher 条目的 config.env 是装配环境锚点
+    // （extractCurrentEnv/assemblyAnchorEnv 读取），不参与 Session 路由。
+    {
+      id: 'sentry-env-binding',
+      name: '@dsh-sentry/env-binding',
+      config: { defaultEnv: env },
+    },
+    { id: 'sentry-env-provider', name: '@dsh-sentry/service-env-provider' },
     {
       id: ENV_SWITCHER_ENTRY_ID,
       name: '@dsh-sentry/tool-env-switcher',
       config: { env },
     },
+    { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },
+    { id: 'sentry-tool-callflow-analyzer', name: '@dsh-sentry/tool-callflow-analyzer' },
+    { id: 'sentry-tool-trace-analyzer', name: '@dsh-sentry/tool-trace-analyzer' },
+    { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector' },
+    {
+      id: 'sentry-tool-db-inspector',
+      name: '@dsh-sentry/tool-db-inspector',
+      config: { database: row.db?.database ?? DEFAULT_DB_DATABASE },
+    },
+    { id: 'sentry-tool-redis-inspector', name: '@dsh-sentry/tool-redis-inspector' },
+    { id: 'sentry-tool-zadig-inspector', name: '@dsh-sentry/tool-zadig-inspector' },
+    { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector' },
+    {
+      id: 'sentry-tapd',
+      name: '@dsh-sentry/service-tapd',
+      config: {
+        workspaceId: '63822673',
+        tokenRef: 'TAPD_TOKEN',
+      },
+    },
+    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector' },
+    {
+      id: 'sentry-code-repository',
+      name: '@dsh-sentry/service-code-repository',
+      config: codeBaseDir === undefined ? undefined : { baseDir: codeBaseDir },
+    },
+    { id: 'sentry-tool-code-repository', name: '@dsh-sentry/tool-code-repository' },
+    { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
+    { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
+    { id: 'sentry-git-guard', name: '@dsh-sentry/guard-git' },
+  ]
+}
+
+/**
+ * Per-leg Provider service entries one environment mounts inside
+ * `EnvProviderPool` — pool-only input, never rendered into a host assembly.
+ * The derivation stays shared with `renderEntries`'s single source (envs.yml
+ * rows), so a Session-routed Provider can never drift from what a
+ * regenerated assembly for the same environment would load.
+ */
+export function renderProviderEntries(row: EnvRow): Entry[] {
+  return [
     {
       id: 'sentry-greptimedb',
       name: '@dsh-sentry/service-greptimedb',
@@ -288,10 +370,14 @@ export function renderEntries(row: EnvRow): Entry[] {
         ...(row.greptimedb.tokenRef !== undefined
           ? { connectTokenRef: row.greptimedb.tokenRef }
           : { usernameRef: row.greptimedb.usernameRef, passwordRef: row.greptimedb.passwordRef }),
+        logSchema: 'public',
+        logTable: 'k8s_logs',
+        logTimestampCol: 'greptime_timestamp',
+        callflowSchema: 'public',
+        callflowTable: 'hep_1',
+        callflowTimestampCol: 'greptime_timestamp',
       },
     },
-    { id: 'sentry-tool-log-analyzer', name: '@dsh-sentry/tool-log-analyzer' },
-    { id: 'sentry-tool-callflow-analyzer', name: '@dsh-sentry/tool-callflow-analyzer' },
     {
       id: 'sentry-trace',
       name: '@dsh-sentry/service-trace',
@@ -300,12 +386,8 @@ export function renderEntries(row: EnvRow): Entry[] {
         endpoint: row.grafana.endpoint,
         usernameRef: row.grafana.usernameRef,
         passwordRef: row.grafana.passwordRef,
+        datasourceUid: row.grafana.greptimedbJaegerDatasourceUid,
       },
-    },
-    {
-      id: 'sentry-tool-trace-analyzer',
-      name: '@dsh-sentry/tool-trace-analyzer',
-      config: { greptimedbJaegerDatasourceUid: row.grafana.greptimedbJaegerDatasourceUid },
     },
     {
       id: 'sentry-prometheus',
@@ -331,7 +413,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.grafana.passwordRef,
       },
     },
-    { id: 'sentry-tool-metrics-inspector', name: '@dsh-sentry/tool-metrics-inspector' },
     {
       id: 'sentry-dbx',
       name: '@dsh-sentry/service-dbx',
@@ -340,12 +421,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.dbx.passwordRef,
       },
     },
-    {
-      id: 'sentry-tool-db-inspector',
-      name: '@dsh-sentry/tool-db-inspector',
-      config: { database: row.db?.database ?? DEFAULT_DB_DATABASE },
-    },
-    { id: 'sentry-tool-redis-inspector', name: '@dsh-sentry/tool-redis-inspector' },
     {
       id: 'sentry-zadig',
       name: '@dsh-sentry/service-zadig',
@@ -356,7 +431,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         tokenRef: row.zadig.tokenRef,
       },
     },
-    { id: 'sentry-tool-zadig-inspector', name: '@dsh-sentry/tool-zadig-inspector' },
     {
       id: 'sentry-service-rocketmq',
       name: '@dsh-sentry/service-rocketmq',
@@ -366,24 +440,6 @@ export function renderEntries(row: EnvRow): Entry[] {
         passwordRef: row.rocketmq.passwordRef,
       },
     },
-    { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector' },
-    {
-      id: 'sentry-tapd',
-      name: '@dsh-sentry/service-tapd',
-      config: {
-        workspaceId: '63822673',
-        tokenRef: 'TAPD_TOKEN',
-      },
-    },
-    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector' },
-    {
-      id: 'sentry-tool-code-repository',
-      name: '@dsh-sentry/tool-code-repository',
-      config: codeBaseDir === undefined ? undefined : { baseDir: codeBaseDir },
-    },
-    { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
-    { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
-    { id: 'sentry-git-guard', name: '@dsh-sentry/guard-git' },
   ]
 }
 
@@ -426,18 +482,15 @@ export function extractCurrentEnv(text: string): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Live assembly reading — call-time truth for evidence labels and env-bound
-// tool config.
+// Assembly anchor reading — the startup/default environment an assembly
+// declares.
 //
-// Why this exists: replacing a service plugin's config does not restart the
-// tool plugins that inject that service (cordis `Fiber.update`'s non-active
-// branch stashes the new config silently, with no log). A tool plugin frozen
-// this way keeps answering with its boot-time config, so anything
-// environment-bound in `Config` — the `env` evidence label, the Jaeger
-// datasource uid, the postgres database — can go stale after
-// `sentry_env_switch`. The assembly files are the single source of truth the
-// switcher rewrites atomically, so tools read them per call and fall back to
-// plugin config only when the files are unreachable.
+// After the Session refactor the only consumers are env-agnostic shared
+// services (TAPD, code repositories), which label their evidence with the
+// host assembly's anchor env. Reading per call — instead of trusting plugin
+// config — keeps the label correct even when a service config swap leaves a
+// tool plugin frozen on its boot-time config (cordis `Fiber.update`'s
+// non-active branch stashes the new config silently, with no log).
 // ---------------------------------------------------------------------------
 
 /** Locations of the two generated assembly files, checked in this order. */
@@ -464,6 +517,19 @@ export function defaultAssemblyPaths(): AssemblyPaths {
   }
 }
 
+/**
+ * Repo-relative default matrix location (`apps/agent/envs.yml`), or
+ * `$DSH_SENTRY_ENVS_PATH` when set. Shared by the Session binding store and
+ * the environment Provider pool so a profile assembly never needs to repeat
+ * the path.
+ */
+export function defaultEnvsPath(): string {
+  const override = process.env.DSH_SENTRY_ENVS_PATH
+  if (override !== undefined && override.length > 0) return override
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+  return join(repoRoot, 'apps/agent/envs.yml')
+}
+
 /** Assembly entries flattened from either file format (bare list or `- insert:`). */
 function assemblyEntries(parsed: unknown): Entry[] | undefined {
   if (!Array.isArray(parsed)) return undefined
@@ -488,39 +554,18 @@ function isEntry(value: unknown): value is Entry {
 }
 
 /**
- * The environment the assembly files currently declare — the value
- * `sentry_env_switch` last wrote. Returns `undefined` when neither file is
- * readable or parseable; callers fall back to plugin config.
+ * The startup/default environment the assembly files declare — the anchor
+ * written when `use-env` generated them (env-switcher `config.env`); runtime
+ * switching no longer rewrites these files. Returns `undefined` when neither
+ * file is readable or parseable; callers fall back to plugin config.
  */
-export function liveAssemblyEnv(paths: AssemblyPaths = defaultAssemblyPaths()): string | undefined {
+export function assemblyAnchorEnv(paths: AssemblyPaths = defaultAssemblyPaths()): string | undefined {
   for (const file of [paths.include, paths.patch]) {
     try {
       const env = extractCurrentEnv(readFileSync(file, 'utf8'))
       if (env !== undefined) return env
     } catch {
       // unreadable file — try the next source
-    }
-  }
-  return undefined
-}
-
-/**
- * One plugin entry's config from the current assembly files. Tools use this
- * to resolve env-bound knobs (e.g. the Jaeger datasource uid) at call time
- * instead of trusting their possibly-frozen plugin config.
- */
-export function liveAssemblyEntryConfig(
-  entryId: string,
-  paths: AssemblyPaths = defaultAssemblyPaths(),
-): Record<string, unknown> | undefined {
-  for (const file of [paths.include, paths.patch]) {
-    try {
-      const entries = assemblyEntries(parse(readFileSync(file, 'utf8')))
-      if (entries === undefined) continue
-      const hit = entries.find((entry) => entry.id === entryId)
-      if (hit !== undefined && hit.config !== undefined) return hit.config
-    } catch {
-      // unparsable file — try the next source
     }
   }
   return undefined

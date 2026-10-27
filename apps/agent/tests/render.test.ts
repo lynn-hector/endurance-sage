@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { parse } from 'yaml'
 import { join } from 'node:path'
-import { type EnvRow, renderEntries, renderPatch, requiredCredentialRefs } from '../src/render.ts'
+import { type EnvRow, renderEntries, renderProviderEntries, renderPatch, requiredCredentialRefs } from '../src/render.ts'
 
 const fixture: EnvRow = {
   envLabel: 'test',
@@ -36,31 +37,35 @@ const fixture: EnvRow = {
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders all 22 plugins in dependency order', () => {
+  it('renders the 18 host plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
+      // 宿主级 Session 路由栈在最前：绑定存储 + Provider 池（环境无关条目）
+      'sentry-env-binding',
+      'sentry-env-provider',
       'sentry-tool-env-switcher',
-      'sentry-greptimedb',
       'sentry-tool-log-analyzer',
       'sentry-tool-callflow-analyzer',
-      'sentry-trace',
       'sentry-tool-trace-analyzer',
-      'sentry-prometheus',
-      'sentry-alertmanager',
       'sentry-tool-metrics-inspector',
-      'sentry-dbx',
       'sentry-tool-db-inspector',
       'sentry-tool-redis-inspector',
-      'sentry-zadig',
       'sentry-tool-zadig-inspector',
-      'sentry-service-rocketmq',
       'sentry-tool-mq-inspector',
       'sentry-tapd',
       'sentry-tool-tapd-inspector',
+      'sentry-code-repository',
       'sentry-tool-code-repository',
       'sentry-persona',
       'sentry-skills',
       'sentry-git-guard',
     ])
+  })
+
+  it('carries no global Provider service entries — the pool owns per-env Providers', () => {
+    const providerIds = new Set(renderProviderEntries(fixture).map((e) => e.id))
+    for (const entry of entries) {
+      expect(providerIds.has(entry.id), entry.id).toBe(false)
+    }
   })
 
   it('only the env-switcher entry carries env — the single assembly anchor', () => {
@@ -71,8 +76,51 @@ describe('renderEntries', () => {
     }
   })
 
+  it('keeps the default database on the db Consumer (caller intent, not Provider wiring)', () => {
+    expect(entries.find((e) => e.id === 'sentry-tool-db-inspector')?.config).toEqual({
+      database: 'novo_commctl_config',
+    })
+  })
+})
+
+describe('renderProviderEntries', () => {
+  const providers = renderProviderEntries(fixture)
+
+  it('renders the 7 Provider services the pool mounts per environment', () => {
+    expect(providers.map((e) => e.id)).toEqual([
+      'sentry-greptimedb',
+      'sentry-trace',
+      'sentry-prometheus',
+      'sentry-alertmanager',
+      'sentry-dbx',
+      'sentry-zadig',
+      'sentry-service-rocketmq',
+    ])
+  })
+
+  it('places log and callflow table configuration on the shared GreptimeDB Provider, not its Consumers', () => {
+    const provider = providers.find((e) => e.id === 'sentry-greptimedb')
+
+    expect(provider?.config).toMatchObject({
+      endpoint: 'https://greptimedb.cn-0.test.novo-one.com',
+      logSchema: 'public',
+      logTable: 'k8s_logs',
+      callflowSchema: 'public',
+      callflowTable: 'hep_1',
+    })
+  })
+
+  it('places Jaeger datasource configuration on the trace Provider', () => {
+    const provider = providers.find((e) => e.id === 'sentry-trace')
+
+    expect(provider?.config).toMatchObject({
+      endpoint: 'https://grafana.cn-0.test.novo-one.com',
+      datasourceUid: 'GreptimeDB-Jaeger',
+    })
+  })
+
   it('prometheus goes through the grafana proxy of this env', () => {
-    const prometheus = entries.find((e) => e.id === 'sentry-prometheus')
+    const prometheus = providers.find((e) => e.id === 'sentry-prometheus')
     expect(prometheus?.config).toMatchObject({
       grafanaEndpoint: 'https://grafana.cn-0.test.novo-one.com',
       datasourceUid: 'prometheus',
@@ -81,7 +129,7 @@ describe('renderEntries', () => {
   })
 
   it('renders the alertmanager service from the grafana leg', () => {
-    const entry = entries.find((e) => e.id === 'sentry-alertmanager')
+    const entry = providers.find((e) => e.id === 'sentry-alertmanager')
     expect(entry?.name).toBe('@dsh-sentry/service-alertmanager')
     expect(entry?.config).toEqual({
       grafanaEndpoint: 'https://grafana.cn-0.test.novo-one.com',
@@ -92,7 +140,7 @@ describe('renderEntries', () => {
   })
 
   it('no credential values anywhere — refs only', () => {
-    const text = JSON.stringify(entries)
+    const text = JSON.stringify(providers)
     expect(text).not.toMatch(/password:\s*['"]?\w/i)
     expect(text).not.toMatch(/"(username|password|token)":\s*"(?!.*Ref)/)
   })
@@ -106,12 +154,14 @@ describe('renderEntries', () => {
         tokenRef: 'GREPTIMEDB_TEST_CONNECT_TOKEN',
       },
     }
-    const entry = renderEntries(tokenRow).find((e) => e.id === 'sentry-greptimedb')
-    expect(entry?.config).toEqual({
+    const entry = renderProviderEntries(tokenRow).find((e) => e.id === 'sentry-greptimedb')
+    expect(entry?.config).toMatchObject({
       endpoint: 'https://greptimedb.br.novoone.com',
       database: 'public',
       connectTokenRef: 'GREPTIMEDB_TEST_CONNECT_TOKEN',
     })
+    expect(entry?.config).not.toHaveProperty('usernameRef')
+    expect(entry?.config).not.toHaveProperty('passwordRef')
   })
 })
 
@@ -148,23 +198,34 @@ describe('requiredCredentialRefs', () => {
 describe('code leg baseDir', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it('omits the entry entirely when no source configures it', () => {
+  it('omits the config entirely when no source configures it', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '')
-    const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
-    expect(entry?.config).toBeUndefined()
+    const service = renderEntries(fixture).find((e) => e.id === 'sentry-code-repository')
+    const consumer = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
+    expect(service?.config).toBeUndefined()
+    expect(consumer?.config).toBeUndefined()
   })
 
-  it('bakes DSH_SENTRY_CODE_BASE into baseDir when set', () => {
+  it('never bakes machine-level sources (env var / credential store) — the service resolves them at runtime', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/novo-commctl')
-    const entry = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
-    expect(entry?.config).toEqual({ baseDir: '/tmp/novo-commctl' })
+    const entries = renderEntries(fixture)
+    const service = entries.find((e) => e.id === 'sentry-code-repository')
+    const consumer = entries.find((e) => e.id === 'sentry-tool-code-repository')
+    expect(service?.config).toBeUndefined()
+    expect(consumer?.config).toBeUndefined()
   })
 
-  it('envs.yml codeRepository.baseDir wins over the environment variable', () => {
+  it('renders only the committed envs.yml codeRepository.baseDir row (team config may enter the assembly)', () => {
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/tmp/from-env')
     const row: EnvRow = { ...fixture, codeRepository: { baseDir: '/tmp/from-matrix' } }
-    const entry = renderEntries(row).find((e) => e.id === 'sentry-tool-code-repository')
+    const entry = renderEntries(row).find((e) => e.id === 'sentry-code-repository')
     expect(entry?.config).toEqual({ baseDir: '/tmp/from-matrix' })
+  })
+
+  it('expands a leading ~ in the row value — stored paths never pass through a shell', () => {
+    const row: EnvRow = { ...fixture, codeRepository: { baseDir: '~/novoone-backend' } }
+    const entry = renderEntries(row).find((e) => e.id === 'sentry-code-repository')
+    expect(entry?.config).toEqual({ baseDir: join(homedir(), 'novoone-backend') })
   })
 })
 
@@ -173,13 +234,10 @@ describe('renderPatch', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(22)
-    const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
-    expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
-    // direct endpoint field is absent in proxy mode (optional since day one
-    // of the matrix; grafanaEndpoint is the only wiring)
-    const prometheus = parsed[0]!.insert.find((e) => e.id === 'sentry-prometheus')
-    expect(prometheus?.config?.['endpoint']).toBeUndefined()
+    expect(parsed[0]!.insert).toHaveLength(18)
+    // Provider services stay pool-only: the assembly never mounts them globally
+    expect(parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')).toBeUndefined()
+    expect(parsed[0]!.insert.find((e) => e.id === 'sentry-trace')).toBeUndefined()
     // Number-like strings must survive the round trip as strings.
     const tapd = parsed[0]!.insert.find((e) => e.id === 'sentry-tapd')
     expect(tapd?.config?.['workspaceId']).toBe('63822673')

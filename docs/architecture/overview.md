@@ -61,7 +61,7 @@ flowchart TB
     tools --> core
     services --> core
     services -->|HTTPS 只读查询| obs
-    tools --> local
+    services -->|本机文件 / 受控子进程| local
     local -->|git pull / clone| gitlab
     dev -->|先单件试跑再装配| tools
 ```
@@ -69,7 +69,7 @@ flowchart TB
 各层职责一句话：
 
 - **core**：插件共享地基——evidence 信封构建器、datasource Config 词汇与凭据引用解析、env-matrix 模型与渲染、codegraph 索引契约。
-- **services**：每个数据源一个 HTTP 客户端插件，负责认证与响应校验；凭据只接 `*Ref` 键名，不落值。
+- **services**：每个数据源一个 service 插件，负责认证、响应校验与受控访问；HTTP 数据源凭据只接 `*Ref` 键名，不落值。代码仓库服务是本机文件与子进程传输的例外。
 - **tools**：model-facing 的 `sentry_*` 工具，输出统一 `{ evidence: {...} }` 信封（错误同样以 confidence 0 的证据返回），**默认只读**。能力清单见 [README 能力全景](../../README.md#能力全景)。
 - **skills**：persona（故障调查员行为宪法）+ 方法论 skill 集。
 - **guard**：git-guard 对 bash 命令的双层门禁，详见[专题文档](git-guard.md)。
@@ -80,7 +80,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     envyml["apps/agent/envs.yml<br/>唯一手工维护点<br/>每环境一组数据源 endpoint + 凭据键名"]
-    render["packages/core/env-matrix<br/>renderEntries / renderPatch / renderIncludePatch<br/>渲染全部 sentry-* 插件条目"]
+    render["packages/core/env-matrix<br/>renderEntries / renderPatch / renderIncludePatch<br/>渲染宿主级 sentry-* 插件条目"]
     gen["apps/profile/cordis.patch.yml<br/>+ cordis.include.yml（双格式生成物，头部有再生成指引）"]
     link["scripts/link-profile.mjs"]
     sym["符号链接模式<br/>目标 profile 不存在时<br/>~/.dsh/profiles/名 → 仓库 apps/profile"]
@@ -92,13 +92,15 @@ flowchart LR
     link --> adopt --> run
 
     subgraph hot["环境热切换（不重启、不断会话）"]
-        switch["use-env CLI / 对话内 sentry_env_switch"]
+        switch["对话内 sentry_env_switch"]
         precheck["凭据按腿预检：缺值降级告警，不拦截切换"]
-        watch["重写 cordis.patch.yml<br/>→ dsh patch watcher 热重载"]
-        switch --> precheck --> watch
+        binding["只更新调用 Session 的持久化绑定<br/>Provider Pool 按绑定路由后续调用"]
+        switch --> precheck --> binding
     end
 
-    watch -.重新渲染写入.-> gen
+    default["use-env CLI<br/>只生成启动装配 / 默认环境"]
+    envyml --> default
+    default -.重写启动锚点，不改在线 Session.-> gen
 ```
 
 要点：
@@ -106,7 +108,7 @@ flowchart LR
 - **envs.yml 是环境矩阵唯一权威**：每行环境 = 数据源 endpoint + 凭据键名（`*Ref`，值在本机 `~/.dsh/.credentials.yaml`）。环境清单与凭据键名以该文件为准，本文不复制。
 - **生成物勿手改**：两份 cordis yml 头部都有再生成指引，修改入口只有 envs.yml。
 - **接入两模式自动判定**：目标 profile 路径不存在 → 符号链接（服务器 / 本地独立 profile）；已是真实目录 → 引入模式（本地开发机，原 patch 自动备份为 `cordis.patch.yml.pre-sentry-core`）。
-- **热切换原理**：切换只重写 patch 文件，宿主 watcher 就地重建插件——详见 [guides/env-switching.md](../guides/env-switching.md)。
+- **热切换原理**：`sentry_env_switch` 只更新调用 Session 的持久化绑定，Provider Pool 按绑定路由后续查询；不写共享装配文件、不依赖 watcher。`use-env` CLI 只设置新 Session 使用的启动默认环境，详见 [guides/env-switching.md](../guides/env-switching.md)。
 - **宿主侧机制**（bundle 基座 + patch 叠加的加载时序、注册路线、热重载边界、官方文档参照）：见 [dsh-loading.md](dsh-loading.md)。
 
 ## 4. 代码检索闭环
@@ -118,7 +120,7 @@ flowchart TB
     src1["envs.yml 的 codeRepository.baseDir"]
     src2["环境变量 DSH_SENTRY_CODE_BASE"]
     src3["凭据库同名键"]
-    basedir["检出根目录<br/>（三来源优先级解析；无硬编码回退，<br/>未配置则 code 腿以错误证据回报）"]
+    basedir["检出根目录<br/>（三来源优先级解析：行内值是团队配置、进装配；<br/>环境变量/凭据库是机器本地路径、服务构造期解析不烘焙；<br/>无硬编码回退，未配置则 code 腿以错误证据回报）"]
     src1 --> basedir
     src2 --> basedir
     src3 --> basedir
@@ -158,7 +160,8 @@ flowchart TB
 
 要点：
 
-- **根目录三来源优先级**：`envs.yml` 行内值 > 环境变量 > 凭据库（路径不是机密，凭据库只是"本机所有 dsh-sentry 可读配置"的统一落点）；`~` 会按消费方机器展开。服务器部署时从本地 scp 过来的凭据库若带旧路径，环境变量这层会覆盖它——见 [guides/deploy.md](../guides/deploy.md) 代码检索腿一节。
+- **根目录三来源优先级**：`envs.yml` 行内值 > 环境变量 > 凭据库；空值或纯空白视为未配置并继续回退，`~` 按当前用户展开（路径不是机密，凭据库只是“本机所有 dsh-sentry 可读配置”的统一落点）。显式配置 `repos` 或 `repoPath` 时服务尊重该发现方式，不再注入 `baseDir` 回退。
+- **配置分层与生命周期**：行内值是团队配置，可由生成器写入装配；环境变量和凭据库是机器本地配置，仅在服务没有任何显式发现来源时由构造器解析，绝不进入生成物。修改机器配置后重启宿主生效，无需 regenerate；仓库发现仍在每次调用时执行，新增或移除检出不需要重启。服务器可用环境变量覆盖 scp 带来的旧凭据库路径——见 [guides/deploy.md](../guides/deploy.md)。
 - **引导与日常分工**：clone-repos 只管首次（幂等可重跑，老检出缺索引会补建）；日常刷新由 `sentry_sync_code` 的 ff-only pull 负责。
 - **marker 的意义**：`.codegraph` 目录非空且 marker 已落才算"完整索引"——init 中断留下的半成品会被识别并重试。重建按 marker 状态选命令：**缺失 → 全量 init**（残缺索引只有全量能补齐，增量会把半成品"洗白"）；**在但漂移 → 增量 sync**（常规刷新）。设计意图记录在代码注释（`sync.ts` 的 `healAction`、`codegraph.ts` 的契约说明）。
 
@@ -197,4 +200,4 @@ flowchart TB
 | IM 渠道（dsh-im） | [guides/dsh-im.md](../guides/dsh-im.md) |
 | TAPD 对接档案 | [integrations/tapd-integration.md](../integrations/tapd-integration.md) |
 | 环境矩阵（权威数据源） | `apps/agent/envs.yml` |
-| 产品背景与服务清单 | `packages/skills/sentry-skills/src/skills/project-context.md` |
+| 产品背景与服务清单 | `packages/skills/sentry-skills/skills/project-context/SKILL.md` |

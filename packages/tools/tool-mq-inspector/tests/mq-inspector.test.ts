@@ -7,9 +7,11 @@ import { describe, expect, it } from 'vitest'
  * wording, consumer-group triage, and confidence on status.
  */
 
+const BACKEND_REF = 'rocketmq-console:https://rocketmq.example.com'
+
 describe('listEvidence — the list-mode branch of _build_evidence', () => {
   it('builds the summary 返回 N 条，共 M 条，K 页 and the pagination payload', () => {
-    const evidence = listEvidence('local', {
+    const evidence = listEvidence('local', BACKEND_REF, {
       topic: 'topic_user',
       beginMs: 1785081600000,
       endMs: 1785168000000,
@@ -33,6 +35,7 @@ describe('listEvidence — the list-mode branch of _build_evidence', () => {
     expect(evidence.evidence.summary).toBe('topic `topic_user` 查询完成，返回 3 条，共 42 条，5 页')
     expect(evidence.evidence.confidence).toBe(0.95)
     expect(evidence.evidence.data['row_count']).toBe(3)
+    expect(evidence.evidence.data['backend_ref']).toBe(BACKEND_REF)
     expect(evidence.evidence.data['begin']).toBe('1785081600000') // ms-as-string like the script
     expect(evidence.evidence.data['begin_ms']).toBe(1785081600000)
     expect(evidence.evidence.data['keyword']).toBe('')
@@ -40,7 +43,7 @@ describe('listEvidence — the list-mode branch of _build_evidence', () => {
   })
 
   it('omits missing totals and surfaces errMsg with lowered confidence', () => {
-    const evidence = listEvidence('local', {
+    const evidence = listEvidence('local', BACKEND_REF, {
       topic: 't', beginMs: 1, endMs: 2, pageNum: 1, pageSize: 10, keyword: 'x',
     }, {
       status: 1,
@@ -60,7 +63,7 @@ describe('listEvidence — the list-mode branch of _build_evidence', () => {
 
 describe('detailEvidence — the detail-mode branch of _build_evidence', () => {
   it('triages consumer groups by trackType and prefers the returned msgId', () => {
-    const evidence = detailEvidence('local', 'topic_user', 'M-ARG', {
+    const evidence = detailEvidence('local', BACKEND_REF, 'topic_user', 'M-ARG', {
       status: 0,
       errMsg: null,
       messageView: { msgId: 'M-REAL' },
@@ -80,10 +83,11 @@ describe('detailEvidence — the detail-mode branch of _build_evidence', () => {
     expect(evidence.evidence.data['not_online_groups']).toEqual(['g2'])
     expect(evidence.evidence.data['filtered_groups']).toEqual(['g3'])
     expect(evidence.evidence.data['msg_id']).toBe('M-ARG') // the arg is kept; view wins for the summary
+    expect(evidence.evidence.data['backend_ref']).toBe(BACKEND_REF)
   })
 
   it('falls back to the arg msgId and appends errMsg', () => {
-    const evidence = detailEvidence('local', 't', 'M1', {
+    const evidence = detailEvidence('local', BACKEND_REF, 't', 'M1', {
       status: 1,
       errMsg: 'msg gone',
       messageView: {},

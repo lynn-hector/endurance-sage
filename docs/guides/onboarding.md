@@ -77,7 +77,16 @@ pnpm --filter @dsh-sentry/agent run clone-repos -- --target ~/novoone-backend
 # 装有 codegraph 时脚本会为每个仓库自动建索引（未装自动回退 ripgrep；老检出无索引会补建）
 ```
 
-代码根目录键名 `DSH_SENTRY_CODE_BASE`，三种来源按优先级取第一个：`envs.yml codeRepository.baseDir` > 环境变量 > 凭据库。**推荐写进凭据库**——和凭据同一个文件一次配齐（在 `refs:` 下加 `DSH_SENTRY_CODE_BASE: ~/novoone-backend`；路径不是机密，dsh 只解析 `*Ref` 引用的键，多余键对它无影响）；服务器等已有环境变量注入的场合继续 `export` 也行。配好后重跑 regenerate。
+代码根目录键名是 `DSH_SENTRY_CODE_BASE`，整体优先级为 `envs.yml codeRepository.baseDir` > 环境变量 > 凭据库；空值或纯空白会继续向低优先级回退，三种来源都支持 `~` 按当前用户展开。本机开发推荐写入凭据库 `refs:`：
+
+```yaml
+refs:
+  DSH_SENTRY_CODE_BASE: ~/novoone-backend
+```
+
+路径不是机密，放在凭据库只是为了让一台机器只维护一个本地配置文件；dsh 宿主自身只解析 `*Ref` 引用的键，其余键由 dsh-sentry 读取。服务器等已有环境变量注入的场合继续 `export` 也行。
+
+**修改机器本地配置后只需重启宿主，不需要 regenerate。** `envs.yml` 行内值属于团队配置，会进入生成的装配；环境变量和凭据库属于机器配置，只在服务没有显式 `repos` / `baseDir` / `repoPath` 时由构造器解析，不写入装配文件。服务启动后的每次检索都会重新发现目录，因此新增检出不需要再次重启。
 
 **GitLab 认证（clone 与后续 pull 共用）**：私有仓需要认证，配置一次后 clone 脚本和 `sentry_sync_code` 的 pull 都不再要密码，二选一：
 
@@ -86,7 +95,7 @@ pnpm --filter @dsh-sentry/agent run clone-repos -- --target ~/novoone-backend
 | HTTPS + PAT（默认） | GitLab 建 Personal Access Token（`read_repository` 权限即可）；`git config --global credential.helper store` 后首次 clone 交互输入一次（用户名任意，密码填 token）。token 不进 dsh 凭据库，也不作为脚本参数传入；无终端交互（cron/CI）时先手工 clone 任一仓库一次完成凭据缓存，或改用 SSH key |
 | SSH key | 公钥加到 GitLab 账号；clone 脚本加 `--ssh` 走 `git@gitlab.yeastar.com:` 形式 |
 
-注意：代码检索腿的根目录（regenerate 时烘焙）与对话工作区是两个独立来源——排查会话**不要**把产品仓库选成会话工作区，两个检出的版本/行号可能漂移误导结论；代码事实以 `sentry_search_code` 证据为准。检出落后时可用 `sentry_sync_code` 就地刷新：它对配置发现的仓库执行 `git pull --ff-only`（只快进、不合并、不丢本地改动，分叉/脏仓库报错不强同步；可经插件配置 `syncEnabled: false` 关闭）。
+注意：代码检索腿的机器本地根目录（运行时从环境变量或凭据库解析，不进装配）与对话工作区是两个独立来源——排查会话**不要**把产品仓库选成会话工作区，两个检出的版本/行号可能漂移误导结论；代码事实以 `sentry_search_code` 证据为准。检出落后时可用 `sentry_sync_code` 就地刷新：它对配置发现的仓库执行 `git pull --ff-only`（只快进、不合并、不丢本地改动，分叉/脏仓库报错不强同步；可经插件配置 `syncEnabled: false` 关闭）。
 
 ## 第 3 步：凭据
 
@@ -104,13 +113,13 @@ ZADIG_API_TOKEN: <Zadig 页面头像 → 个人设置 → OpenAPI → 创建 tok
 TAPD_TOKEN: <TAPD 网页 → 我的设置 → 个人访问令牌>
 ```
 
-**（可选）**同一文件顺手加一行 `DSH_SENTRY_CODE_BASE: <backend 组检出根目录>`（嵌套形态加在 `refs:` 下）即启用代码检索腿——来源与优先级见第 2 步。
+**（可选）**同一文件顺手加一行 `DSH_SENTRY_CODE_BASE: <backend 组检出根目录>`（嵌套形态加在 `refs:` 下）即启用代码检索腿，重启宿主生效——来源与优先级见第 2 步。
 
 | 凭据 | 说明 |
 |---|---|
 | ZADIG_API_TOKEN | 长期有效。**不要**从浏览器开发者工具复制请求头 token——那是 dex 会话 token，约 1 小时过期 |
 | TAPD_TOKEN | 权限跟你的项目角色走，不需要管理员审批；细节见 [../integrations/tapd-integration.md](../integrations/tapd-integration.md) |
-| 其余四项 | 找环境管理员；GreptimeDB 三环境（DP0/DP1/DC0）实测同凭据，Grafana 每环境独立 |
+| 其余凭据 | 找环境管理员；GreptimeDB 三环境（DP0/DP1/DC0）实测同凭据，Grafana 每环境独立 |
 
 启用其他环境（DP1/DC0/TP0/TP1/TC0/SC1/SC2）：把键名里的 `DP0` 换成对应短码补进凭据库即可，**补齐凭据 = 启用环境**，矩阵不用改。
 
@@ -129,11 +138,11 @@ dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090，开【新�
 
 新对话里依次发三句话：
 
-1. 「列出所有环境」→ 返回 6 环境表格 + 当前 DP0 = **插件加载成功**
+1. 「列出所有环境」→ 返回环境表格 + 当前 DP0 = **插件加载成功**
 2. 「列出近 30 分钟有日志的服务」→ 返回服务清单 = **凭据链路通**
 3. 「查一下 zadig 上 commctl-config 的最近部署」→ 返回部署详情 = **全腿可用**
 
-终端预检（不开 GUI）：`dsh --profile sentry --dump-config | grep sentry-` 应看到约 22 行 sentry-* 插件。
+终端预检（不开 GUI）：`dsh --profile sentry --dump-config | grep sentry-` 应看到 sentry-* 插件条目。若代码根目录只配置在环境变量或凭据库，`dsh --profile sentry --dump-config | grep -A 2 sentry-code-repository` 应只看到服务条目，**不应出现 `baseDir`**；这能确认个人路径没有进入装配。
 
 ## 常见坑速查
 
@@ -144,7 +153,7 @@ dsh --profile sentry --port 3090    # 打开 http://127.0.0.1:3090，开【新�
 | evidence 报 `401` | 凭据值本身错了，链路是好的 |
 | 切换结果带降级腿 / 切过去某腿工具报凭据错误 | 目标环境该腿凭据没补值（空值也算未配置），`use-env --list` 看缺哪个，补值即恢复、无需重切；键明明已填仍全量报缺 → 凭据在 dsh GUI 管理的 `refs:` 嵌套层，`git pull` 更新本仓库后重跑（校验已兼容两种形态） |
 | 所有环境全量报缺、补值也无效 | 凭据库文件本身损坏（如手改出重复键）——此时按空库处理，补多少值都读不到；找 CLI stderr 的「⚠ 凭据库读取/解析失败」行，修好文件即恢复 |
-| `sentry_search_code` 报「未配置任何代码仓库」 | `DSH_SENTRY_CODE_BASE` 三个来源（envs.yml / 环境变量 / 凭据库）都没设——regenerate 时的 ⚠ 警告说的就是这件事；按第 2 步写入凭据库后重跑 regenerate |
+| `sentry_search_code` 报「未配置任何代码仓库」 | `DSH_SENTRY_CODE_BASE` 三个来源（envs.yml / 环境变量 / 凭据库）都没设——regenerate 时的 ⚠ 警告说的就是这件事；按第 2 步写入凭据库后重启宿主（服务构造期解析，无需 regenerate） |
 | patch 改了不生效 | 在 dsh 运行期间对仓库跑过 `pnpm install`？停掉重启 sentry profile |
 | `pnpm install` 后类型冲突 | 不要单独 pin `@deepseek-ai/dsh-*` 某个包版本，全仓库统一 `^0.1.0-rc.7` 范围 |
 | 启动报 `duplicate loader entry id: <插件id>` | 自带 `cordis.patch.yml` 的第三方插件又被手工注册了一遍（`renderEntries()` 或手改 patch）→ 删掉手工条目重新 regenerate，只留依赖声明（2026-09-03 dsh-im 实测） |

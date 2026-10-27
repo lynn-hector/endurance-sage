@@ -1,144 +1,88 @@
 # 多环境切换指南
 
-dsh-sentry 支持在**一个不重启、不断会话**的 web GUI 里排查多套环境。原理：dsh 的 profile patch 层是热重载的（文件一变，插件就地以新配置重建），所以切环境 = 换写一份组装文件。
+dsh-sentry 的环境路由是 **Session 级绑定**：对话内切换只影响当前会话，其他会话保持原环境；切换不写装配文件、不依赖 patch watcher，也不中断会话历史。绑定会持久化，宿主重启并恢复原会话后继续生效。
 
-## 三个文件，各司其职
+## 两类环境状态
 
-| 文件 | 角色 | 你会不会手改 |
+| 状态 | 作用 | 修改方式 |
 |---|---|---|
-| `apps/agent/envs.yml` | **唯一事实来源**：每环境一行（endpoint + 凭据键名 + 数据源 uid） | 会——加环境、改端点都在这 |
-| `apps/agent/src/{render,use-env}.ts` | 渲染器与切换器 | 不会 |
-| `~/.dsh/profiles/sentry/cordis.patch.yml` | 当前生效的生成物（被 dsh watch；符号链接 → 仓库 `apps/profile/cordis.patch.yml`） | 不会——切环境自动覆盖 |
+| 启动 / 默认环境 | 新 Session，以及旧 Session 没有可用绑定时使用的默认值 | `use-env` CLI 生成装配；`regenerate` 恢复为 DP0 |
+| Session 当前环境 | 某次会话后续证据查询实际使用的环境 | 对话内 `sentry_env_switch` |
 
-凭据值本身放 `~/.dsh/.credentials.yaml`（键名 = envs.yml 里的 `*Ref` 字段），永远不进 repo。
+两者不要混淆：`use-env` 改默认环境不会重绑在线 Session，`sentry_env_switch` 也不会改仓库里的装配文件。
 
-## 日常命令
+## 配置与状态归属
+
+| 文件 / 状态 | 角色 | 是否手改 |
+|---|---|---|
+| `apps/agent/envs.yml` | 环境矩阵唯一事实来源：endpoint、凭据引用名、数据源 uid、环境别名 | 会——加环境、改端点都在这里 |
+| `apps/profile/cordis.patch.yml` / `cordis.include.yml` | 启动装配与默认环境锚点；环境 Provider 不再作为全局条目写入 | 不手改，由 CLI 生成 |
+| DSH Session 日志中的绑定记录 | 每个 Session 的当前环境及恢复依据 | 不手改，由绑定服务维护 |
+| `~/.dsh/.credentials.yaml` | 凭据值；装配只保存 `*Ref` 键名 | 补凭据时编辑 |
+
+代码仓库根目录属于环境无关的机器配置，不随 Session 环境切换；其配置与生效方式见 [onboarding.md](onboarding.md) 第 2 步。
 
 ## 对话内切换（推荐）
 
-装配了 `@dsh-sentry/tool-env-switcher` 后，直接在 dsh 对话里说“列出环境”“当前环境”“切到 TP1”即可。模型可调用：
+直接在 dsh 对话里说“列出环境”“当前环境”“切到 TP1”即可。模型使用三个工具：
 
 | 工具 | 用途 |
 |---|---|
-| `sentry_env_list` | 列出环境、短名、当前环境与凭据就绪度 |
-| `sentry_env_current` | 读取当前装配环境，判断热重载是否 pending |
-| `sentry_env_switch` | 校验凭据并重写 repo 内 patch/include，支持 `DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2` |
+| `sentry_env_list` | 列出 `envs.yml` 中的环境、别名、凭据就绪度和调用 Session 的当前绑定 |
+| `sentry_env_current` | 返回调用 Session 的环境、绑定来源、持久化状态和逐腿凭据就绪度 |
+| `sentry_env_switch` | 校验目标后只重绑当前 Session；`dryRun: true` 只预检、不改变绑定 |
 
-工具不接受 endpoint 或输出路径参数。若当前 profile 是 include 桩，只写仓库内 `apps/profile/cordis.patch.yml` 与 `cordis.include.yml`；若当前 profile 已是直写 sentry 装配，则同步写入该 profile。两种模式都不会触碰个人插件。
+环境名与别名以 `envs.yml` 和 `@dsh-sentry/env-matrix` 为准，不在文档中另维护一份易过期的清单。工具不接受 endpoint、凭据值或任意文件路径。
 
-首次启用该工具属于新增插件包，需要一次停机接入：停止 sentry 进程 → 仓库根目录执行 `pnpm run profile:link sentry` → 重启 `dsh --profile sentry --port 3090`（符号链接模式无需在 profile 目录跑 pnpm install；引入模式才需要）。后续切环境不再需要安装或重启。
+切换结果重点看：
 
-## CLI 切换
+- `env` / `previousEnv`：新旧绑定；
+- `degradedLegs`：目标环境缺凭据的腿。缺值只降级对应腿，不拦截整个切换；
+- `persisted`：绑定是否已确认持久化。若为 `false`，本进程内的新绑定已经生效，但重启后的恢复可能失败，应根据 `persistenceError` 排查。
+
+## CLI：设置启动 / 默认环境
 
 ```bash
-# 查看环境与就绪度（缺哪个凭据键一目了然）
+# 查看环境矩阵与各腿凭据就绪度
 pnpm --filter @dsh-sentry/agent run use-env --list
 
-# 切换环境（写入当前 profile 的 patch，watcher 热重载；进程不重启、对话不中断）
-pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-0
-pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-1
+# 为 sentry profile 生成 TP0 启动装配（不改在线 Session 的绑定）
+pnpm --filter @dsh-sentry/agent run use-env TP0 -- --profile sentry
 
-# 预览某环境的完整组装（不写入）
-pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-1 -- --dry-run
+# 查看该 profile 装配声明的默认环境；这不是某个 Session 的实时绑定
+pnpm --filter @dsh-sentry/agent run use-env --current --profile sentry
 
-# 重新生成 repo 内的默认环境组装（dev-platform-hosted-0）
+# 预览装配，不写文件
+pnpm --filter @dsh-sentry/agent run use-env TP0 -- --dry-run
+
+# 重新生成仓库内装配；脚本固定使用 DP0，会重置启动默认环境
 pnpm --filter @dsh-sentry/agent run regenerate
 ```
 
-**就绪度门**：切换前按腿校验该环境引用的凭据值在凭据库或进程环境中存在（空值视为未配置）；缺值不拦截切换，随结果返回降级腿与缺失键名，对应工具调用时按需报错。**补齐凭据 = 恢复该腿**，矩阵不用动。
+裸用 `use-env <环境>` 默认写 `web` profile。独立 sentry profile 应显式传 `--profile sentry`，避免写错目标。
 
-## 当前环境矩阵（实测状态）
+## 新增或修改环境
 
-| 环境 | 域名族 | 状态 | 备注 |
-|---|---|---|---|
-| `dev-platform-hosted-0` | cn-0.dev.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
-| `dev-platform-hosted-1` | cn-1.dev.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
-| `dev-client-hosted-0` | cn-0.dev-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
-| `tst-platform-hosted-0` | cn-0.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
-| `tst-platform-hosted-1` | cn-1.test.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
-| `tst-client-hosted-0` | cn-0.test-byoi.novo-one.com | ✅ 就绪 | 六腿全实测（2026-09-02） |
-| `sit-client-hosted-1` | cn-1.sit-byoi.novo-one.com | ⬜ 骨架 | 矩阵已录入（SC1），rocketmq 腿实测通过（2026-09-03），其余腿未实测、凭据未补 |
-| `sit-client-hosted-2` | cn-2.sit-byoi.novo-one.com | ⬜ 骨架 | 矩阵已录入（SC2），rocketmq 腿实测通过（2026-09-03），其余腿未实测、凭据未补 |
-| `pro-br-saas-aws-eks-novo` | br.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-巴西-0」；矩阵已录入（PBO），greptimedb connect token / grafana(liuzw) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
-| `tst-platform-aws-eks-sg-0` | sg-0.pre.novo-one.com | ⬜ 骨架 | 中文名「新加坡-测试0自营环境」；矩阵已录入（TPSG0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
-| `pro-use-saas-aws-eks-novo` | use.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-美国东部-0」；矩阵已录入（PUO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
-| `pro-za-saas-aws-eks-novo` | za.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-南非-0」；矩阵已录入（PZO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
-| `pro-de-saas-aws-eks-novo` | de.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-德国-0」；矩阵已录入（PDO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
-| `pro-sg-saas-aws-eks-novo` | sg.novoone.com | ⬜ 骨架 | 中文名「生产-平台自营-亚马逊云-EKS-新加坡-0」；矩阵已录入（PSO），greptimedb/grafana(aops) 实测通过，dbx/rocketmq 暂无账号，zadig 无此环境（403） |
-| `tst-platform-aws-eks-de-0` | de-0.pre.novo-one.com | ⬜ 骨架 | 中文名「德国-测试0自营环境-法兰克福」；矩阵已录入（TPDE0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
-| `tst-platform-aws-eks-us-0` | us-0.pre.novo-one.com | ⬜ 骨架 | 中文名「美国-测试0自营环境-俄勒冈州」；矩阵已录入（TPUS0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
-| `tst-platform-aws-eks-au-0` | au-0.pre.novo-one.com | ⬜ 骨架 | 中文名「澳大利亚-测试0自营环境」；矩阵已录入（TPAU0），greptimedb/grafana/dbx/rocketmq 实测通过，zadig 无此环境（403） |
+1. 在 `envs.yml` 修改环境行，endpoint 与凭据引用名按该环境实际值填写；
+2. 在 `~/.dsh/.credentials.yaml` 补对应键值；
+3. 用 `use-env --list` 或 `sentry_env_list` 检查就绪度；
+4. 对话内切到目标环境验证。只有需要改变启动默认环境时才运行 `use-env <环境> --profile sentry`。
 
-「腿」的口径统一为 probe 覆盖的六个随环境切换的数据源：greptimedb（日志）、trace（链路）、prometheus（指标）、dbx（数据库）、rocketmq（MQ）、zadig（CI/CD）。不计入的三条：TAPD 是平台级唯一来源、不随环境切换；Redis 经 dbx 平台中转（dbx 通即通）；代码检索读本机目录、与环境无关。
+凭据值为空或空白都视为未配置。补齐某腿凭据不需要重建 Session，也不需要切换其他环境。
 
-联调方法（2026-09-02）：`pnpm --filter @dsh-sentry/dev exec tsx src/probe.ts <腿> <环境>`，腿 = greptimedb/trace/prometheus/dbx/rocketmq/zadig/grafana-datasources，环境支持短码。注意：probe 通过临时摊平文件兼容新版凭据库（`version: 1` + `refs:` 嵌套）与 rc.8 provider 的格式差异，见 probe.ts 注释。
+## 切换后验证
 
-跨环境共享的凭据事实（实测）：
-- greptimedb 各环境用各自键名（`GREPTIMEDB_<DP0|DP1|DC0|TP0|TP1|TC0>_USERNAME/PASSWORD`），tst 三环境已于 2026-09-02 probe 实测通过
-- dbx / rocketmq / zadig 凭据跨环境复用（tst 三环境 2026-09-02 实测通过）
-- grafana 每环境独立密码（admin）；**tst 三环境与 DC0 的实例禁用了 basic auth**——trace 腿走表单登录 + cookie 不受影响，prometheus 腿改用 service account Bearer token（键 `PROMETHEUS_<TP0|TP1|TC0|DC0>_TOKEN`，2026-09-02 创建，Viewer 角色，不过期；DC0 复用已有 `dsh-sentry` 账号）
-- Jaeger 数据源 uid 随环境漂移（PH0 是 `GreptimeDB-Jaeger`，PH1 与 tst 三环境都是 `PCD48328C06B18945`）——矩阵里是每环境字段，校准用 `probe grafana-datasources <环境>`（走 cookie 登录，basic 不可用的实例也能用）
-- zadig 用长期 OpenAPI token（`ZADIG_API_TOKEN`，Zadig 个人设置创建，不会过期）；不要用浏览器复制的 dex 会话 token（约 1 小时过期）。详见 [incidents/2026-08-25-zadig-token.md](../incidents/2026-08-25-zadig-token.md)
+1. **绑定层**：在原会话询问“当前环境”，确认 `sentry_env_current.current` 是目标环境，且 `persisted` 不是 `false`。
+2. **证据层**：执行一次目标环境查询，检查返回 evidence 的 `env` 与数据内容。
+3. **隔离层（需要时）**：开两个会话分别绑定不同环境并查询，确认数据和 evidence 不串环境；一个会话切换不影响另一个。
+4. **恢复层（需要时）**：重启宿主并恢复原会话，确认无需重传环境即可恢复最后绑定。
 
-## 新增一个环境（示例）
-
-1. `envs.yml` 加一行（环境名与 Zadig 环境标识一致），endpoint 按该环境域名族填，凭据键名按 `<SYSTEM>_<ENV>_<FIELD>` 命名；
-2. 往 `~/.dsh/.credentials.yaml` 补对应键值；
-3. `use-env --list` 确认就绪 → `use-env <环境名>` 切换。
-
-## 试一试：五分钟体验热切换
-
-1. 确认 web GUI 开着（当前停在某环境的会话里，随便哪个对话都行）；
-2. 终端执行：
-   ```bash
-   pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-1
-   ```
-3. **不刷新不重启**，直接在原对话里问一句：「现在 sentry_query_logs 查 commctl-config 最近 30 分钟的日志量」——
-   回来的数据就是 **cn-1** 的（PH1 的 freeswitch-sig 30 分钟约 11.7 万行，流量特征和 PH0 明显不同，可作区分标记）；
-4. 再切回来：
-   ```bash
-   pnpm --filter @dsh-sentry/agent run use-env dev-platform-hosted-0
-   ```
-   同一个对话里再问一次，数据回到 cn-0。全程会话历史完好。
-
-一个识别当前环境的技巧：问模型「当前 evidence 里的 env 标签是什么」——工具每次调用实时读取装配文件（环境切换器唯一重写的文件）里的环境标记，跟着切换走，不会说谎。
-
-## 切换会改变什么（文件清单）
-
-`use-env <环境>` 的全部副作用是**覆盖写入一个文件**：
-
-| 文件 | 变化 |
-|---|---|
-| `~/.dsh/profiles/sentry/cordis.patch.yml` | ✅ 全量覆盖为目标环境的 20 插件组装（envs.yml 的纯函数：同一环境重复生成字节相同，切换时间看文件 mtime） |
-| repo（`envs.yml`、`sentry.cordis.patch.yml` 等）| ❌ 不动 |
-| `~/.dsh/.credentials.yaml` | ❌ 不动（凭据只在补键/换值时手工编辑）|
-
-生效路径：文件写入 → dsh patch watcher 热重载（冷启动时直接读该文件）。
-已知的坑：watch 热重载在部分 web 宿主上未生效（磁盘已换、运行时仍旧配置）——
-用下面的三层验证确认，第 2 层不过就重启 web。
-
-## 切换之后怎么验证（三层，从快到慢）
-
-1. **文件层（秒级，不开 web）**：确认 profile 里部署的确实是目标环境
-   ```bash
-   pnpm --filter @dsh-sentry/agent run use-env --current
-   # → profile web 当前部署环境: dev-platform-hosted-1（附装配文件最后写入时间，取自 mtime）
-   ```
-   或直接抽查 endpoint：`grep dbx ~/.dsh/profiles/sentry/cordis.patch.yml` 应出现 cn-1 域名。
-
-2. **模型层（真对话）**：在切换前的**原有对话**里问模型：
-   > 查一下 commctl-config 最近 30 分钟的日志量，并告诉我 evidence 里的 env 标签
-   `env` 标签实时读自装配文件、跟随切换走——它是系统自己申报的环境，比人眼检查更可信。
-
-3. **数据层（铁证）**：不同环境的流量特征不同。PH1 的 freeswitch-sig 30 分钟约 11.7 万行日志、PH0 明显更少；两边各查一次对比行数量级，即确认查的是不同集群。
-
-三层都过 = 切换完全生效。若第 1 层已变而第 2 层没变，说明 watcher 热重载有异常——回退方法：重跑一次 `use-env <环境>` 或重启 web。
+进行中的查询仍使用调用开始时的环境快照；切换影响的是该 Session 的后续调用。历史消息与历史 evidence 不会被重写。
 
 ## 边界与注意事项
 
-- 切换是**运维动作**（你敲命令），不是模型动作：模型永远只能查当前部署的环境，无法在对话里跳环境。
-- 切换瞬间正在执行的工具调用可能撞上插件重建，重试即可。
-- `sentry.cordis.patch.yml` 是生成物，勿手改（改了也会被下次生成覆盖）；改动请进 `envs.yml`。
-- 独立 profile（如 `~/.dsh/profiles/sentry`，符号链接模式）下切换照常工作：写入仓库
-  `apps/profile/cordis.patch.yml` 经符号链接即该 profile 的 live patch，热重载生效；
-  web profile 的 include 桩不含直写装配，会被自动跳过、不受影响。
+- 环境切换是显式、可审计的模型工具调用；普通证据工具不接受 `env` 参数，不能绕开 Session 绑定临时选后端。
+- 无法解析调用 Session 时会明确报错，不会退回某个全局环境。
+- Provider 按环境共享并懒创建；会话切换不等于为每个会话复制一套连接。
+- TAPD、代码仓库等环境无关能力不随 Session 切换。
+- 装配文件仍可用于宿主 patch 热重载，但那不是 Session 环境切换的实现路径。

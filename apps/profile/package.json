@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@dsh-sentry/datasource": "workspace:*",
+    "@dsh-sentry/env-binding": "workspace:*",
     "@dsh-sentry/evidence": "workspace:*",
     "@dsh-sentry/guard-git": "workspace:*",
     "@dsh-sentry/sentry-persona": "workspace:*",
@@ -23,6 +24,7 @@
     "@dsh-sentry/service-alertmanager": "workspace:*",
     "@dsh-sentry/service-code-repository": "workspace:*",
     "@dsh-sentry/service-dbx": "workspace:*",
+    "@dsh-sentry/service-env-provider": "workspace:*",
     "@dsh-sentry/service-greptimedb": "workspace:*",
     "@dsh-sentry/service-prometheus": "workspace:*",
     "@dsh-sentry/service-rocketmq": "workspace:*",
@@ -40,7 +42,7 @@
     "@dsh-sentry/tool-tapd-inspector": "workspace:*",
     "@dsh-sentry/tool-trace-analyzer": "workspace:*",
     "@dsh-sentry/tool-zadig-inspector": "workspace:*",
-    "@xmanrui/dsh-im": "^4.7.0",
-    "dsh-context": "^0.40.1"
+    "@xmanrui/dsh-im": "^5.6.0",
+    "dsh-context": "^0.77.0"
   }
 }

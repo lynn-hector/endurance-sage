@@ -10,13 +10,12 @@
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { SessionStore } from '@deepseek-ai/dsh-session'
+import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import DbxService from '@dsh-sentry/service-dbx'
-import GreptimeDbService from '@dsh-sentry/service-greptimedb'
-import PrometheusService from '@dsh-sentry/service-prometheus'
-import AlertmanagerService from '@dsh-sentry/service-alertmanager'
-import TraceService from '@dsh-sentry/service-trace'
-import ZadigService from '@dsh-sentry/service-zadig'
+import CodeRepositoryService from '@dsh-sentry/service-code-repository'
+import { SessionEnvBindingStore } from '@dsh-sentry/env-binding'
+import SessionEnvProviders from '@dsh-sentry/service-env-provider'
 import * as dbInspector from '@dsh-sentry/tool-db-inspector'
 import * as logAnalyzer from '@dsh-sentry/tool-log-analyzer'
 import * as callflowAnalyzer from '@dsh-sentry/tool-callflow-analyzer'
@@ -27,7 +26,6 @@ import * as sentrySkills from '@dsh-sentry/sentry-skills'
 import * as traceAnalyzer from '@dsh-sentry/tool-trace-analyzer'
 import * as zadigInspector from '@dsh-sentry/tool-zadig-inspector'
 import * as codeRepository from '@dsh-sentry/tool-code-repository'
-import RocketMq from '@dsh-sentry/service-rocketmq'
 import * as mqInspector from '@dsh-sentry/tool-mq-inspector'
 
 const root = new Context()
@@ -35,41 +33,22 @@ const root = new Context()
 await root.plugin(SystemPrompt)
 await root.plugin(ToolRuntime)
 await root.plugin(SkillRegistry)
-await root.plugin(GreptimeDbService, {
-  endpoint: 'https://greptimedb.example.invalid',
-  usernameRef: 'GREPTIMEDB_LOCAL_USERNAME',
-  passwordRef: 'GREPTIMEDB_LOCAL_PASSWORD',
-})
-await root.plugin(logAnalyzer, { env: 'local' })
-await root.plugin(callflowAnalyzer, { env: 'local' })
-await root.plugin(TraceService, {
-  endpoint: 'https://grafana.example.invalid',
-  usernameRef: 'GRAFANA_LOCAL_USERNAME',
-  passwordRef: 'GRAFANA_LOCAL_PASSWORD',
-})
-await root.plugin(traceAnalyzer, { env: 'local', greptimedbJaegerDatasourceUid: 'GreptimeDB-Jaeger' })
-await root.plugin(PrometheusService, { endpoint: 'http://prometheus.example.invalid' })
-await root.plugin(AlertmanagerService, {
-  grafanaEndpoint: 'https://grafana.example.invalid',
-  usernameRef: 'GRAFANA_LOCAL_USERNAME',
-  passwordRef: 'GRAFANA_LOCAL_PASSWORD',
-})
-await root.plugin(metricsInspector, { env: 'local' })
-await root.plugin(DbxService, {
-  endpoint: 'https://dbx.example.invalid',
-  passwordRef: 'DBX_REDIS_PASSWORD',
-})
-await root.plugin(dbInspector, { env: 'local', database: 'novo_commctl_config' })
-await root.plugin(redisInspector, { env: 'local' })
-await root.plugin(ZadigService, {
-  endpoint: 'https://zadig.example.invalid',
-  project: 'novo-one',
-  envName: 'dev-env',
-})
-await root.plugin(zadigInspector, { env: 'local' })
-await root.plugin(codeRepository, { env: 'local', baseDir: '/tmp/sentry-code-repos' })
-await root.plugin(RocketMq, { endpoint: 'https://rocketmq.example.invalid', username: 'admin' })
-await root.plugin(mqInspector, { env: 'local' })
+// Session 环境栈：绑定存储 + Provider 池。证据 Provider 不再全局装配，
+// 由池按各 Session 绑定从 envs.yml（defaultEnvsPath）懒创建。
+await root.plugin(SessionStore)
+await root.plugin(SessionProjectionRegistry)
+await root.plugin(SessionEnvBindingStore, { defaultEnv: 'dev-platform-hosted-0' })
+await root.plugin(SessionEnvProviders)
+await root.plugin(logAnalyzer)
+await root.plugin(callflowAnalyzer)
+await root.plugin(traceAnalyzer)
+await root.plugin(metricsInspector)
+await root.plugin(dbInspector, { database: 'novo_commctl_config' })
+await root.plugin(redisInspector)
+await root.plugin(zadigInspector)
+await root.plugin(mqInspector)
+await root.plugin(CodeRepositoryService, { baseDir: '/tmp/sentry-code-repos' })
+await root.plugin(codeRepository, { env: 'local' })
 await root.plugin(sentrySkills)
 await root.plugin(sentryPersona)
 

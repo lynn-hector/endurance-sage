@@ -1,5 +1,5 @@
 /**
- * RocketMQ Console client as a Cordis service.
+ * RocketMQ Console Provider for the mq seam.
  *
  * Port of the transport + session half of the original
  * `skills/mq-inspector/scripts/inspect.py`: `/login/login.do` (JSON body,
@@ -8,7 +8,9 @@
  * message list via POST `/message/queryMessagePageByTopic.query`, and
  * message detail via GET `/message/viewMessage.query`. Queries retry once
  * through a fresh login on 401/403 (`_query_with_fallback` /
- * `_query_detail_with_fallback`).
+ * `_query_detail_with_fallback`). Console paths, the XSRF/JSESSIONID
+ * handshake and re-login choreography are Provider internals; Consumers
+ * only see the backend-neutral MqStore seam.
  *
  * Deliberate deviations from the script era:
  * - the disk auth cache (`~/.endurance-sentry/auth/{env}.json`) is gone —
@@ -20,12 +22,14 @@
  *   `endpoint`, etc.) collapsed into plugin Config with a single
  *   HTTP endpoint validated by the schema (the nameserver-address case
  *   the script rejected at runtime);
- * - concurrent session acquisition is single-flight.
+ * - concurrent session acquisition is single-flight;
+ * - the ctx slot is `mqStore` (shared seam vocabulary), not `rocketmq`;
+ *   `parseTimeMs` moved to the Definition as Consumer-side normalization.
  *
  * @module @dsh-sentry/service-rocketmq
  */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
@@ -35,6 +39,15 @@ import {
   secretField,
   timeoutMsField,
 } from '@dsh-sentry/datasource'
+import { MqStore, type MqMessageDetailRequest, type MqMessageDetailResult, type MqMessageListRequest, type MqMessageListResult, type MqMessageRow } from '@dsh-sentry/mq-store'
+
+export type {
+  MqMessageDetailRequest,
+  MqMessageDetailResult,
+  MqMessageListRequest,
+  MqMessageListResult,
+  MqMessageRow,
+} from '@dsh-sentry/mq-store'
 
 const PATH_LOGIN = '/login/login.do'
 const PATH_CHECK = '/topic/list.query'
@@ -67,31 +80,6 @@ export interface Config {
   timeoutMs?: number
 }
 
-/** One row of the message-list page content, kept raw for the evidence layer. */
-export type MqMessageRow = Record<string, unknown>
-
-/** Aggregate of the console list response the tool layer shapes into evidence. */
-export interface MqMessageListResult {
-  status: unknown
-  errMsg: string | null
-  taskId: unknown
-  truncated: boolean
-  scanned: number
-  totalElements: number | null
-  totalPages: number | null
-  messages: MqMessageRow[]
-  raw: Record<string, unknown>
-}
-
-/** Aggregate of the console detail response the tool layer shapes into evidence. */
-export interface MqMessageDetailResult {
-  status: unknown
-  errMsg: string | null
-  messageView: Record<string, unknown>
-  messageTrackList: Record<string, unknown>[]
-  raw: Record<string, unknown>
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -111,19 +99,12 @@ interface ConsoleSession {
 }
 
 /** Input of {@link RocketMqService.queryMessages}; times are epoch ms. */
-export interface QueryMessagesInput {
-  topic: string
-  beginMs: number
-  endMs: number
-  pageNum?: number
-  pageSize?: number
-  keyword?: string
-}
+export type QueryMessagesInput = MqMessageListRequest
 
 /**
- * RocketMQ Console client with cached-session auth and 401/403 re-login.
+ * RocketMQ Console Provider with cached-session auth and 401/403 re-login.
  */
-export class RocketMqService extends Service {
+export class RocketMqService extends MqStore {
   static Config: z<Config> = z.object({
     endpoint: endpointField('RocketMQ Console 地址，如 https://rocketmq.cn-0.dev.novo-one.com（必须是 http(s) URL）'),
     username: z.string().description('Console 登录用户名（原 mq.console_username；usernameRef 优先）'),
@@ -141,10 +122,15 @@ export class RocketMqService extends Service {
   private loginFlight: Promise<ConsoleSession> | null = null
 
   constructor(ctx: Context, config: Config = { endpoint: '', username: '' }) {
-    super(ctx, 'rocketmq')
+    super(ctx)
     this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
     this.timeoutMs = config.timeoutMs ?? 30_000
     this.config = config
+  }
+
+  /** Stable, non-secret backend identity used in evidence refs. */
+  override get backendRef(): string {
+    return `rocketmq-console:${this.endpoint}`
   }
 
   /** Resolve the console password: reference wins over the literal fallback. */
@@ -305,23 +291,8 @@ export class RocketMqService extends Service {
     }
   }
 
-  /** Original `_parse_time_ms`: pure-digit milliseconds or ISO8601 → epoch ms. */
-  static parseTimeMs(value: string | number | undefined | null, defaultMs?: number): number {
-    if (value === undefined || value === null || value === '') {
-      return defaultMs ?? Date.now()
-    }
-    const text = String(value).trim()
-    if (/^\d+$/.test(text)) return Number(text)
-    const normalized = text.endsWith('Z') ? text : `${text}Z`
-    const dt = new Date(normalized)
-    if (Number.isNaN(dt.getTime())) {
-      throw new Error(`无法解析时间参数: ${text}`)
-    }
-    return dt.getTime()
-  }
-
-  /** Constructed list request body + URL, for dry-run evidence. */
-  buildListRequest(input: QueryMessagesInput): { url: string; body: Record<string, unknown> } {
+  /** Constructed list request body + URL, for the Provider's own wire call. */
+  private buildListRequest(input: MqMessageListRequest): { url: string; body: Record<string, unknown> } {
     return {
       url: `${this.endpoint}${PATH_LIST}`,
       body: {
@@ -336,10 +307,10 @@ export class RocketMqService extends Service {
     }
   }
 
-  /** Constructed detail request URL, for dry-run evidence. */
-  buildDetailRequest(topic: string, msgId: string): { url: string } {
+  /** Constructed detail request path (query included), for the Provider's own wire call. */
+  private buildDetailRequest(topic: string, msgId: string): { path: string } {
     return {
-      url: `${this.endpoint}${PATH_DETAIL}?msgId=${encodeURIComponent(msgId)}&topic=${encodeURIComponent(topic)}`,
+      path: `${PATH_DETAIL}?msgId=${encodeURIComponent(msgId)}&topic=${encodeURIComponent(topic)}`,
     }
   }
 
@@ -347,7 +318,7 @@ export class RocketMqService extends Service {
    * Port of `_query_messages` + list aggregation from `_build_evidence`:
    * page content, totals, task state, raw response.
    */
-  async queryMessages(input: QueryMessagesInput): Promise<MqMessageListResult> {
+  override async queryMessages(input: MqMessageListRequest): Promise<MqMessageListResult> {
     const { body } = this.buildListRequest(input)
     const response = await this.withSessionRetry(session =>
       this.consoleRequest(PATH_LIST, { method: 'POST', body: JSON.stringify(body), session }),
@@ -374,12 +345,11 @@ export class RocketMqService extends Service {
    * Port of `_query_message_detail` + detail aggregation from
    * `_build_evidence`: message view and consumption tracks.
    */
-  async queryMessageDetail(topic: string, msgId: string): Promise<MqMessageDetailResult> {
+  override async queryMessageDetail(request: MqMessageDetailRequest): Promise<MqMessageDetailResult> {
+    const { topic, msgId } = request
+    const { path } = this.buildDetailRequest(topic, msgId)
     const response = await this.withSessionRetry(session =>
-      this.consoleRequest(
-        `${PATH_DETAIL}?msgId=${encodeURIComponent(msgId)}&topic=${encodeURIComponent(topic)}`,
-        { session },
-      ),
+      this.consoleRequest(path, { session }),
     )
 
     const data = isRecord(response['data']) ? response['data'] : {}
@@ -392,12 +362,6 @@ export class RocketMqService extends Service {
         : [],
       raw: response,
     }
-  }
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    rocketmq: RocketMqService
   }
 }
 

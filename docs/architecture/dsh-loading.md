@@ -15,7 +15,7 @@ dsh 的装配单元是 **profile**（`~/.dsh/profiles/<name>`），它只认三�
 ```
 
 - **bundle** 是 profile 的基础插件组合。官方对 `@deepseek-ai/dsh-base` 的定义就是"every profile's first patch layer"——bundle 本质是一层预制的 patch，声明自己的插件行；profile 按 `dsh.profile.bundles` 数组顺序逐层叠加。sentry profile 的基座：`dsh-base`（基础能力）→ `dsh-web-app`（GUI）→ `@xmanrui/dsh-im`（IM 渠道）→ `dsh-context`（上下文洞察）。
-- **patch 层**在 bundle 栈之上做用户修改：`- id: <行id>` 覆盖已有行、`- insert: [...]` 追加新行。**dsh-sentry 的全部插件就是用 insert 加进去的。**
+- **patch 层**在 bundle 栈之上做用户修改：`- id: <行id>` 覆盖已有行、`- insert: [...]` 追加新行。**dsh-sentry 的宿主级工具、共享服务和 skills 通过 insert 加入；随环境切换的 Provider 由 Provider Pool 在运行时按 Session 绑定创建。**
 
 一条铁律：**dsh 只按 bundles 列表与 patch 行装配，不扫描 node_modules**——只装依赖、名字不进装配清单，等于没装（[onboarding.md](../guides/onboarding.md) 排障表有实测案例）。
 
@@ -33,25 +33,24 @@ sequenceDiagram
     H->>P: 读 package.json 的 dsh.profile.bundles
     Note over H,P: 按数组顺序逐层叠加 bundle：<br/>dsh-base → dsh-web-app → dsh-im → dsh-context<br/>（每个 bundle 自带 patch 层，声明自己的插件行）
     H->>P: 应用 cordis.patch.yml
-    Note over P: - id: 覆盖已有行 / - insert: 追加新行；<br/>sentry 插件全部经 insert 进入配置树
+    Note over P: - id: 覆盖已有行 / - insert: 追加新行；<br/>宿主级 sentry 插件经 insert 进入配置树
     H->>L: 交付最终配置树
     L->>L: 逐行按 name 从 profile 的 node_modules 解析包
     L->>L: 校验 Config schema → 注入 ctx → 实例化插件
-    Note over L: 插件经 ctx.tools / ctx.skills 注册能力；<br/>services 把数据源客户端注入给 tools
+    Note over L: 插件经 ctx.tools / ctx.skills 注册能力；<br/>共享 services 注入 tools，环境 Provider 由 Pool 懒创建
     H-->>U: GUI 就绪（headless 形态：执行完任务退出）
-    U->>H: use-env --profile sentry / 对话内 sentry_env_switch 重写 patch
-    H->>P: patch watcher 检测到 cordis.patch.yml 变更
-    H->>L: 就地重建受影响插件（不重启、不断会话）
+    U->>H: 对话内 sentry_env_switch
+    H->>H: 只更新调用 Session 的持久化绑定
+    Note over H,L: 后续调用按绑定路由；不写 patch，不依赖 watcher
 ```
 
 配置树里每一行的格式（官方 [插件 Config 指南](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/config.zh.md)的口径）：
 
 ```yaml
-- id: sentry-greptimedb      # 行 id：patch 覆盖的寻址键，profile 内唯一
-  name: '@dsh-sentry/service-greptimedb'   # npm 包名（或本地路径）
-  config:                    # 用户配置，加载时按插件导出的 schema 校验、补默认值
-    endpoint: https://greptimedb.cn-0.dev.novo-one.com
-    usernameRef: GREPTIMEDB_DP0_USERNAME   # 凭据引用名，不是值
+- id: sentry-env-binding    # 行 id：patch 覆盖的寻址键，profile 内唯一
+  name: '@dsh-sentry/env-binding'   # npm 包名（或本地路径）
+  config:                   # 用户配置，加载时按插件导出的 schema 校验、补默认值
+    defaultEnv: tst-platform-hosted-0  # 新 Session 的默认环境，不是全局实时路由
 ```
 
 预检：`dsh --profile sentry --dump-config | grep sentry-` 打印组合后的完整配置树（不启动服务），验证装配是否成功。
@@ -63,7 +62,7 @@ sequenceDiagram
 | 类型 | 例子 | 注册方式 |
 |---|---|---|
 | 第三方（包声明 `dsh.bundle`） | `@xmanrui/dsh-im`、`dsh-context` | **双注册缺一不可**：依赖进 profile 包 + 包名进 `dsh.profile.bundles` 数组 |
-| 自研（无 bundle manifest） | 全部 `@dsh-sentry/*` | 依赖 `workspace:*` + 由装配线生成 patch 行 insert 进配置树 |
+| 自研（无 bundle manifest） | 全部 `@dsh-sentry/*` | 依赖 `workspace:*`；宿主级插件由装配线生成 patch 行 insert 进配置树，环境 Provider 由 Pool 动态装配 |
 
 - 自研这条线的产物是两份生成文件（由 [envs.yml](../../apps/agent/envs.yml) 经 env-matrix 渲染，勿手改）：[cordis.patch.yml](../../apps/profile/cordis.patch.yml)（profile 原生 patch 格式，符号链接模式消费）与 [cordis.include.yml](../../apps/profile/cordis.include.yml)（条目清单格式，引入模式下由 `@deepseek-ai/cordis-plugin-include` 并入个人 profile 的 patch）。
 - 宿主自带 `dsh plugin add`（装依赖 + 自动 reconcile bundles），但它在本 pnpm workspace 用不了：子目录执行被 workspace 强制 `-w`，依赖会装到仓库根——所以第三方注册才是"手动两步"（[onboarding.md](../guides/onboarding.md) SOP 节有实测记录）。
@@ -78,7 +77,9 @@ sequenceDiagram
 
 | 改动 | 生效方式 |
 |---|---|
-| patch 层（`cordis.patch.yml`：插件的 config、insert 行增删） | **watcher 热重载**——对话内 `sentry_env_switch` 与 `use-env <env> -- --profile sentry` CLI（默认目标是 web profile：符号链接服务器上该目录不存在会直接报错，引入模式本机更会覆盖掉 include 桩——**别裸用**）即走这条路，不重启、不断会话 |
+| patch 层（`cordis.patch.yml`：宿主插件 config、insert 行增删） | **watcher 热重载**。`use-env <env> -- --profile sentry` 只更新启动装配与默认环境，不重绑在线 Session；不要裸用默认的 web profile 目标 |
+| Session 当前环境 | 对话内 `sentry_env_switch` 只更新当前 Session 的持久化绑定；不写 patch、不依赖 watcher，其他 Session 不变 |
+| 代码根目录的环境变量 / 凭据库键 `DSH_SENTRY_CODE_BASE` | 重启宿主；由代码仓库服务构造期解析，无需 regenerate，也不进入装配 |
 | 插件代码（`packages/` 源码） | 重启宿主（依赖 link 指向工作区，不用重装） |
 | 依赖集合 / bundles 数组 / profile 的 package.json | 停进程 → `pnpm install` → 重启 |
 

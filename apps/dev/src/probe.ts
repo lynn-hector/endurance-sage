@@ -90,23 +90,22 @@ try {
         ? { connectTokenRef: row.greptimedb.tokenRef }
         : { usernameRef: row.greptimedb.usernameRef, passwordRef: row.greptimedb.passwordRef }),
     })
-    const rows = await ctx.greptimedb.query('SELECT * FROM k8s_logs LIMIT 1')
-    console.log(`GREPTIMEDB PROBE OK — k8s_logs LIMIT 1 returned ${rows.length} row(s)`)
-    if (rows.length > 0) console.log(`  columns: ${Object.keys(rows[0]!).join(', ')}`)
-    if (rows.length > 0) console.log(`  greptime_timestamp sample: ${JSON.stringify(rows[0]!['greptime_timestamp'])}`)
+    const services = await ctx.logStore.listLogServices({ logType: 'go' })
+    console.log(`GREPTIMEDB PROBE OK — recent log workloads: ${services.length}`)
+    if (services.length > 0) console.log(`  sample: ${services.slice(0, 5).join(', ')}`)
   } else if (leg === 'trace') {
     await ctx.plugin(TraceService, {
       mode: 'grafana-jaeger',
       endpoint: row.grafana.endpoint!,
       usernameRef: row.grafana.usernameRef,
       passwordRef: row.grafana.passwordRef,
+      datasourceUid: row.grafana.greptimedbJaegerDatasourceUid ?? 'GreptimeDB-Jaeger',
     })
     // A probe id that cannot exist: a parsed "not found" shape means auth +
     // datasource wiring are OK; HTTP 401 would mean credentials are wrong.
     // 第四个参数可传真实 traceId 验证完整取数路径。
-    const result = await ctx.trace.queryTrace({
+    const result = await ctx.traceStore.queryTrace({
       traceId: process.argv[4] ?? 'probe0000000000000000000000000000',
-      datasourceUid: row.grafana.greptimedbJaegerDatasourceUid ?? 'GreptimeDB-Jaeger',
     })
     console.log('TRACE PROBE OK — response shape:')
     console.log(summarize(result))
@@ -115,16 +114,20 @@ try {
       endpoint: row.dbx.endpoint!,
       passwordRef: row.dbx.passwordRef,
     })
-    const connection = await ctx.dbx.discoverConnection('postgres')
-    console.log('DBX PROBE OK — discovered postgres connection (shape):')
-    console.log(summarize(connection))
+    // Harmless read through the backend-neutral seam: exercises login,
+    // postgres connection discovery and the execute path in one call.
+    const result = await ctx.dbStore.querySql({ sql: 'SELECT 1', database: 'postgres' })
+    console.log('DBX PROBE OK — querySql through dbStore (shape):')
+    console.log(summarize(result))
   } else if (leg === 'rocketmq') {
     await ctx.plugin(RocketMqService, {
       endpoint: row.rocketmq.endpoint!,
       usernameRef: row.rocketmq.usernameRef,
       passwordRef: row.rocketmq.passwordRef,
     })
-    await ctx.rocketmq.ensureSession()
+    // Lightest harmless check through the concrete Provider: console login
+    // plus the /topic/list.query session validation.
+    await (ctx.mqStore as RocketMqService).ensureSession()
     console.log('ROCKETMQ PROBE OK — session established')
   } else if (leg === 'prometheus') {
     await ctx.plugin(PrometheusService, {
@@ -136,11 +139,24 @@ try {
         : { usernameRef: row.grafana.usernameRef, passwordRef: row.grafana.passwordRef }),
     })
     const endSec = Math.floor(Date.now() / 1000)
-    const envelope = await ctx.prometheus.queryRange('up', endSec - 600, endSec, '60s')
-    const result = (envelope as { data: { result: { metric: Record<string, string>; values: unknown[][] }[] } }).data.result
-    console.log(`PROMETHEUS PROBE OK — 'up' returned ${result.length} series`)
-    for (const series of result.slice(0, 3)) {
-      console.log(`  labels=${JSON.stringify(series.metric)} points=${series.values.length}`)
+    // 经 metricsStore seam 探活：一次 'up' range 查询同时验证认证、代理与取数路径。
+    const points = await ctx.metricsStore.queryRangeMetrics({
+      promql: 'up',
+      startSec: endSec - 600,
+      endSec,
+      step: '60s',
+    })
+    const series = new Map<string, number>()
+    for (const point of points) {
+      const key = JSON.stringify(point.labels)
+      series.set(key, (series.get(key) ?? 0) + 1)
+    }
+    console.log(`PROMETHEUS PROBE OK — 'up' returned ${series.size} series`)
+    let shown = 0
+    for (const [labels, count] of series) {
+      if (shown >= 3) break
+      console.log(`  labels=${labels} points=${count}`)
+      shown++
     }
   } else if (leg === 'alertmanager') {
     await ctx.plugin(AlertmanagerService, {

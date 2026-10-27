@@ -1,13 +1,39 @@
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { describe, expect, it } from 'vitest'
 import * as sentrySkills from '../src/index.ts'
 
 /**
- * Verifies every bundled skill registers with non-empty adapted content.
- * Content-level golden pinning (specific sections per skill) lives in the
- * per-skill blocks below.
+ * Native-bundle gate for the sentry skills: the filesystem provider must
+ * discover the complete 16-skill catalog from `../skills/<name>/SKILL.md`,
+ * strip frontmatter from loaded bodies, and own them as `sentry-bundled`
+ * contributions. Content-level golden pinning lives in the per-skill blocks
+ * below.
  */
+
+const BUNDLE_DIR = fileURLToPath(new URL('../skills/', import.meta.url))
+
+/** The complete domain catalog, sorted as `ctx.skills.list()` returns it. */
+const SKILL_NAMES = [
+  'alert-analysis',
+  'callflow-analyzer',
+  'code-repository',
+  'cross-service-latency',
+  'db-inspector',
+  'defect-troubleshooting',
+  'env-switcher',
+  'incident-templates',
+  'log-analyzer',
+  'metrics-inspector',
+  'mq-inspector',
+  'project-context',
+  'redis-inspector',
+  'tapd-inspector',
+  'trace-analyzer',
+  'zadig-inspector',
+]
 
 async function bootSkills(): Promise<Context> {
   const ctx = new Context()
@@ -16,25 +42,36 @@ async function bootSkills(): Promise<Context> {
   return ctx
 }
 
-describe('sentry-skills registration', () => {
-  it('registers every bundled skill', async () => {
+describe('sentry-skills native bundle', () => {
+  it('discovers exactly the full 16-skill catalog', async () => {
     const ctx = await bootSkills()
-    const skills = await ctx.skills.list()
-    const names = skills.map(skill => skill.name)
-    for (const expected of [
-      'log-analyzer',
-      'callflow-analyzer',
-      'trace-analyzer',
-      'metrics-inspector',
-      'db-inspector',
-      'redis-inspector',
-      'zadig-inspector',
-      'alert-analysis',
-    ]) {
-      expect(names).toContain(expected)
-      const full = await ctx.skills.get(expected)
-      expect(full?.content.length).toBeGreaterThan(1000)
+    const names = (await ctx.skills.list()).map(skill => skill.name)
+    expect(names).toEqual(SKILL_NAMES)
+    await ctx.fiber.dispose()
+  })
+
+  it('loads every skill as a frontmatter-free bundled body', async () => {
+    const ctx = await bootSkills()
+    for (const name of SKILL_NAMES) {
+      const skill = await ctx.skills.get(name)
+      expect(skill, name).toBeDefined()
+      expect(skill!.provider, name).toBe('sentry-bundled')
+      expect(skill!.source, name).toBe('bundled')
+      expect(skill!.description, name).toBeTruthy()
+      expect(skill!.content.length, name).toBeGreaterThan(100)
+      expect(skill!.content.startsWith('---'), name).toBe(false)
+      expect(skill!.path, name).toBe(resolve(BUNDLE_DIR, name, 'SKILL.md'))
+      expect(skill!.resourceBase?.kind, name).toBe('directory')
+      expect(skill!.resourceBase?.kind === 'directory' && skill!.resourceBase.path, name)
+        .toBe(resolve(BUNDLE_DIR, name))
     }
+    await ctx.fiber.dispose()
+  })
+
+  it('mounts nothing without the bundle plugin (no cross-context leakage)', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    expect(await ctx.skills.list()).toEqual([])
     await ctx.fiber.dispose()
   })
 
@@ -70,7 +107,7 @@ describe('log-analyzer skill content', () => {
     ]
     expect(orderIdx[0]).toBeGreaterThan(0)
     expect(orderIdx[0]).toBeLessThan(orderIdx[1]!)
-    expect(orderIdx[1]).toBeLessThan(orderIdx[2]!)
+    expect(orderIdx[1]!).toBeLessThan(orderIdx[2]!)
     await ctx.fiber.dispose()
   })
 })
@@ -104,6 +141,17 @@ describe('callflow-analyzer skill content', () => {
     expect(content).toContain('hep_1')
     expect(content).toContain('call_id')
     expect(content).toContain('trace_ids')
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('tapd-inspector skill content', () => {
+  it('ships the previously unlisted tapd skill in the catalog', async () => {
+    const ctx = await bootSkills()
+    const skill = await ctx.skills.get('tapd-inspector')
+    expect(skill).toBeDefined()
+    expect(skill!.content).toContain('sentry_query_tapd')
+    expect(skill!.description).toContain('TAPD 缺陷单')
     await ctx.fiber.dispose()
   })
 })

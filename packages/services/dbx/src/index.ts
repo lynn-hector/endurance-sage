@@ -1,14 +1,18 @@
 /**
- * dbx platform client as a Cordis service.
+ * dbx platform Providers for the db and cache seams.
  *
- * Port of `skills/lib/dbx.py` from endurance-sentry: dbx session
+ * One shared client (`DbxPlatformClient`) owns the dbx session
  * login/check/auto-refresh (`_check_auth` / `_login` / `ensure_session`),
  * connection auto-discovery (`_TYPE_HINTS` redis/postgres matching), database
  * list caching, and HTTP requests carrying the standard browser headers
  * (`_BASE_HEADERS`, kept verbatim — they exist to pass CORS/UA filtering).
- * It also absorbs `_query_value` from
- * `skills/redis-inspector/scripts/inspect.py` as {@link DbxService.redisGetValue},
- * so every dbx wire format lives in one package.
+ * It mounts two backend-neutral Providers: `DbxDbStore` (from
+ * `@dsh-sentry/db-store`, absorbing db-inspector's query choreography) and
+ * `DbxCacheStore` (from `@dsh-sentry/cache-store`, absorbing the redis
+ * get-value wire call and value decoding), so every dbx wire format lives in
+ * one package and both slots share one session/connection lifecycle.
+ *
+ * Port of `skills/lib/dbx.py` from endurance-sentry.
  *
  * Deliberate differences from the script era:
  * - State (session / discovered connections / database lists) was persisted
@@ -19,7 +23,7 @@
  *   through `ctx.effect()` (cordis v4 has no `dispose` event).
  * - The login password resolves per login through the ambient credential
  *   plane (`resolveCredential`), so a hot-reloaded credential store takes
- *   effect without restarting.
+ *   effect without a restart.
  * - Concurrent `ensureSession()` calls share one in-flight login
  *   (single-flight); the scripts were single-threaded and never needed it.
  * - `executeQuery` / `listDatabases` / `discoverConnection` / `redisGetValue`
@@ -29,12 +33,16 @@
  *   (the script let the raw `json.JSONDecodeError` propagate); the
  *   `dbx HTTP {code}: ...` / `dbx 连接失败: ...` / login error wordings are
  *   kept verbatim.
+ * - The tools' former `connectionId` config (the scripts' `db.connection_id`
+ *   / `redis.connection_id`) moved here as Provider configuration
+ *   (`postgresConnectionId` / `redisConnectionId`); connection picking is
+ *   platform vocabulary, not Consumer intent.
  *
  * @module @dsh-sentry/service-dbx
  */
 
 import { randomUUID } from 'node:crypto'
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
@@ -44,6 +52,8 @@ import {
   secretField,
   timeoutMsField,
 } from '@dsh-sentry/datasource'
+import { CacheStore, decodeContent, type CacheEntry, type CacheGetRequest } from '@dsh-sentry/cache-store'
+import { DbStore, type DbQueryRequest, type DbQueryResult } from '@dsh-sentry/db-store'
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
@@ -57,6 +67,10 @@ export interface Config {
   passwordRef?: string
   /** Literal password fallback when no reference is configured. Discouraged in composition files. */
   password?: string
+  /** Preferred postgres connection id (the original `db.connection_id`). */
+  postgresConnectionId?: string
+  /** Preferred redis connection id (the original `redis.connection_id`). */
+  redisConnectionId?: string
   /** Per-request HTTP timeout in milliseconds. Defaults to 30000 (the script's `_DEFAULT_TIMEOUT = 30`). */
   timeoutMs?: number
   /**
@@ -111,7 +125,7 @@ export interface DbxConnection {
   config: Record<string, unknown>
 }
 
-/** Options for the low-level {@link DbxService.request}. */
+/** Options for the low-level {@link DbxPlatformClient.request}. */
 export interface DbxRequestOptions {
   method?: string
   /** Request body; callers pass a UTF-8 JSON string (the scripts passed encoded bytes). */
@@ -121,7 +135,7 @@ export interface DbxRequestOptions {
    * matching the original `"&".join(f"{k}={v}")` (dbx ids are URL-safe).
    */
   params?: Record<string, string>
-  /** Extra headers merged over {@link DBX_BASE_HEADERS}; `origin`/`referer` are then forced by the service. */
+  /** Extra headers merged over {@link DBX_BASE_HEADERS}; `origin`/`referer` are then forced by the client. */
   headers?: Record<string, string>
   /** dbx session value; sent as `cookie: dbx_session=<value>`. Omit for anonymous requests. */
   session?: string
@@ -197,22 +211,14 @@ export function pickDbxConnection(
 }
 
 /**
- * dbx platform client. All session/connection/database state is per-instance
- * in-memory cache with TTLs; restarting the process simply re-logs-in.
+ * Shared dbx platform client. All session/connection/database state is
+ * per-instance in-memory cache with TTLs; restarting the process simply
+ * re-logs-in. This class is package-internal plumbing shared by both
+ * Provider slots; Consumers never see it.
  */
-export class DbxService extends Service {
-  static Config: z<Config> = z.object({
-    endpoint: endpointField('dbx 平台地址，如 https://dbx.cn-0.dev.novo-one.com'),
-    passwordRef: credentialRefField('dbx 登录密码的凭据引用，如 REDIS_LOCAL_PASSWORD / DBX_REDIS_PASSWORD'),
-    password: secretField('内联登录密码（credential ref 优先；不推荐写在组合文件）'),
-    timeoutMs: timeoutMsField(DEFAULT_TIMEOUT_MS),
-    sessionTtlMs: z.number().step(1).min(1).default(DEFAULT_SESSION_TTL_MS)
-      .description('session 内存缓存 TTL（毫秒），默认 24 小时（对齐 auth_cache 默认过期）'),
-    cacheTtlMs: z.number().step(1).min(1).default(DEFAULT_CACHE_TTL_MS)
-      .description('连接发现与数据库列表的内存缓存 TTL（毫秒），默认 24 小时'),
-  })
-
-  /** Configured base URL with trailing slashes stripped (used in evidence refs). */
+export class DbxPlatformClient {
+  private readonly ctx: Context
+  /** Configured base URL with trailing slashes stripped (used in the backend identity). */
   readonly endpoint: string
   private readonly timeoutMs: number
   private readonly sessionTtlMs: number
@@ -224,10 +230,8 @@ export class DbxService extends Service {
   private readonly databaseCache = new Map<string, DatabasesEntry>()
   private loginPromise: Promise<string> | undefined
 
-  constructor(ctx: Context, config: Config = { endpoint: '' }) {
-    super(ctx, 'dbx')
-    // The schema already defaulted optional fields under the Loader; the ??
-    // narrows the type for direct (non-Loader) construction in tests.
+  constructor(ctx: Context, config: Config) {
+    this.ctx = ctx
     this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.sessionTtlMs = config.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
@@ -243,6 +247,11 @@ export class DbxService extends Service {
       timer.unref()
       return () => clearInterval(timer)
     }, 'dbx cache sweep')
+  }
+
+  /** Non-secret backend identity shared by both Provider slots. */
+  get backendRef(): string {
+    return `dbx:${this.endpoint}`
   }
 
   /** Drop expired session/connection/database entries. */
@@ -569,8 +578,8 @@ export class DbxService extends Service {
 
   /**
    * Query a Redis key through `POST /api/redis/get-value`. Port of
-   * `_query_value` from `skills/redis-inspector/scripts/inspect.py` (moved
-   * here so all dbx wire formats live in the service package); the key is
+   * `_query_value` from `skills/redis-inspector/scripts/inspect.py` (lives
+   * here so all dbx wire formats stay in the service package); the key is
    * base64-encoded into `keyRaw` exactly as the script did. The script passed
    * an explicit `referer` header identical to the one `dbx_request` forces
    * anyway, so it is omitted here with no wire change. Read-only.
@@ -588,10 +597,133 @@ export class DbxService extends Service {
   }
 }
 
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    dbx: DbxService
+/** Connection type the db Provider discovers on the dbx platform. */
+const DB_CONN_TYPE = 'postgres'
+/** Connection type the cache Provider discovers on the dbx platform. */
+const CACHE_CONN_TYPE = 'redis'
+
+/** Construction options for the db Provider. */
+export interface DbxDbStoreOptions {
+  client: DbxPlatformClient
+  /** Preferred postgres connection id (the original `db.connection_id`). */
+  preferredConnectionId?: string
+}
+
+/** dbx implementation of the backend-neutral SQL seam. */
+export class DbxDbStore extends DbStore {
+  private readonly client: DbxPlatformClient
+  private readonly preferredConnectionId: string | undefined
+
+  constructor(ctx: Context, options: DbxDbStoreOptions) {
+    super(ctx)
+    this.client = options.client
+    this.preferredConnectionId = options.preferredConnectionId
+  }
+
+  override get backendRef(): string {
+    return this.client.backendRef
+  }
+
+  override async querySql(request: DbQueryRequest): Promise<DbQueryResult> {
+    const discovered = await this.client.discoverConnection(DB_CONN_TYPE, this.preferredConnectionId)
+    // Original warmed the database-list cache here without validating the
+    // chosen database ("显式指定数据库时只做缓存，不强制验证存在性").
+    await this.client.listDatabases(discovered.id)
+
+    const { value: results, connectionId } = await this.client.runWithFallback(
+      DB_CONN_TYPE,
+      discovered.id,
+      this.preferredConnectionId,
+      id => this.client.executeQuery(id, request.database, request.sql, { maxRows: request.maxRows }),
+    )
+    return { database: request.database, connectionId, results }
   }
 }
+
+/** Construction options for the cache Provider. */
+export interface DbxCacheStoreOptions {
+  client: DbxPlatformClient
+  /** Preferred redis connection id (the original `redis.connection_id`). */
+  preferredConnectionId?: string
+}
+
+/** dbx implementation of the backend-neutral cache seam. */
+export class DbxCacheStore extends CacheStore {
+  private readonly client: DbxPlatformClient
+  private readonly preferredConnectionId: string | undefined
+
+  constructor(ctx: Context, options: DbxCacheStoreOptions) {
+    super(ctx)
+    this.client = options.client
+    this.preferredConnectionId = options.preferredConnectionId
+  }
+
+  override get backendRef(): string {
+    return this.client.backendRef
+  }
+
+  override async getValue(request: CacheGetRequest): Promise<CacheEntry> {
+    // Original: cached connection wins over the configured preferred id;
+    // with neither, the empty id falls through to auto-discovery inside the
+    // fallback (Python `or` semantics).
+    const startId = this.client.getCachedConnection(CACHE_CONN_TYPE)?.id ?? this.preferredConnectionId ?? ''
+    const { value: response, connectionId } = await this.client.runWithFallback(
+      CACHE_CONN_TYPE,
+      startId,
+      this.preferredConnectionId,
+      id => this.client.redisGetValue(id, request.db, request.key),
+    )
+
+    const content = isRecord(response['data']) ? response['data']['content'] : undefined
+    const contentRecord = isRecord(content) ? content : undefined
+    const { value, encoding } = decodeContent(contentRecord)
+
+    return {
+      key: request.key,
+      db: request.db,
+      connectionId,
+      keyDisplay: response['key_display'],
+      keyRaw: response['key_raw'] ?? null,
+      ttl: response['ttl'],
+      redisType: response['redis_type'],
+      value,
+      valueEncoding: encoding,
+      valueRawBase64: contentRecord?.['raw_base64'] ?? null,
+      raw: response,
+    }
+  }
+}
+
+const DbxServiceConfig: z<Config> = z.object({
+  endpoint: endpointField('dbx 平台地址，如 https://dbx.cn-0.dev.novo-one.com'),
+  passwordRef: credentialRefField('dbx 登录密码的凭据引用，如 REDIS_LOCAL_PASSWORD / DBX_REDIS_PASSWORD'),
+  password: secretField('内联登录密码（credential ref 优先；不推荐写在组合文件）'),
+  postgresConnectionId: z.string().description('优先使用的 postgres 连接 ID（原 db.connection_id）'),
+  redisConnectionId: z.string().description('优先使用的 redis 连接 ID（原 redis.connection_id）'),
+  timeoutMs: timeoutMsField(DEFAULT_TIMEOUT_MS),
+  sessionTtlMs: z.number().step(1).min(1).default(DEFAULT_SESSION_TTL_MS)
+    .description('session 内存缓存 TTL（毫秒），默认 24 小时（对齐 auth_cache 默认过期）'),
+  cacheTtlMs: z.number().step(1).min(1).default(DEFAULT_CACHE_TTL_MS)
+    .description('连接发现与数据库列表的内存缓存 TTL（毫秒），默认 24 小时'),
+})
+
+/**
+ * Mount both dbx Providers over one shared platform client. This function is
+ * the plugin entry used by hosts and assembly files; the two exported
+ * Provider classes and the client exist for direct construction in tests.
+ */
+export async function DbxService(ctx: Context, config: Config): Promise<void> {
+  const client = new DbxPlatformClient(ctx, config)
+  await ctx.plugin(DbxDbStore, {
+    client,
+    ...(config.postgresConnectionId !== undefined ? { preferredConnectionId: config.postgresConnectionId } : {}),
+  })
+  await ctx.plugin(DbxCacheStore, {
+    client,
+    ...(config.redisConnectionId !== undefined ? { preferredConnectionId: config.redisConnectionId } : {}),
+  })
+}
+
+DbxService.Config = DbxServiceConfig
 
 export default DbxService

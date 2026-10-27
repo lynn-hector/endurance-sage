@@ -50,6 +50,12 @@ describe('resolveCodeBaseDir', () => {
     expect(resolveCodeBaseDir()).toBe('/flat/novo-commctl')
   })
 
+  it('blank higher-priority values fall through to the credential store', () => {
+    stubStore('refs:\n  DSH_SENTRY_CODE_BASE: /store/novo-commctl\n')
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', '   ')
+    expect(resolveCodeBaseDir({ codeRepository: { baseDir: '' } })).toBe('/store/novo-commctl')
+  })
+
   it('environment variable wins over the credential store', () => {
     stubStore('refs:\n  DSH_SENTRY_CODE_BASE: /store/x\n')
     vi.stubEnv('DSH_SENTRY_CODE_BASE', '/env/novo-commctl')

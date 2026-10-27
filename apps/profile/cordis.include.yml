@@ -1,71 +1,31 @@
-# dsh-sentry 组装（env: dev-platform-hosted-0，include 格式）——由 apps/agent/envs.yml 生成，勿手改。
+# dsh-sentry 组装（env: tst-platform-hosted-0，include 格式）——由 apps/agent/envs.yml 生成，勿手改。
 # 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate
+  - id: sentry-env-binding
+    name: '@dsh-sentry/env-binding'
+    config:
+      defaultEnv: tst-platform-hosted-0
+  - id: sentry-env-provider
+    name: '@dsh-sentry/service-env-provider'
   - id: sentry-tool-env-switcher
     name: '@dsh-sentry/tool-env-switcher'
     config:
-      env: dev-platform-hosted-0
-  - id: sentry-greptimedb
-    name: '@dsh-sentry/service-greptimedb'
-    config:
-      endpoint: https://greptimedb.cn-0.dev.novo-one.com
-      database: public
-      usernameRef: GREPTIMEDB_DP0_USERNAME
-      passwordRef: GREPTIMEDB_DP0_PASSWORD
+      env: tst-platform-hosted-0
   - id: sentry-tool-log-analyzer
     name: '@dsh-sentry/tool-log-analyzer'
-  - id: sentry-trace
-    name: '@dsh-sentry/service-trace'
-    config:
-      mode: grafana-jaeger
-      endpoint: https://grafana.cn-0.dev.novo-one.com
-      usernameRef: GRAFANA_DP0_USERNAME
-      passwordRef: GRAFANA_DP0_PASSWORD
+  - id: sentry-tool-callflow-analyzer
+    name: '@dsh-sentry/tool-callflow-analyzer'
   - id: sentry-tool-trace-analyzer
     name: '@dsh-sentry/tool-trace-analyzer'
-    config:
-      greptimedbJaegerDatasourceUid: GreptimeDB-Jaeger
-  - id: sentry-prometheus
-    name: '@dsh-sentry/service-prometheus'
-    config:
-      grafanaEndpoint: https://grafana.cn-0.dev.novo-one.com
-      datasourceUid: prometheus
-      usernameRef: GRAFANA_DP0_USERNAME
-      passwordRef: GRAFANA_DP0_PASSWORD
-  - id: sentry-alertmanager
-    name: '@dsh-sentry/service-alertmanager'
-    config:
-      grafanaEndpoint: https://grafana.cn-0.dev.novo-one.com
-      datasourceUid: alertmanager
-      usernameRef: GRAFANA_DP0_USERNAME
-      passwordRef: GRAFANA_DP0_PASSWORD
   - id: sentry-tool-metrics-inspector
     name: '@dsh-sentry/tool-metrics-inspector'
-  - id: sentry-dbx
-    name: '@dsh-sentry/service-dbx'
-    config:
-      endpoint: https://dbx.cn-0.dev.novo-one.com
-      passwordRef: DBX_DP0_PASSWORD
   - id: sentry-tool-db-inspector
     name: '@dsh-sentry/tool-db-inspector'
     config:
       database: novo_commctl_config
   - id: sentry-tool-redis-inspector
     name: '@dsh-sentry/tool-redis-inspector'
-  - id: sentry-zadig
-    name: '@dsh-sentry/service-zadig'
-    config:
-      endpoint: https://zadig.yeastardigital.com
-      project: novo-one-helm-charts-project
-      envName: dev-platform-hosted-0
-      tokenRef: ZADIG_API_TOKEN
   - id: sentry-tool-zadig-inspector
     name: '@dsh-sentry/tool-zadig-inspector'
-  - id: sentry-service-rocketmq
-    name: '@dsh-sentry/service-rocketmq'
-    config:
-      endpoint: https://rocketmq.cn-0.dev.novo-one.com
-      usernameRef: ROCKETMQ_DP0_USERNAME
-      passwordRef: ROCKETMQ_DP0_PASSWORD
   - id: sentry-tool-mq-inspector
     name: '@dsh-sentry/tool-mq-inspector'
   - id: sentry-tapd
@@ -75,10 +35,10 @@
       tokenRef: TAPD_TOKEN
   - id: sentry-tool-tapd-inspector
     name: '@dsh-sentry/tool-tapd-inspector'
+  - id: sentry-code-repository
+    name: '@dsh-sentry/service-code-repository'
   - id: sentry-tool-code-repository
     name: '@dsh-sentry/tool-code-repository'
-    config:
-      baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
   - id: sentry-persona
     name: '@dsh-sentry/sentry-persona'
   - id: sentry-skills

@@ -96,6 +96,15 @@ export class AlertmanagerService extends Service {
     ctx.effect(() => () => this.keeper.clearSession())
   }
 
+  /**
+   * Non-secret backend identity for AM evidence refs: the Grafana host plus
+   * the datasource uid actually serving the legacy proxy. Consumers never
+   * assemble this from endpoints themselves.
+   */
+  get backendRef(): string {
+    return `grafana:${this.grafanaEndpoint}/datasources/uid/${this.datasourceUid}`
+  }
+
   /** Constructed active-alerts request, for tests and dry-run evidence. */
   buildAlertsRequest(): { url: string } {
     return {

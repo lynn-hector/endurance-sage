@@ -1,0 +1,23 @@
+{
+  "name": "@dsh-sentry/callflow-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend-neutral SIP call-flow Service Definition occupying ctx.callflowStore.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "^4.0.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

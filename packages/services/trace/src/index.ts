@@ -31,8 +31,15 @@
  * @module @dsh-sentry/service-trace
  */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import {
+  TraceStore,
+  type ParsedTrace,
+  type TraceQueryRequest,
+  type TraceSpan,
+  type TraceTag,
+} from '@dsh-sentry/trace-store'
 import {
   credentialRefField,
   endpointField,
@@ -82,59 +89,16 @@ export interface Config {
    * `auth_cache._DEFAULT_TTL_HOURS`.
    */
   sessionTtlMs?: number
-}
-
-/** Parameters of one trace query (the original script's per-run arguments). */
-export interface QueryTraceParams {
-  /** traceId / requestId, aligned with the `trace_id` field in logs. */
-  traceId: string
-  /** Range start: ISO8601 or `now-1h` / `now-30m` / `now-1d`. Defaults to `now-1h`. */
-  start?: string
-  /** Range end: ISO8601 or `now`. Defaults to `now`. */
-  end?: string
-  /** Search mode: service name (reserved pass-through, single string). */
-  service?: string
-  /** Search mode: operation name (reserved pass-through, single string). */
-  operation?: string
-  /** Grafana datasource uid (grafana-jaeger mode; from tool plugin Config). */
+  /** Grafana Jaeger datasource uid; Provider configuration, never a Consumer argument. */
   datasourceUid?: string
-  /** Grafana numeric datasource id override (grafana-jaeger mode). */
+  /** Optional Grafana numeric datasource id. */
   datasourceId?: number
 }
 
-/** One Jaeger tag as carried in Grafana frames (`{key, value, ...}`). */
-export interface TraceTag {
-  key?: unknown
-  value?: unknown
-}
+export type { ParsedTrace, TraceQueryRequest, TraceSpan, TraceTag } from '@dsh-sentry/trace-store'
 
-/** One analyzed span; field names keep the original snake_case contract. */
-export interface TraceSpan {
-  span_id: unknown
-  parent_id: unknown
-  operation: unknown
-  service: unknown
-  start_time: unknown
-  duration_ms: number
-  tags: TraceTag[]
-  stack_traces: unknown
-  status: 'ok' | 'error'
-}
-
-/** Parsed trace analysis, mirroring `_parse_trace_response`'s result dict. */
-export interface ParsedTrace {
-  duration_ms: number
-  status: 'ok' | 'error' | 'unknown'
-  services: string[]
-  spans: TraceSpan[]
-  /** Top-5 slowest spans with duration > 100ms. */
-  slow_spans: TraceSpan[]
-  /** Spans whose status is `error`. */
-  errors: TraceSpan[]
-  frames_count: number
-  /** Original response, kept when the structure is unrecognized. */
-  raw_response?: unknown
-}
+/** @deprecated Use TraceQueryRequest from @dsh-sentry/trace-store. */
+export type QueryTraceParams = TraceQueryRequest
 
 /** A built HTTP request, ready for `fetch`; headers as a plain record. */
 export interface BuiltRequest {
@@ -450,7 +414,7 @@ export function parseJaegerTraceResponse(response: unknown): ParsedTrace {
   return { ...finalizeParsedTrace(spans), frames_count: data.length }
 }
 
-export class TraceService extends Service {
+export class TraceService extends TraceStore {
   static Config: z<Config> = z.object({
     mode: z.union([z.const('grafana-jaeger'), z.const('jaeger')]).default('grafana-jaeger')
       .description('查询模式：grafana-jaeger（Grafana 代理 Jaeger 数据源）或 jaeger（Jaeger 原生 API）'),
@@ -464,6 +428,8 @@ export class TraceService extends Service {
     timeoutMs: timeoutMsField(30_000),
     sessionTtlMs: z.number().step(1).min(1).default(DEFAULT_SESSION_TTL_MS)
       .description('grafana_session 内存缓存 TTL（毫秒），默认 24 小时'),
+    datasourceUid: z.string().description('Grafana 内 Jaeger 数据源 uid（grafana-jaeger 模式必填）'),
+    datasourceId: z.number().step(1).description('Grafana 数据源数字 id（可选，原 config 为 6）'),
   })
 
   /** Configured endpoint with trailing slashes stripped, for evidence metadata. */
@@ -476,7 +442,7 @@ export class TraceService extends Service {
   private readonly keeper: GrafanaSessionKeeper
 
   constructor(ctx: Context, config: Config = { endpoint: '' }) {
-    super(ctx, 'trace')
+    super(ctx)
     // The schema already defaulted optional fields under the Loader; the ??
     // narrows the type for direct (non-Loader) construction in tests.
     this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
@@ -592,6 +558,13 @@ export class TraceService extends Service {
     }
   }
 
+  /** Non-secret backend identity included in trace evidence refs. */
+  override get backendRef(): string {
+    return this.mode === 'jaeger'
+      ? `jaeger:${this.endpoint}`
+      : `grafana:${this.config.datasourceUid ?? 'jaeger'}`
+  }
+
   /**
    * Query one trace by id and return the parsed analysis.
    *
@@ -603,14 +576,14 @@ export class TraceService extends Service {
    * In jaeger mode `start`/`end` are accepted but unused: the native
    * `/api/traces/{traceId}` endpoint has no time-range parameters.
    */
-  async queryTrace(params: QueryTraceParams): Promise<ParsedTrace> {
+  override async queryTrace(params: TraceQueryRequest): Promise<ParsedTrace> {
     if (this.mode === 'jaeger') {
       const token = await this.bearerToken()
       const response = await this.queryViaJaeger(token, params.traceId)
       return parseJaegerTraceResponse(response)
     }
 
-    const datasourceUid = params.datasourceUid ?? ''
+    const datasourceUid = this.config.datasourceUid ?? ''
     if (!datasourceUid) {
       throw new Error('traces.datasource_uid 缺失，请检查插件配置')
     }
@@ -622,7 +595,7 @@ export class TraceService extends Service {
 
     const queryOptions = (session: string) => ({
       datasourceUid,
-      ...params.datasourceId !== undefined ? { datasourceId: params.datasourceId } : {},
+      ...this.config.datasourceId !== undefined ? { datasourceId: this.config.datasourceId } : {},
       session,
       traceId: params.traceId,
       startMs,
@@ -659,7 +632,7 @@ export class TraceService extends Service {
    * bearer token. Unlike the script's dry-run, the preview URL includes the
    * query string actually used (the original printed a bare path).
    */
-  async buildQueryPreview(params: QueryTraceParams): Promise<Record<string, unknown>> {
+  async buildQueryPreview(params: TraceQueryRequest): Promise<Record<string, unknown>> {
     const nowMs = Date.now()
     const startMs = params.start ? parseTraceTime(params.start, nowMs) : nowMs - 3600_000
     const endMs = params.end ? parseTraceTime(params.end, nowMs) : nowMs
@@ -672,14 +645,14 @@ export class TraceService extends Service {
       }
     }
 
-    const datasourceUid = params.datasourceUid ?? ''
+    const datasourceUid = this.config.datasourceUid ?? ''
     if (!datasourceUid) {
       throw new Error('traces.datasource_uid 缺失，请检查插件配置')
     }
     const request = buildGrafanaQueryRequest({
       endpoint: this.endpoint,
       datasourceUid,
-      ...params.datasourceId !== undefined ? { datasourceId: params.datasourceId } : {},
+      ...this.config.datasourceId !== undefined ? { datasourceId: this.config.datasourceId } : {},
       session: '...',
       traceId: params.traceId,
       startMs,
@@ -692,12 +665,6 @@ export class TraceService extends Service {
       headers: { cookie: `${SESSION_COOKIE}=...` },
       body: request.body !== undefined ? JSON.parse(request.body) as unknown : null,
     }
-  }
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    trace: TraceService
   }
 }
 
