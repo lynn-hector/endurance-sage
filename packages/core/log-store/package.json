@@ -14,7 +14,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "^4.0.1"
+    "@deepseek-ai/cordis": "^4.0.5"
   },
   "devDependencies": {
     "typescript": "^5.9.0",

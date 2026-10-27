@@ -14,7 +14,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/cordis": "^4.0.5",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@dsh-sentry/cache-store": "workspace:*",
     "@dsh-sentry/datasource": "workspace:*",

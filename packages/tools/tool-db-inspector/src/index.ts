@@ -27,11 +27,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
+import type { DbStore } from '@dsh-sentry/db-store'
 import type {} from '@dsh-sentry/db-store'
+import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-db-inspector'
@@ -64,12 +66,30 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** The store, env label and lease one call fixed at its start. */
+interface CallProvider {
+  env: string
+  store: DbStore
+  release: () => Promise<void>
+}
+
 /** Register the SQL query tool against the backend-neutral seam. */
 export function apply(ctx: Context, config: Config): void {
   // Env label resolves per call from the assembly files: this plugin injects a
   // service, so a service config swap can leave this instance frozen on
   // boot-time config (see @dsh-sentry/env-matrix).
   const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
+
+  // Session-routed hosts resolve the Provider through the calling session's
+  // binding; legacy hosts keep the global store and assembly env label.
+  const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
+    const envProviders = ctx.get('envProviders')
+    if (envProviders !== undefined) {
+      const lease = await envProviders.forCall(exec)
+      return { env: lease.env, store: lease.require('dbStore'), release: lease.release }
+    }
+    return { env: liveEnv(), store: ctx.dbStore, release: async () => {} }
+  }
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_db',
@@ -87,46 +107,50 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      const store = ctx.dbStore
-      const backendRef = store.backendRef
-      const refs = (): string[] => [backendRef, `env:${liveEnv()}:db`]
-
-      // Original `_get_database`: CLI param wins, then db.database/db.schema.
-      const database = args.database ?? config.database ?? ''
-      if (database.length === 0) {
-        return buildEvidenceError({
-          source: SOURCE,
-          type: TYPE,
-          error: `config/${liveEnv()}.yml 中 db.database 或 db.schema 缺失，也可通过 database 参数指定`,
-          summary: '缺少数据库名配置',
-          refs: refs(),
-        }) as unknown as JsonValue
-      }
-
-      const maxRows = args.maxRows ?? DEFAULT_MAX_ROWS
-
-      if (args.dryRun === true) {
-        // Deviation (module doc): neutral evidence envelope instead of the raw
-        // HTTP request the script printed.
-        return buildEvidence({
-          source: SOURCE,
-          type: TYPE,
-          data: {
-            env: liveEnv(),
-            dry_run: true,
-            backend_ref: backendRef,
-            sql: args.sql,
-            database,
-            maxRows,
-          },
-          summary: `[dry-run] env=${liveEnv()} 构造 SQL 查询请求，未发送。`,
-          confidence: 1.0,
-          refs: refs(),
-        }) as unknown as JsonValue
-      }
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
+        call = await routeStore(exec)
+        // Env, backend identity and Provider are fixed before the first await
+        // on backend I/O. A concurrent Session switch affects only later calls.
+        const { env, store } = call
+        const backendRef = store.backendRef
+        const refs = (): string[] => [backendRef, `env:${env}:db`]
+
+        // Original `_get_database`: CLI param wins, then db.database/db.schema.
+        const database = args.database ?? config.database ?? ''
+        if (database.length === 0) {
+          return buildEvidenceError({
+            source: SOURCE,
+            type: TYPE,
+            error: `config/${env}.yml 中 db.database 或 db.schema 缺失，也可通过 database 参数指定`,
+            summary: '缺少数据库名配置',
+            refs: refs(),
+          }) as unknown as JsonValue
+        }
+
+        const maxRows = args.maxRows ?? DEFAULT_MAX_ROWS
+
+        if (args.dryRun === true) {
+          // Deviation (module doc): neutral evidence envelope instead of the raw
+          // HTTP request the script printed.
+          return buildEvidence({
+            source: SOURCE,
+            type: TYPE,
+            data: {
+              env,
+              dry_run: true,
+              backend_ref: backendRef,
+              sql: args.sql,
+              database,
+              maxRows,
+            },
+            summary: `[dry-run] env=${env} 构造 SQL 查询请求，未发送。`,
+            confidence: 1.0,
+            refs: refs(),
+          }) as unknown as JsonValue
+        }
+
         const { connectionId, results } = await store.querySql({ sql: args.sql, database, maxRows })
 
         // Original `_build_evidence`: only the first result set is surfaced.
@@ -149,7 +173,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env,
             backend_ref: backendRef,
             sql: args.sql,
             database,
@@ -168,13 +192,16 @@ export function apply(ctx: Context, config: Config): void {
           refs: refs(),
         }) as unknown as JsonValue
       } catch (error) {
+        const backendRef = call?.store.backendRef
         return buildEvidenceError({
           source: SOURCE,
           type: TYPE,
           error: errorMessage(error),
           summary: `SQL 查询失败: ${errorMessage(error)}`,
-          refs: refs(),
+          refs: backendRef === undefined ? [] : [backendRef, `env:${call?.env ?? 'unknown'}:db`],
         }) as unknown as JsonValue
+      } finally {
+        await call?.release()
       }
     },
   }))

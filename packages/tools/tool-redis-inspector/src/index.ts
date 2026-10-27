@@ -1,26 +1,9 @@
 /**
  * Redis inspector Tool Consumer.
  *
- * Depends only on the CacheStore Definition. The dbx platform protocol
- * (base64 `keyRaw` wire call), connection discovery, session refresh and
- * value decoding belong to the Provider; the tool receives an already
- * decoded neutral entry. The model-facing entrypoint (`sentry_query_redis`),
- * the default db index and the evidence envelope are kept.
- *
- * Port of the original `skills/redis-inspector` (SKILL.md +
- * scripts/inspect.py).
- *
- * Deliberate normalizations (recorded drift):
- * - the original `_build_evidence` returned bare evidence fields without the
- *   `{ evidence: ... }` envelope mandated by `templates/evidence-format.md`;
- *   this tool emits the standard envelope via `@dsh-sentry/evidence`;
- * - the original `--dry-run` printed the raw HTTP request (URL, cookie
- *   header, base64 body); this tool returns an evidence envelope marked
- *   `dry_run: true` with the backend-neutral request only (key + db +
- *   backend_ref) — wire details no longer cross the seam;
- * - missing endpoint/password crashed the original with RuntimeError; that
- *   guard now lives in the Provider (`dbx endpoint 或登录密码缺失…`) and
- *   surfaces here as an error evidence envelope (confidence 0).
+ * Session-routed hosts resolve a leased Provider through envProviders. Legacy
+ * hosts without that module keep using the global CacheStore and assembly env
+ * label. Backend authentication and wire decoding stay in the Provider.
  *
  * @module @dsh-sentry/tool-redis-inspector
  */
@@ -31,25 +14,25 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
-import type {} from '@dsh-sentry/cache-store'
+import type { CacheStore } from '@dsh-sentry/cache-store'
+import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-redis-inspector'
 
-/** The capability slots this plugin registers into. */
-export const inject = ['tools', 'cacheStore']
+/** ToolRuntime is required; Provider seams are selected per call. */
+export const inject = ['tools']
 
-/** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
-  /** Env label fallback when the assembly files are unreadable (local dev hosts set it explicitly; matrix assemblies omit it). */
+  /** Legacy env label fallback when no Session Provider router is mounted. */
   env?: string
-  /** Default Redis db index (the original `redis.db` config field, default 0). Caller intent, not Provider configuration. */
+  /** Default Redis db index. */
   db?: number
 }
 
 export const Config: z<Config> = z.object({
-  env: z.string().description('环境标签回退值：装配文件不可读时使用；矩阵装配不设置，本地 dev host 显式传'),
-  db: z.number().step(1).min(0).default(0).description('默认 Redis db 索引（原 redis.db，默认 0）'),
+  env: z.string().description('旧全局装配的环境标签回退值'),
+  db: z.number().step(1).min(0).default(0).description('默认 Redis db 索引'),
 })
 
 const SOURCE = 'redis-inspector'
@@ -59,12 +42,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+interface CallProvider {
+  env: string
+  store: CacheStore
+  release: () => Promise<void>
+}
+
 /** Register the Redis query tool against the backend-neutral seam. */
 export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
+  const legacyEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_redis',
@@ -72,7 +58,7 @@ export function apply(ctx: Context, config: Config): void {
       'Query one Redis key through the dbx platform: value (base64-decoded, JSON-parsed when possible), '
       + 'TTL, and type. Read-only. Session and connection discovery are handled automatically.',
     parameters: {
-      key: { type: 'string', required: true, description: 'The Redis key (raw string).' },
+      key: { type: 'string', required: true, description: 'Redis key (raw string).' },
       db: { type: 'number', description: 'Redis db index. Defaults to the plugin configuration.' },
       dryRun: { type: 'boolean', default: false, description: 'Only return the constructed request, do not send.' },
     },
@@ -80,34 +66,40 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      const store = ctx.cacheStore
-      const backendRef = store.backendRef
-      const refs = (): string[] => [backendRef, `env:${liveEnv()}:redis`]
-      const db = args.db ?? config.db ?? 0
-
-      if (args.dryRun === true) {
-        // Deviation (module doc): neutral evidence envelope instead of the raw
-        // HTTP request the script printed.
-        return buildEvidence({
-          source: SOURCE,
-          type: TYPE,
-          data: {
-            env: liveEnv(),
-            dry_run: true,
-            backend_ref: backendRef,
-            key: args.key,
-            db,
-          },
-          summary: `[dry-run] env=${liveEnv()} 构造 Redis 查询请求，未发送。`,
-          confidence: 1.0,
-          refs: refs(),
-        }) as unknown as JsonValue
-      }
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
-        const entry = await store.getValue({ key: args.key, db })
+        const envProviders = ctx.get('envProviders')
+        let resolved: CallProvider
+        if (envProviders !== undefined) {
+          const lease = await envProviders.forCall(exec)
+          resolved = { env: lease.env, store: lease.require('cacheStore'), release: lease.release }
+        } else {
+          const store = ctx.get('cacheStore')
+          if (store === undefined) throw new Error('Redis Provider 未加载，且 Session 环境 Provider 不可用')
+          resolved = { env: legacyEnv(), store, release: async () => {} }
+        }
+        call = resolved
 
+        // Env, backend identity and Provider are fixed before the first await
+        // on backend I/O. A concurrent Session switch affects only later calls.
+        const { env, store } = resolved
+        const backendRef = store.backendRef
+        const refs = [backendRef, `env:${env}:redis`]
+        const db = args.db ?? config.db ?? 0
+
+        if (args.dryRun === true) {
+          return buildEvidence({
+            source: SOURCE,
+            type: TYPE,
+            data: { env, dry_run: true, backend_ref: backendRef, key: args.key, db },
+            summary: `[dry-run] env=${env} 构造 Redis 查询请求，未发送。`,
+            confidence: 1.0,
+            refs,
+          }) as unknown as JsonValue
+        }
+
+        const entry = await store.getValue({ key: args.key, db })
         const summaryParts = [`Redis key \`${args.key}\` 查询完成`]
         if (entry.redisType) summaryParts.push(`类型 ${String(entry.redisType)}`)
         if (entry.ttl !== undefined && entry.ttl !== null) summaryParts.push(`TTL ${String(entry.ttl)}s`)
@@ -117,7 +109,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env,
             backend_ref: backendRef,
             key: args.key,
             key_display: entry.keyDisplay ?? null,
@@ -133,16 +125,19 @@ export function apply(ctx: Context, config: Config): void {
           },
           summary: summaryParts.join('，'),
           confidence: entry.keyDisplay ? 0.95 : 0.5,
-          refs: refs(),
+          refs,
         }) as unknown as JsonValue
       } catch (error) {
+        const backendRef = call?.store.backendRef
         return buildEvidenceError({
           source: SOURCE,
           type: TYPE,
           error: errorMessage(error),
           summary: `Redis 查询失败: ${errorMessage(error)}`,
-          refs: refs(),
+          refs: backendRef === undefined ? [] : [backendRef, `env:${call?.env ?? 'unknown'}:redis`],
         }) as unknown as JsonValue
+      } finally {
+        await call?.release()
       }
     },
   }))

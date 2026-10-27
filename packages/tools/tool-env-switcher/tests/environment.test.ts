@@ -201,6 +201,8 @@ describe('environment tools', () => {
     const registered: RegisteredTool[] = []
     apply({
       tools: { register: (tool: RegisteredTool) => registered.push(tool) },
+      // 无 envBinding 服务 → Tool 走 legacy 全局路径（本用例断言的正是该路径）
+      get: () => undefined,
     } as unknown as Context, {
       env: 'dev-platform-hosted-0',
       envsPath: config.envsPath,

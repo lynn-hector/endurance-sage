@@ -32,12 +32,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
-import { parseTimeMs, type MqMessageDetailResult, type MqMessageListResult } from '@dsh-sentry/mq-store'
+import { parseTimeMs, type MqMessageDetailResult, type MqMessageListResult, type MqStore } from '@dsh-sentry/mq-store'
 import type {} from '@dsh-sentry/mq-store'
+import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-mq-inspector'
@@ -177,12 +178,30 @@ export function listEvidence(
   }))
 }
 
+/** The store, env label and lease one call fixed at its start. */
+interface CallProvider {
+  env: string
+  store: MqStore
+  release: () => Promise<void>
+}
+
 /** Register the MQ query tool against the backend-neutral seam. */
 export function apply(ctx: Context, config: Config): void {
   // Env label resolves per call from the assembly files: this plugin injects a
   // service, so a service config swap can leave this instance frozen on
   // boot-time config (see @dsh-sentry/env-matrix).
   const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
+
+  // Session-routed hosts resolve the Provider through the calling session's
+  // binding; legacy hosts keep the global store and assembly env label.
+  const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
+    const envProviders = ctx.get('envProviders')
+    if (envProviders !== undefined) {
+      const lease = await envProviders.forCall(exec)
+      return { env: lease.env, store: lease.require('mqStore'), release: lease.release }
+    }
+    return { env: liveEnv(), store: ctx.mqStore, release: async () => {} }
+  }
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_mq',
@@ -204,19 +223,23 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      const store = ctx.mqStore
-      const backendRef = store.backendRef
-      const refs = (): string[] => [backendRef, `env:${liveEnv()}:mq`]
-
-      // Original defaults: end = now, begin = 1 hour ago.
-      const endMs = parseTimeMs(args.end, Date.now())
-      const beginMs = parseTimeMs(args.begin, endMs - 3_600_000)
-      const pageNum = args.pageNum ?? 1
-      const pageSize = args.pageSize ?? 10
-      const keyword = args.keyword ?? ''
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
+        call = await routeStore(exec)
+        // Env, backend identity and Provider are fixed before the first await
+        // on backend I/O. A concurrent Session switch affects only later calls.
+        const { env, store } = call
+        const backendRef = store.backendRef
+        const refs = (): string[] => [backendRef, `env:${env}:mq`]
+
+        // Original defaults: end = now, begin = 1 hour ago.
+        const endMs = parseTimeMs(args.end, Date.now())
+        const beginMs = parseTimeMs(args.begin, endMs - 3_600_000)
+        const pageNum = args.pageNum ?? 1
+        const pageSize = args.pageSize ?? 10
+        const keyword = args.keyword ?? ''
+
         if (args.dryRun === true) {
           // Backend-neutral request only: console URLs and wire bodies are
           // Provider internals (module doc records the drift).
@@ -234,7 +257,7 @@ export function apply(ctx: Context, config: Config): void {
           return asEvidence(buildEvidence({
             source: SOURCE,
             type: TYPE,
-            data: { env: liveEnv(), dry_run: true, backend_ref: backendRef, request },
+            data: { env, dry_run: true, backend_ref: backendRef, request },
             summary: 'DRY-RUN：只构造请求，不发送',
             confidence: 0.5,
             refs: refs(),
@@ -243,28 +266,32 @@ export function apply(ctx: Context, config: Config): void {
 
         if (args.msgId !== undefined) {
           const result = await store.queryMessageDetail({ topic: args.topic, msgId: args.msgId })
-          return detailEvidence(liveEnv(), backendRef, args.topic, args.msgId, result)
+          return detailEvidence(env, backendRef, args.topic, args.msgId, result)
         }
 
         const result = await store.queryMessages({
           topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword,
         })
-        return listEvidence(liveEnv(), backendRef, { topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword }, result)
+        return listEvidence(env, backendRef, { topic: args.topic, beginMs, endMs, pageNum, pageSize, keyword }, result)
       } catch (error) {
         return asEvidence(buildEvidence({
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
-            backend_ref: backendRef,
+            env: call?.env ?? 'unknown',
+            backend_ref: call?.store.backendRef ?? null,
             topic: args.topic,
             msg_id: args.msgId ?? null,
             error: errorMessage(error),
           },
           summary: `查询 RocketMQ 消息失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs: refs(),
+          refs: call?.store.backendRef === undefined
+            ? []
+            : [call.store.backendRef, `env:${call.env}:mq`],
         }))
+      } finally {
+        await call?.release()
       }
     },
   }))

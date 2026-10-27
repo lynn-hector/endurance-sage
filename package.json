@@ -17,6 +17,7 @@
     "profile:link": "node scripts/link-profile.mjs"
   },
   "devDependencies": {
+    "@dsh-sentry/env-binding": "workspace:*",
     "@dsh-sentry/env-matrix": "workspace:*",
     "@dsh-sentry/datasource": "workspace:*",
     "@dsh-sentry/evidence": "workspace:*",

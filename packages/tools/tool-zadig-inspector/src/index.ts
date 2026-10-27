@@ -32,12 +32,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
 import { parseImageTag, type ZadigServiceRow, type ZadigWorkflowTask } from '@dsh-sentry/service-zadig'
 import type {} from '@dsh-sentry/service-zadig'
+import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-zadig-inspector'
@@ -201,6 +202,26 @@ export function apply(ctx: Context, config: Config): void {
   // boot-time config (see @dsh-sentry/env-matrix).
   const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
 
+  // The service, env label and lease one call fixed at its start. Typed
+  // through the Cordis slot (Context['zadig']) — tools never bind the
+  // Provider class name itself.
+  interface CallProvider {
+    env: string
+    store: Context['zadig']
+    release: () => Promise<void>
+  }
+
+  // Session-routed hosts resolve the Provider through the calling session's
+  // binding; legacy hosts keep the global service and assembly env label.
+  const routeService = async (exec: ToolRunContext): Promise<CallProvider> => {
+    const envProviders = ctx.get('envProviders')
+    if (envProviders !== undefined) {
+      const lease = await envProviders.forCall(exec)
+      return { env: lease.env, store: lease.require('zadig'), release: lease.release }
+    }
+    return { env: liveEnv(), store: ctx.zadig, release: async () => {} }
+  }
+
   ctx.tools.register(defineTool({
     name: 'sentry_query_zadig',
     description:
@@ -221,90 +242,111 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      // One Provider snapshot per call: identity and transport agree even if
-      // a hot swap replaces the service mid-execution.
-      const zadig = ctx.zadig
-      const identity: ZadigIdentity = {
-        project: zadig.project,
-        envName: zadig.envName,
-        backendRef: zadig.backendRef,
-      }
-      const refs = (): string[] => [identity.backendRef, `env:${liveEnv()}:zadig`]
-
-      const service = args.service
-      const workflow = args.workflow
-      const isWorkflow = workflow !== undefined && workflow.length > 0
-      const pageSize = Math.min(Math.max(Number(args.pageSize) || 20, 1), 50)
-      const workflowQuery = isWorkflow
-        ? {
-            workflowName: workflow as string,
-            project: typeof args.project === 'string' && args.project.length > 0 ? args.project : undefined,
-            pageSize,
-          }
-        : undefined
-      const detailService = workflowQuery === undefined && typeof service === 'string' && service.length > 0
-        ? service
-        : undefined
-
-      if (args.dryRun === true) {
-        // Backend-neutral request only: the OpenAPI URL, method and query
-        // params are Provider internals (module doc records the drift).
-        const request = workflowQuery !== undefined
-          ? {
-            mode: 'workflow_tasks' as const,
-            workflow: workflowQuery.workflowName,
-            ...(workflowQuery.project !== undefined ? { project: workflowQuery.project } : {}),
-            page_size: pageSize,
-          }
-          : detailService !== undefined
-            ? { mode: 'service_detail' as const, service: detailService }
-            : { mode: 'list_workloads' as const }
-        return buildEvidence({
-          source: SOURCE,
-          type: TYPE,
-          data: {
-            env: liveEnv(),
-            dry_run: true,
-            backend_ref: identity.backendRef,
-            request,
-          },
-          summary: `[dry-run] 构造 Zadig ${workflowQuery !== undefined ? `工作流 ${String(workflow)} 历史` : detailService !== undefined ? `服务 ${detailService} 详情` : '环境服务列表'}查询请求，未发送。`,
-          confidence: 1.0,
-          refs: refs(),
-        }) as unknown as JsonValue
-      }
-
-      if (args.demo === true) {
-        if (workflowQuery !== undefined) {
-          return workflowEvidence(liveEnv(), identity, workflow as string, workflowQuery.project, demoWorkflowTasks(workflow as string), true, undefined)
-        }
-        if (detailService !== undefined) {
-          return detailEvidence(liveEnv(), identity, detailService, demoLatestDeployment(detailService), true, undefined)
-        }
-        return listEvidence(liveEnv(), identity, demoServices(), true, undefined)
-      }
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
+        call = await routeService(exec)
+        // One Provider snapshot per call: identity and transport agree even if
+        // a Session switch rebinds the route mid-execution.
+        const { env, store: zadig } = call
+        const identity: ZadigIdentity = {
+          project: zadig.project,
+          envName: zadig.envName,
+          backendRef: zadig.backendRef,
+        }
+        const refs = (): string[] => [identity.backendRef, `env:${env}:zadig`]
+
+        const service = args.service
+        const workflow = args.workflow
+        const isWorkflow = workflow !== undefined && workflow.length > 0
+        const pageSize = Math.min(Math.max(Number(args.pageSize) || 20, 1), 50)
+        const workflowQuery = isWorkflow
+          ? {
+              workflowName: workflow as string,
+              project: typeof args.project === 'string' && args.project.length > 0 ? args.project : undefined,
+              pageSize,
+            }
+          : undefined
+        const detailService = workflowQuery === undefined && typeof service === 'string' && service.length > 0
+          ? service
+          : undefined
+
+        if (args.dryRun === true) {
+          // Backend-neutral request only: the OpenAPI URL, method and query
+          // params are Provider internals (module doc records the drift).
+          const request = workflowQuery !== undefined
+            ? {
+              mode: 'workflow_tasks' as const,
+              workflow: workflowQuery.workflowName,
+              ...(workflowQuery.project !== undefined ? { project: workflowQuery.project } : {}),
+              page_size: pageSize,
+            }
+            : detailService !== undefined
+              ? { mode: 'service_detail' as const, service: detailService }
+              : { mode: 'list_workloads' as const }
+          return buildEvidence({
+            source: SOURCE,
+            type: TYPE,
+            data: {
+              env,
+              dry_run: true,
+              backend_ref: identity.backendRef,
+              request,
+            },
+            summary: `[dry-run] 构造 Zadig ${workflowQuery !== undefined ? `工作流 ${String(workflow)} 历史` : detailService !== undefined ? `服务 ${detailService} 详情` : '环境服务列表'}查询请求，未发送。`,
+            confidence: 1.0,
+            refs: refs(),
+          }) as unknown as JsonValue
+        }
+
+        if (args.demo === true) {
+          if (workflowQuery !== undefined) {
+            return workflowEvidence(env, identity, workflow as string, workflowQuery.project, demoWorkflowTasks(workflow as string), true, undefined)
+          }
+          if (detailService !== undefined) {
+            return detailEvidence(env, identity, detailService, demoLatestDeployment(detailService), true, undefined)
+          }
+          return listEvidence(env, identity, demoServices(), true, undefined)
+        }
+
         if (workflowQuery !== undefined) {
           const tasks = await zadig.fetchWorkflowTasks(workflowQuery)
-          return workflowEvidence(liveEnv(), identity, workflow as string, workflowQuery.project, tasks, false, undefined)
+          return workflowEvidence(env, identity, workflow as string, workflowQuery.project, tasks, false, undefined)
         }
         if (detailService !== undefined) {
           const deployment = await zadig.fetchServiceDetail(detailService)
-          return detailEvidence(liveEnv(), identity, detailService, deployment, false, undefined)
+          return detailEvidence(env, identity, detailService, deployment, false, undefined)
         }
         const services = await zadig.fetchServices()
-        return listEvidence(liveEnv(), identity, services, false, undefined)
+        return listEvidence(env, identity, services, false, undefined)
       } catch (error) {
         const message = errorMessage(error)
-        if (workflowQuery !== undefined) {
-          return workflowEvidence(liveEnv(), identity, workflow as string, workflowQuery.project, [], false, message)
+        const env = call?.env ?? 'unknown'
+        const fallbackIdentity: ZadigIdentity = call === undefined
+          ? { project: '', envName: '', backendRef: 'zadig:unresolved' }
+          : { project: call.store.project, envName: call.store.envName, backendRef: call.store.backendRef }
+        const workflow = args.workflow
+        const isWorkflow = workflow !== undefined && workflow.length > 0
+        const detailService = !isWorkflow && typeof args.service === 'string' && args.service.length > 0
+          ? args.service
+          : undefined
+        if (isWorkflow) {
+          return workflowEvidence(
+            env,
+            fallbackIdentity,
+            workflow as string,
+            typeof args.project === 'string' && args.project.length > 0 ? args.project : undefined,
+            [],
+            false,
+            message,
+          )
         }
         if (detailService !== undefined) {
-          return detailEvidence(liveEnv(), identity, detailService, {}, false, message)
+          return detailEvidence(env, fallbackIdentity, detailService, {}, false, message)
         }
-        return listEvidence(liveEnv(), identity, [], false, message)
+        return listEvidence(env, fallbackIdentity, [], false, message)
+      } finally {
+        await call?.release()
       }
     },
   }))

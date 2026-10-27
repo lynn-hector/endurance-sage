@@ -80,6 +80,15 @@ export function resolveEnvName(input: string, matrix: Matrix): string | undefine
   return canonical !== undefined && Object.hasOwn(matrix, canonical) ? canonical : undefined
 }
 
+/** Read the shared YAML environment matrix without interpreting credentials. */
+export function readMatrix(path: string): Matrix {
+  const parsed = parse(readFileSync(path, 'utf8')) as Matrix | null
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`环境矩阵不是合法对象: ${path}`)
+  }
+  return parsed
+}
+
 export function aliasesForEnv(name: string): string[] {
   return Object.entries(ENV_ALIASES)
     .filter(([, canonical]) => canonical === name)
@@ -273,6 +282,17 @@ export function renderEntries(row: EnvRow): Entry[] {
   const env = row.envLabel
   const codeBaseDir = resolveCodeBaseDir(row)
   return [
+    // Session 绑定与 Provider 池是宿主级入口（docs/architecture/session-env-routing.md）：
+    // 装配后证据 Tool 自动走 Session 路由分支，legacy 全局服务条目退居回退路径。
+    // defaultEnv 跟随本组装环境，作为新 Session 与失效绑定恢复的 runtime 默认；
+    // 矩阵路径由两端共享的 defaultEnvsPath()（支持 DSH_SENTRY_ENVS_PATH 覆盖），
+    // 组装不重复该路径。
+    {
+      id: 'sentry-env-binding',
+      name: '@dsh-sentry/env-binding',
+      config: { defaultEnv: env },
+    },
+    { id: 'sentry-env-provider', name: '@dsh-sentry/service-env-provider' },
     {
       id: ENV_SWITCHER_ENTRY_ID,
       name: '@dsh-sentry/tool-env-switcher',
@@ -466,6 +486,19 @@ export function defaultAssemblyPaths(): AssemblyPaths {
     include: join(repoRoot, 'apps/profile/cordis.include.yml'),
     patch: join(repoRoot, 'apps/profile/cordis.patch.yml'),
   }
+}
+
+/**
+ * Repo-relative default matrix location (`apps/agent/envs.yml`), or
+ * `$DSH_SENTRY_ENVS_PATH` when set. Shared by the Session binding store and
+ * the environment Provider pool so a profile assembly never needs to repeat
+ * the path.
+ */
+export function defaultEnvsPath(): string {
+  const override = process.env.DSH_SENTRY_ENVS_PATH
+  if (override !== undefined && override.length > 0) return override
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+  return join(repoRoot, 'apps/agent/envs.yml')
 }
 
 /** Assembly entries flattened from either file format (bare list or `- insert:`). */

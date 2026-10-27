@@ -2,6 +2,12 @@
 # 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate
 
 - insert:
+    - id: sentry-env-binding
+      name: '@dsh-sentry/env-binding'
+      config:
+        defaultEnv: dev-platform-hosted-0
+    - id: sentry-env-provider
+      name: '@dsh-sentry/service-env-provider'
     - id: sentry-tool-env-switcher
       name: '@dsh-sentry/tool-env-switcher'
       config:
@@ -84,13 +90,36 @@
         tokenRef: TAPD_TOKEN
     - id: sentry-tool-tapd-inspector
       name: '@dsh-sentry/tool-tapd-inspector'
-    - id: sentry-tool-code-repository
-      name: '@dsh-sentry/tool-code-repository'
+    - id: sentry-code-repository
+      name: '@dsh-sentry/service-code-repository'
       config:
         baseDir: /Users/yangfm/workspace/work/novo-one/novo-commctl
+    - id: sentry-tool-code-repository
+      name: '@dsh-sentry/tool-code-repository'
     - id: sentry-persona
       name: '@dsh-sentry/sentry-persona'
     - id: sentry-skills
       name: '@dsh-sentry/sentry-skills'
     - id: sentry-git-guard
       name: '@dsh-sentry/guard-git'
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-09-28.1
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      kimi-coding:
+        apiKeyEnv: KIMI_CODING_API_KEY
+      zai-coding-cn:
+        apiKeyEnv: ZAI_CODING_CN_API_KEY
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: zai-coding-cn
+    model: glm-5.3
+- id: ui-theme
+  name: "@deepseek-ai/dsh-client-ui-theme"
+  config:
+    preference: system

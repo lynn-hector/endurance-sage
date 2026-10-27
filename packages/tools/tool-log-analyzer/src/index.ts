@@ -12,11 +12,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence, buildEvidenceError } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
+import type { LogStore } from '@dsh-sentry/log-store'
 import type {} from '@dsh-sentry/log-store'
+import type {} from '@dsh-sentry/service-env-provider'
 import { extractLogPatterns } from './patterns.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -51,6 +53,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** The store, env label and lease one call fixed at its start. */
+interface CallProvider {
+  env: string
+  store: LogStore
+  release: () => Promise<void>
+}
+
 function filterDslGuide(fields: readonly string[]): string {
   return '过滤 DSL：`field=value` / `field!=value` / `field LIKE value` / `field NOT LIKE value` / '
     + '`field IS NULL` / `field IS NOT NULL`。LIKE 的 value 不自动加 `%`。'
@@ -64,6 +73,17 @@ export function apply(ctx: Context, config: Config): void {
   // boot-time config (see @dsh-sentry/env-matrix).
   const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
   const guide = filterDslGuide(ctx.logStore.logFilterFields)
+
+  // Session-routed hosts resolve the Provider through the calling session's
+  // binding; legacy hosts keep the global store and assembly env label.
+  const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
+    const envProviders = ctx.get('envProviders')
+    if (envProviders !== undefined) {
+      const lease = await envProviders.forCall(exec)
+      return { env: lease.env, store: lease.require('logStore'), release: lease.release }
+    }
+    return { env: liveEnv(), store: ctx.logStore, release: async () => {} }
+  }
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_logs',
@@ -102,16 +122,20 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      const store = ctx.logStore
-      const backendRef = store.backendRef
-      const refs = (): string[] => [backendRef, `env:${liveEnv()}:logs`]
-      const logType = args.logType ?? DEFAULT_LOG_TYPE
-      const limit = args.limit ?? DEFAULT_LIMIT
-      const services = args.services?.map(service => service.trim()).filter(service => service.length > 0)
-      const serviceLabel = services?.join(',') ?? ''
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
+        call = await routeStore(exec)
+        // Env, backend identity and Provider are fixed before the first await
+        // on backend I/O. A concurrent Session switch affects only later calls.
+        const { env, store } = call
+        const backendRef = store.backendRef
+        const refs = (): string[] => [backendRef, `env:${env}:logs`]
+        const logType = args.logType ?? DEFAULT_LOG_TYPE
+        const limit = args.limit ?? DEFAULT_LIMIT
+        const services = args.services?.map(service => service.trim()).filter(service => service.length > 0)
+        const serviceLabel = services?.join(',') ?? ''
+
         const { records: logs, timestampField } = await store.queryLogs({
           ...services !== undefined && services.length > 0 ? { services } : {},
           start: args.start,
@@ -130,7 +154,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env,
             backend_ref: backendRef,
             service: serviceLabel,
             start: args.start,
@@ -139,19 +163,22 @@ export function apply(ctx: Context, config: Config): void {
             patterns,
           },
           summary:
-            `env=${liveEnv()} service=${serviceLabel} 时间窗 [${args.start}, ${args.end}] `
+            `env=${env} service=${serviceLabel} 时间窗 [${args.start}, ${args.end}] `
             + `返回 ${logs.length} 条日志，提取 ${patterns.length} 个模式。`,
           confidence: logs.length > 0 ? 0.8 : 0.4,
           refs: refs(),
         }) as unknown as JsonValue
       } catch (error) {
+        const backendRef = call?.store.backendRef
         return buildEvidenceError({
           source: SOURCE,
           type: TYPE,
           error: errorMessage(error),
           summary: `查询失败: ${errorMessage(error)}`,
-          refs: refs(),
+          refs: backendRef === undefined ? [] : [backendRef, `env:${call?.env ?? 'unknown'}:logs`],
         }) as unknown as JsonValue
+      } finally {
+        await call?.release()
       }
     },
   }))
@@ -168,30 +195,35 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      const store = ctx.logStore
-      const backendRef = store.backendRef
-      const refs = (): string[] => [backendRef, `env:${liveEnv()}:logs`]
-      const logType = args.logType ?? DEFAULT_LOG_TYPE
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
+        call = await routeStore(exec)
+        const { env, store } = call
+        const backendRef = store.backendRef
+        const refs = (): string[] => [backendRef, `env:${env}:logs`]
+        const logType = args.logType ?? DEFAULT_LOG_TYPE
+
         const services = await store.listLogServices({ logType })
         return buildEvidence({
           source: SOURCE,
           type: TYPE,
-          data: { env: liveEnv(), backend_ref: backendRef, log_type: logType, services },
-          summary: `env=${liveEnv()} log_type=${logType} 发现 ${services.length} 个 workload_name`,
+          data: { env, backend_ref: backendRef, log_type: logType, services },
+          summary: `env=${env} log_type=${logType} 发现 ${services.length} 个 workload_name`,
           confidence: 0.9,
           refs: refs(),
         }) as unknown as JsonValue
       } catch (error) {
+        const backendRef = call?.store.backendRef
         return buildEvidenceError({
           source: SOURCE,
           type: TYPE,
           error: errorMessage(error),
           summary: `查询失败: ${errorMessage(error)}`,
-          refs: refs(),
+          refs: backendRef === undefined ? [] : [backendRef, `env:${call?.env ?? 'unknown'}:logs`],
         }) as unknown as JsonValue
+      } finally {
+        await call?.release()
       }
     },
   }))

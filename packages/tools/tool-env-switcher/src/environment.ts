@@ -2,18 +2,19 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse } from 'yaml'
 import {
   aliasesForEnv,
   credentialReadiness,
   credentialStorePath,
   extractCurrentEnv,
   type EnvRow,
-  type Matrix,
+  readMatrix,
   renderIncludePatch,
   renderPatch,
   resolveEnvName,
 } from '@dsh-sentry/env-matrix'
+
+export { readMatrix } from '@dsh-sentry/env-matrix'
 
 export interface RuntimeConfig {
   env: string
@@ -86,14 +87,6 @@ export function defaultRuntimeConfig(env: string): RuntimeConfig {
     profilePatchPath: join(dshHome, 'profiles/web/cordis.patch.yml'),
     credentialStorePath: credentialStorePath(),
   }
-}
-
-export function readMatrix(path: string): Matrix {
-  const parsed = parse(readFileSync(path, 'utf8')) as Matrix | null
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`环境矩阵不是合法对象: ${path}`)
-  }
-  return parsed
 }
 
 export function listEnvironments(config: RuntimeConfig): ListResult {

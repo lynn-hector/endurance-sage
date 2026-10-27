@@ -7,6 +7,8 @@
 > 范围：`packages/core/`、`packages/services/`、`packages/tools/`、`packages/skills/`、`apps/` 及相关测试与文档
 > 结构参照：`/Users/yangfm/workspace/work/endurance/plugins/sentry`
 > 规范依据：DSH 的 Service Definition / Service Provider / Consumer 三角色 seam、Cordis 插件生命周期，以及 DSH 原生 skill 与 session 契约
+>
+> **运行时语义更新（2026-10-26）**：本文第 2、5、6 章中“profile 级共享 Env”“不实现 Session 级环境”及对应双 Session 验收标准已被 [Session 级环境路由与 Provider 池方案](session-env-routing.md) 取代。Definition / Provider / Consumer 分层、证据身份和 Skills 迁移部分仍按本文执行；完成新方案实施后应合并修订相关旧章节。
 
 ## 1. 背景与本次修订
 

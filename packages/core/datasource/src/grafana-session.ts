@@ -133,8 +133,11 @@ export function extractCookie(headers: Headers, name: string): string | undefine
  * 子串匹配会把服务端 5xx 误判为会话失效，丢健康会话并搅动登录）。
  */
 export class HttpError extends Error {
-  constructor(message: string, readonly status: number) {
+  readonly status: number
+
+  constructor(message: string, status: number) {
     super(message)
+    this.status = status
   }
 }
 

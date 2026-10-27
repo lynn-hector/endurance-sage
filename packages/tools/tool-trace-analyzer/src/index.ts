@@ -9,11 +9,13 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
 import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
+import type { TraceStore } from '@dsh-sentry/trace-store'
 import type {} from '@dsh-sentry/trace-store'
+import type {} from '@dsh-sentry/service-env-provider'
 
 export const name = 'tool-trace-analyzer'
 export const inject = ['tools', 'traceStore']
@@ -34,9 +36,27 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** The store, env label and lease one call fixed at its start. */
+interface CallProvider {
+  env: string
+  store: TraceStore
+  release: () => Promise<void>
+}
+
 /** Register the trace fetch tool against the backend-neutral seam. */
 export function apply(ctx: Context, config: Config): void {
   const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
+
+  // Session-routed hosts resolve the Provider through the calling session's
+  // binding; legacy hosts keep the global store and assembly env label.
+  const routeStore = async (exec: ToolRunContext): Promise<CallProvider> => {
+    const envProviders = ctx.get('envProviders')
+    if (envProviders !== undefined) {
+      const lease = await envProviders.forCall(exec)
+      return { env: lease.env, store: lease.require('traceStore'), release: lease.release }
+    }
+    return { env: liveEnv(), store: ctx.traceStore, release: async () => {} }
+  }
 
   ctx.tools.register(defineTool({
     name: 'sentry_fetch_trace',
@@ -55,12 +75,16 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args, _exec) {
-      const store = ctx.traceStore
-      const backendRef = store.backendRef
-      const refs = (): string[] => [backendRef, `env:${liveEnv()}:traces`]
-
+    async execute(args, exec) {
+      let call: CallProvider | undefined
       try {
+        call = await routeStore(exec)
+        // Env, backend identity and Provider are fixed before the first await
+        // on backend I/O. A concurrent Session switch affects only later calls.
+        const { env, store } = call
+        const backendRef = store.backendRef
+        const refs = (): string[] => [backendRef, `env:${env}:traces`]
+
         const parsed = await store.queryTrace({
           traceId: args.traceId,
           ...args.start !== undefined ? { start: args.start } : {},
@@ -79,7 +103,7 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env,
             trace_id: args.traceId,
             backend_ref: backendRef,
             frames_count: parsed.frames_count,
@@ -100,15 +124,19 @@ export function apply(ctx: Context, config: Config): void {
           source: SOURCE,
           type: TYPE,
           data: {
-            env: liveEnv(),
+            env: call?.env ?? 'unknown',
             trace_id: args.traceId,
-            backend_ref: backendRef,
+            backend_ref: call?.store.backendRef ?? null,
             error: errorMessage(error),
           },
           summary: `查询失败: ${errorMessage(error)}`,
           confidence: 0,
-          refs: refs(),
+          refs: call?.store.backendRef === undefined
+            ? []
+            : [call.store.backendRef, `env:${call.env}:traces`],
         }) as unknown as JsonValue
+      } finally {
+        await call?.release()
       }
     },
   }))

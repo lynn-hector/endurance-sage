@@ -36,8 +36,11 @@ const fixture: EnvRow = {
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders all 23 plugins in dependency order', () => {
+  it('renders all 25 plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
+      // 宿主级 Session 路由栈在最前：绑定存储 + Provider 池（环境无关条目）
+      'sentry-env-binding',
+      'sentry-env-provider',
       'sentry-tool-env-switcher',
       'sentry-greptimedb',
       'sentry-tool-log-analyzer',
@@ -208,7 +211,7 @@ describe('renderPatch', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(23)
+    expect(parsed[0]!.insert).toHaveLength(25)
     const greptimedb = parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')
     expect(greptimedb?.config?.['endpoint']).toBe('https://greptimedb.cn-0.test.novo-one.com')
     // direct endpoint field is absent in proxy mode (optional since day one
