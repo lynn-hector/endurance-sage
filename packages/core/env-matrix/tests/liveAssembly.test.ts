@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { liveAssemblyEnv, liveAssemblyEntryConfig, extractCurrentEnv, type AssemblyPaths } from '../src/index.ts'
+import { assemblyAnchorEnv, extractCurrentEnv, type AssemblyPaths } from '../src/index.ts'
 
 let dir: string
 
@@ -49,21 +49,21 @@ const PATCH_DP0 = [
   '        env: dev-platform-hosted-0',
 ].join('\n')
 
-describe('liveAssemblyEnv', () => {
+describe('assemblyAnchorEnv', () => {
   it('reads the env from the include file when present', () => {
-    expect(liveAssemblyEnv(paths(INCLUDE_TP1, PATCH_DP0))).toBe('tst-platform-hosted-1')
+    expect(assemblyAnchorEnv(paths(INCLUDE_TP1, PATCH_DP0))).toBe('tst-platform-hosted-1')
   })
 
   it('falls back to the patch file when the include file is absent', () => {
-    expect(liveAssemblyEnv(paths(undefined, PATCH_DP0))).toBe('dev-platform-hosted-0')
+    expect(assemblyAnchorEnv(paths(undefined, PATCH_DP0))).toBe('dev-platform-hosted-0')
   })
 
   it('returns undefined when neither assembly file exists', () => {
-    expect(liveAssemblyEnv(paths())).toBeUndefined()
+    expect(assemblyAnchorEnv(paths())).toBeUndefined()
   })
 
   it('returns undefined for files without a recognizable header', () => {
-    expect(liveAssemblyEnv(paths('# some other file\n[]\n', undefined))).toBeUndefined()
+    expect(assemblyAnchorEnv(paths('# some other file\n[]\n', undefined))).toBeUndefined()
   })
 })
 
@@ -96,36 +96,5 @@ describe('extractCurrentEnv', () => {
   it('survives unparsable text via the header fallback', () => {
     const text = '::: not yaml [\n# dsh-sentry 组装（env: dev-client-hosted-0）\n'
     expect(extractCurrentEnv(text)).toBe('dev-client-hosted-0')
-  })
-})
-
-describe('liveAssemblyEntryConfig', () => {
-  it('finds an entry config in the bare-list include format', () => {
-    const config = liveAssemblyEntryConfig('sentry-tool-trace-analyzer', paths(INCLUDE_TP1, undefined))
-    expect(config).toMatchObject({
-      env: 'tst-platform-hosted-1',
-      greptimedbJaegerDatasourceUid: 'PCD48328C06B18945',
-    })
-  })
-
-  it('flattens the - insert: patch format and finds entries', () => {
-    const config = liveAssemblyEntryConfig('sentry-tool-log-analyzer', paths(undefined, PATCH_DP0))
-    expect(config).toMatchObject({ env: 'dev-platform-hosted-0' })
-  })
-
-  it('returns undefined for an unknown entry id', () => {
-    expect(liveAssemblyEntryConfig('sentry-unknown', paths(INCLUDE_TP1, undefined))).toBeUndefined()
-  })
-
-  it('returns undefined when no assembly file exists', () => {
-    expect(liveAssemblyEntryConfig('sentry-tool-trace-analyzer', paths())).toBeUndefined()
-  })
-
-  it('survives an unparsable include file by falling through to the patch file', () => {
-    const config = liveAssemblyEntryConfig(
-      'sentry-tool-trace-analyzer',
-      paths('::: not yaml [', PATCH_DP0),
-    )
-    expect(config).toMatchObject({ greptimedbJaegerDatasourceUid: 'GreptimeDB-Jaeger' })
   })
 })

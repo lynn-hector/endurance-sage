@@ -370,7 +370,7 @@ flowchart LR
 
 约束如下：
 
-- 证据中的 `env` 来自本次实际 Provider 的 `envLabel`，不再来自 `liveAssemblyEnv()`。
+- 证据中的 `env` 来自本次实际 Provider 的 `envLabel`，不再来自装配文件读取（`assemblyAnchorEnv()`，旧名 `liveAssemblyEnv()`）。
 - `backendRef`、endpoint 展示值和 refs 必须来自同一个 Provider 快照。
 - 查询进行中发生切换，本次结果仍标旧 Env；下一次调用才按新绑定路由。
 - 错误路径也使用同一快照。若 Provider 根本未取得，不得用目标 Env 冒充实际连接 Env；可另报 `requestedEnv`，实际 `env` 应为 `unknown` 或不可用。
@@ -526,7 +526,7 @@ plugin record 本身不进入模型可见消息面；可见审计信息来自 To
 1. ✅ 删除全部证据 Tool 对 `liveAssemblyEnv()` 和启动时 Env 配置的依赖，固定单次调用快照。
 2. ✅ “A 查询延迟返回期间 S1 切到 B”的测试：redis/trace/log 三腿 `tests/session-env.test.ts` 覆盖（进行中的结果仍标 A，下一次结果才标 B）。
 3. ✅ logs/callflow → trace → metrics/alerts → MQ/Zadig 全部接入 Pool；环境无关能力（TAPD、代码仓库）保留共享 Service。
-4. ✅ 双环境验收后删除旧全局切换路径：`switchEnvironment()`/`currentEnvironment()` 与 patch/include 写入、装配中的全局 Provider 条目（`renderEntries` 不再输出）、Tool 内全局插槽回退分支一并移除；`liveAssemblyEnv()` 仅供环境无关共享服务的证据标签使用。
+4. ✅ 双环境验收后删除旧全局切换路径：`switchEnvironment()`/`currentEnvironment()` 与 patch/include 写入、装配中的全局 Provider 条目（`renderEntries` 不再输出）、Tool 内全局插槽回退分支一并移除；`assemblyAnchorEnv()`（旧名 `liveAssemblyEnv()`，另删除无调用者的 `liveAssemblyEntryConfig()`）仅供环境无关共享服务的证据标签使用。
 5. ✅ CLI `use-env` 语义收敛：只生成/更新启动装配与 runtime 默认 Env（`defaultEnv` 锚点），不覆盖任何在线 Session 的已有绑定。
 6. ✅ 使用指南、env-switcher skill 与重构总计划已按 Session 语义更新。
 

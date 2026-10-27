@@ -18,7 +18,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { liveAssemblyEnv } from '@dsh-sentry/env-matrix'
+import { assemblyAnchorEnv } from '@dsh-sentry/env-matrix'
 import type { TapdBug, TapdComment } from '@dsh-sentry/service-tapd'
 
 export const name = 'tool-tapd-inspector'
@@ -71,10 +71,10 @@ export function toTicketRow(bug: TapdBug): Record<string, unknown> {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly files: this plugin injects a
-  // service, so a service config swap can leave this instance frozen on
+  // Env label resolves per call from the assembly anchor: this plugin injects
+  // a service, so a service config swap can leave this instance frozen on
   // boot-time config (see @dsh-sentry/env-matrix).
-  const liveEnv = (): string => liveAssemblyEnv() ?? config.env ?? 'unknown'
+  const anchorEnv = (): string => assemblyAnchorEnv() ?? config.env ?? 'unknown'
 
   ctx.tools.register(defineTool({
     name: 'sentry_query_tapd',
@@ -111,10 +111,10 @@ export function apply(ctx: Context, config: Config): void {
             return buildEvidence({
               source: SOURCE,
               type: TYPE,
-              data: { env: liveEnv(), mode: 'detail', ticket: toTicketRow(bug), comments },
+              data: { env: anchorEnv(), mode: 'detail', ticket: toTicketRow(bug), comments },
               summary: `TAPD 缺陷 ${bug.id}: ${bug.title}（${bug.status}，评论 ${Array.isArray(comments) ? comments.length : 0} 条）`,
               confidence: 0.9,
-              refs: [`env:${liveEnv()}:tapd`, `tapd:bug:${bug.id}`],
+              refs: [`env:${anchorEnv()}:tapd`, `tapd:bug:${bug.id}`],
             }) as unknown as JsonValue
           }
           const bugs = await ctx.tapd.listBugs({
@@ -132,21 +132,21 @@ export function apply(ctx: Context, config: Config): void {
           return buildEvidence({
             source: SOURCE,
             type: TYPE,
-            data: { env: liveEnv(), mode: 'list', count: tickets.length, tickets },
-            summary: `env=${liveEnv()} TAPD 缺陷列表：${tickets.length} 条`
+            data: { env: anchorEnv(), mode: 'list', count: tickets.length, tickets },
+            summary: `env=${anchorEnv()} TAPD 缺陷列表：${tickets.length} 条`
               + `${args.severity ? ` severity=${args.severity}` : ''}${args.status ? ` status=${args.status}` : ''}`
               + `${args.createdStart ? ` created>=${args.createdStart}` : ''}`,
             confidence: 0.9,
-            refs: [`env:${liveEnv()}:tapd`],
+            refs: [`env:${anchorEnv()}:tapd`],
           }) as unknown as JsonValue
         } catch (error) {
           return buildEvidence({
             source: SOURCE,
             type: TYPE,
-            data: { env: liveEnv(), error: errorMessage(error) },
+            data: { env: anchorEnv(), error: errorMessage(error) },
             summary: `TAPD 查询失败: ${errorMessage(error).slice(0, 120)}`,
             confidence: 0,
-            refs: [`env:${liveEnv()}:tapd`],
+            refs: [`env:${anchorEnv()}:tapd`],
           }) as unknown as JsonValue
         }
       },

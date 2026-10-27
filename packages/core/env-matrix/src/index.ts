@@ -288,7 +288,7 @@ export function renderEntries(row: EnvRow): Entry[] {
     // defaultEnv 跟随本组装环境，作为新 Session 与失效绑定恢复的 runtime 默认；
     // 矩阵路径由两端共享的 defaultEnvsPath()（支持 DSH_SENTRY_ENVS_PATH 覆盖），
     // 组装不重复该路径。env-switcher 条目的 config.env 是装配环境锚点
-    // （extractCurrentEnv/liveAssemblyEnv 读取），不参与 Session 路由。
+    // （extractCurrentEnv/assemblyAnchorEnv 读取），不参与 Session 路由。
     {
       id: 'sentry-env-binding',
       name: '@dsh-sentry/env-binding',
@@ -464,18 +464,15 @@ export function extractCurrentEnv(text: string): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Live assembly reading — call-time truth for evidence labels and env-bound
-// tool config.
+// Assembly anchor reading — the startup/default environment an assembly
+// declares.
 //
-// Why this exists: replacing a service plugin's config does not restart the
-// tool plugins that inject that service (cordis `Fiber.update`'s non-active
-// branch stashes the new config silently, with no log). A tool plugin frozen
-// this way keeps answering with its boot-time config, so anything
-// environment-bound in `Config` — the `env` evidence label, the Jaeger
-// datasource uid, the postgres database — can go stale after
-// `sentry_env_switch`. The assembly files are the single source of truth the
-// switcher rewrites atomically, so tools read them per call and fall back to
-// plugin config only when the files are unreachable.
+// After the Session refactor the only consumers are env-agnostic shared
+// services (TAPD, code repositories), which label their evidence with the
+// host assembly's anchor env. Reading per call — instead of trusting plugin
+// config — keeps the label correct even when a service config swap leaves a
+// tool plugin frozen on its boot-time config (cordis `Fiber.update`'s
+// non-active branch stashes the new config silently, with no log).
 // ---------------------------------------------------------------------------
 
 /** Locations of the two generated assembly files, checked in this order. */
@@ -539,39 +536,18 @@ function isEntry(value: unknown): value is Entry {
 }
 
 /**
- * The environment the assembly files currently declare — the value
- * `sentry_env_switch` last wrote. Returns `undefined` when neither file is
- * readable or parseable; callers fall back to plugin config.
+ * The startup/default environment the assembly files declare — the anchor
+ * written when `use-env` generated them (env-switcher `config.env`); runtime
+ * switching no longer rewrites these files. Returns `undefined` when neither
+ * file is readable or parseable; callers fall back to plugin config.
  */
-export function liveAssemblyEnv(paths: AssemblyPaths = defaultAssemblyPaths()): string | undefined {
+export function assemblyAnchorEnv(paths: AssemblyPaths = defaultAssemblyPaths()): string | undefined {
   for (const file of [paths.include, paths.patch]) {
     try {
       const env = extractCurrentEnv(readFileSync(file, 'utf8'))
       if (env !== undefined) return env
     } catch {
       // unreadable file — try the next source
-    }
-  }
-  return undefined
-}
-
-/**
- * One plugin entry's config from the current assembly files. Tools use this
- * to resolve env-bound knobs (e.g. the Jaeger datasource uid) at call time
- * instead of trusting their possibly-frozen plugin config.
- */
-export function liveAssemblyEntryConfig(
-  entryId: string,
-  paths: AssemblyPaths = defaultAssemblyPaths(),
-): Record<string, unknown> | undefined {
-  for (const file of [paths.include, paths.patch]) {
-    try {
-      const entries = assemblyEntries(parse(readFileSync(file, 'utf8')))
-      if (entries === undefined) continue
-      const hit = entries.find((entry) => entry.id === entryId)
-      if (hit !== undefined && hit.config !== undefined) return hit.config
-    } catch {
-      // unparsable file — try the next source
     }
   }
   return undefined
