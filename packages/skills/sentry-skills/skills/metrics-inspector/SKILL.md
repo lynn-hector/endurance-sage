@@ -1,3 +1,8 @@
+---
+name: metrics-inspector
+description: 查询 Prometheus 指标曲线与 firing 告警，识别异常拐点（sentry_query_metrics / sentry_list_alerts）。另含 sentry_get_alert_rule（按名称查规则表达式与 for 时长，告警分析第一步）；sentry_list_am_alerts / sentry_list_am_silences 查 Alertmanager 活跃告警与静默。
+---
+
 # metrics-inspector：查询 Prometheus 指标与告警
 
 ## 使用边界

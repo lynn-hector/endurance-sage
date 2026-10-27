@@ -1,3 +1,8 @@
+---
+name: mq-inspector
+description: 通过 RocketMQ Console 查询 topic 消息列表与单条消息消费轨迹（sentry_query_mq 双模式），排查积压、消费延迟、死信、消息丢失。
+---
+
 # mq-inspector：查询 RocketMQ 消息与消费轨迹
 
 ## 使用边界

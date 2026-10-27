@@ -1,3 +1,8 @@
+---
+name: log-analyzer
+description: 根据服务、时间范围、关键词和过滤条件从 GreptimeDB 查询 k8s 容器日志，提取异常模式（sentry_query_logs / sentry_list_log_services）。
+---
+
 # log-analyzer：查询并分析 k8s 容器日志
 
 ## 使用边界

@@ -197,4 +197,4 @@ flowchart TB
 | IM 渠道（dsh-im） | [guides/dsh-im.md](../guides/dsh-im.md) |
 | TAPD 对接档案 | [integrations/tapd-integration.md](../integrations/tapd-integration.md) |
 | 环境矩阵（权威数据源） | `apps/agent/envs.yml` |
-| 产品背景与服务清单 | `packages/skills/sentry-skills/src/skills/project-context.md` |
+| 产品背景与服务清单 | `packages/skills/sentry-skills/skills/project-context/SKILL.md` |

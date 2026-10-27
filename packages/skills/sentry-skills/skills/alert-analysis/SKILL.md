@@ -1,3 +1,8 @@
+---
+name: alert-analysis
+description: 飞书告警文本 → 环境切换 → Alertmanager 总览 → 规则表达式下钻 → 指标/日志/Zadig 交叉验证 → diagnosis-report。收到告警卡片（FIRING/恢复、含集群与告警名称字段）或「告警分析/alert」请求时加载。
+---
+
 # alert-analysis：飞书告警分析
 
 从飞书告警卡片（或等价告警文本）到诊断报告的固定编排。收到 FIRING/恢复告警、「告警分析」请求时按本流程走；每步列工具与判断标准，证据进 evidence 信封。

@@ -1,6 +1,6 @@
 # Sentry 插件 seam、Session/Env 解耦与 Skills 重构计划
 
-> 状态：实施中；trace、logs/callflow、metrics/alerts 四条腿的 seam 结构迁移（Definition/Provider/Consumer + `backendRef`）已完成，Session/Env 运行时闭环与其余证据腿待实施 · 2026-10-26
+> 状态：实施中；Definition/Provider/Consumer seam 迁移与 Session/Env 运行时闭环已完成（见 [Session 级环境路由方案](session-env-routing.md)），第 8 章 Skills 原生骨架迁移已完成；待实施：code-repository Provider 化（§7.2）与第 9 章逐 skill 内容整理 · 2026-10-27
 > 代码基线：`1d797f3`（已纳入 Alertmanager、Callflow、connect token、代码索引自愈与按腿降级）
 > 真实宿主基线：DSH `v0.2.1-rc.3`（2026-10-26 确认）；双 Session 验收与 Skill 原生加载均以该版本为准
 > 包依赖现状：直接依赖声明主要为 `@deepseek-ai/dsh-* ^0.1.0-rc.7`，lockfile 同时解析出 `0.1.0-rc.7/rc.8` 与 `dsh-context` 引入的 `0.1.1-rc.2`；这些是分包版本，不等同于宿主版本

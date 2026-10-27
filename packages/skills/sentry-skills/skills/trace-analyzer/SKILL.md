@@ -1,3 +1,8 @@
+---
+name: trace-analyzer
+description: 按 traceId 查询 Grafana Jaeger 调用链路，识别慢调用、错误调用和跨服务边界异常（sentry_fetch_trace）。
+---
+
 # trace-analyzer：分析分布式调用链路
 
 ## 使用边界

@@ -19,7 +19,7 @@
 |---|---|---|
 | service | `packages/services/service-tapd` | HTTP 客户端、envelope 校验、短 id 补长、评论解包 |
 | tool | `packages/tools/tool-tapd-inspector` | `sentry_query_tapd`：列表（过滤）/ 详情（含评论）|
-| skill | `packages/skills/sentry-skills/.../tapd-inspector.md` | 何时查、对账策略、可信度边界 |
+| skill | `packages/skills/sentry-skills/skills/tapd-inspector/SKILL.md` | 何时查、对账策略、可信度边界 |
 | 组装 | 平台级条目（同 Zadig）：`workspaceId: '63822673'` + `tokenRef: TAPD_TOKEN`，不随环境矩阵切换 |
 
 ## 2. 能力

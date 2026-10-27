@@ -1,3 +1,8 @@
+---
+name: zadig-inspector
+description: 查询 Zadig 环境各服务运行状态、镜像版本与最近一次部署详情，判断故障是否由发布引入（sentry_query_zadig）。
+---
+
 # zadig-inspector：查询 Zadig 部署状态
 
 ## 使用边界

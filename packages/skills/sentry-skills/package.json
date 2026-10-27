@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
-    "@deepseek-ai/dsh-skill": "^0.2.1-rc.3"
+    "@deepseek-ai/dsh-skill": "^0.2.1-rc.3",
+    "@deepseek-ai/dsh-skill-filesystem": "0.2.1-rc.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

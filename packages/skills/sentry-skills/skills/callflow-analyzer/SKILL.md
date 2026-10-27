@@ -1,3 +1,8 @@
+---
+name: callflow-analyzer
+description: 按 callid 查询 GreptimeDB hep_1 表的 SIP 信令流，还原 INVITE/180/200/BYE 时序与 PDD，识别错误响应（≥400，401 认证质询不计入）；trace_id 桥接回日志与链路（sentry_query_call_flow）。
+---
+
 # callflow-analyzer：查询并分析 SIP 信令流
 
 ## 使用边界

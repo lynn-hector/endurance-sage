@@ -41,4 +41,4 @@
 ## 权威数据源（不是文档，但常被找）
 
 - 环境矩阵（endpoint、凭据键名）：`apps/agent/envs.yml`（唯一手工维护点）
-- 项目背景 / 服务清单（skill 内容）：`packages/skills/sentry-skills/src/skills/project-context.md`
+- 项目背景 / 服务清单（skill 内容）：`packages/skills/sentry-skills/skills/project-context/SKILL.md`

@@ -1,3 +1,8 @@
+---
+name: redis-inspector
+description: 通过 dbx 平台查询 Redis key 的值、TTL 与类型，base64 解码后返回（sentry_query_redis）。
+---
+
 # redis-inspector：查询 Redis key 的值、TTL 与类型
 
 ## 使用边界

@@ -1,3 +1,8 @@
+---
+name: cross-service-latency
+description: 跨服务延迟排查专项：p99 升高/接口慢/超时增多的排查步骤、典型根因与止损建议。
+---
+
 # cross-service-latency：跨服务延迟排查
 
 跨服务、跨组件的高延迟排查方法。涉及多个技能（trace-analyzer、metrics-inspector、db-inspector、redis-inspector、code-repository、mq-inspector）。主方法论见 defect-troubleshooting 技能。

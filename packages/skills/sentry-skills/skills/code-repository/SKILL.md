@@ -1,3 +1,8 @@
+---
+name: code-repository
+description: 跨仓代码检索、读取与 ff-only 同步：sentry_search_code（codegraph 索引优先、ripgrep 回退）+ sentry_read_code + sentry_sync_code（git pull --ff-only 刷新配置仓库，更新后自动增量重建 codegraph 索引）。从错误信息/日志行/慢 SQL 定位到代码行，作为交叉验证的 code 证据。
+---
+
 # code-repository：跨仓代码检索、读取与同步
 
 ## 使用边界

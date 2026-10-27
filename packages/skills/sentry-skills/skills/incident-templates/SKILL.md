@@ -1,3 +1,8 @@
+---
+name: incident-templates
+description: 结构化输出模板：triage-intake 输入评估、diagnosis-report 诊断报告、action-plan 行动计划、incident-summary 事件摘要、chat-response 对话回复。
+---
+
 # incident-templates：结构化输出模板
 
 排查流程各阶段的输出模板集合：triage-intake（输入评估）、diagnosis-report（诊断报告）、action-plan（行动计划）、incident-summary（事件摘要）、chat-response（对话回复）。

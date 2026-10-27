@@ -1,3 +1,8 @@
+---
+name: db-inspector
+description: 通过 dbx 平台对 PostgreSQL 执行只读 SQL，收集慢 SQL、连接数、主从延迟等证据（sentry_query_db）。
+---
+
 # db-inspector：通过 dbx 执行只读 SQL 查询
 
 ## 使用边界
