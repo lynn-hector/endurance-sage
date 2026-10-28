@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/db-store",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "description": "Backend-neutral SQL query Service Definition occupying ctx.dbStore.",
   "exports": {

@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/mq-store",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "description": "Backend-neutral message-queue inspection Service Definition occupying ctx.mqStore.",
   "exports": {

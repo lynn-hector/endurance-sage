@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/guard-git",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "description": "Pre-execute policy plugin: intercepts destructive or remote-affecting git commands in shell-executing tools (deny hard, ask for the rest).",
   "exports": {

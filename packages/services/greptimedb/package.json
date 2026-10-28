@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-greptimedb",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "description": "GreptimeDB HTTP /v1/sql client as a Cordis service (read-only queries).",
   "exports": {

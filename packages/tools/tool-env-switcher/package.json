@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/tool-env-switcher",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "description": "Model-facing environment tools: list the matrix and rebind the calling DSH session's environment binding (Session-scoped, persisted in the session log).",
   "exports": {

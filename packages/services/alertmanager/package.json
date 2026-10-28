@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-alertmanager",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "description": "Alertmanager v2 REST client (active alerts + silences) via the Grafana datasource proxy, as a Cordis service.",
   "exports": {

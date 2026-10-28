@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-dbx",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "description": "dbx platform client: session login, connection discovery, read-only query proxying.",
   "exports": {
