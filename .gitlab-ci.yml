@@ -5,6 +5,7 @@ stages:
 default:
   image: node:24-bookworm
   before_script:
+    - apt-get update && apt-get install -y --no-install-recommends ripgrep
     - corepack enable
     - corepack prepare pnpm@11.22.0 --activate
 
