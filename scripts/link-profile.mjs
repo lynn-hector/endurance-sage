@@ -48,7 +48,7 @@ function sentryPackages() {
   const wanted = new Set(Object.entries(profilePkg.dependencies ?? {})
     .filter(([, spec]) => String(spec) === 'workspace:*').map(([name]) => name))
   const map = new Map()
-  for (const group of ['core', 'services', 'tools', 'guard', 'skills']) {
+  for (const group of ['bundle', 'core', 'services', 'tools', 'guard', 'skills']) {
     const gdir = join(repoRoot, 'packages', group)
     if (!existsSync(gdir)) continue
     for (const entry of readdirSync(gdir)) {

@@ -51,7 +51,7 @@ dsh-sentry/
 └── pnpm-workspace.yaml           # pnpm workspace 包发现配置
 ```
 
-**apps 与 packages 的关系**：`packages` 是零件，`apps` 是用法。`agent` 按环境配置生成装配，`profile` 交给 DSH 加载，`dev` 在正式装配前验证零件和加载链路。
+**apps 与 packages 的关系**：`packages` 是零件，`apps` 是用法。`agent` 按环境配置生成装配，`profile` 交给 DSH 加载，`dev` 在正式装配前验证零件和加载链路。各目录与文件职责见 [apps/README.md](apps/README.md)。
 
 一次查询通常经过：
 
@@ -110,3 +110,4 @@ pnpm verify      # typecheck + test + 两种 apps/dev 加载检查
 - Session 环境路由：[docs/architecture/session-env-routing.md](docs/architecture/session-env-routing.md)
 - 新同事接入：[docs/guides/onboarding.md](docs/guides/onboarding.md)
 - 服务器部署：[docs/guides/deploy.md](docs/guides/deploy.md)
+- 开发验证、发布与安装：[docs/guides/development-release-install.md](docs/guides/development-release-install.md)

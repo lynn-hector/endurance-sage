@@ -68,12 +68,14 @@ describe('renderEntries', () => {
     }
   })
 
-  it('only the env-switcher entry carries env — the single assembly anchor', () => {
-    const switcher = entries.find((e) => e.id === 'sentry-tool-env-switcher')
-    expect(switcher?.config?.['env']).toBe('test')
-    for (const entry of entries.filter((e) => e.id !== 'sentry-tool-env-switcher')) {
-      expect(entry.config?.['env'], entry.id).toBeUndefined()
-    }
+  it('carries env only on the switcher and evidence fallback consumers', () => {
+    const entriesWithEnv = entries.filter(entry => entry.config?.['env'] !== undefined)
+    expect(entriesWithEnv.map(entry => entry.id)).toEqual([
+      'sentry-tool-env-switcher',
+      'sentry-tool-tapd-inspector',
+      'sentry-tool-code-repository',
+    ])
+    for (const entry of entriesWithEnv) expect(entry.config?.['env']).toBe('test')
   })
 
   it('keeps the default database on the db Consumer (caller intent, not Provider wiring)', () => {
@@ -203,7 +205,7 @@ describe('code leg baseDir', () => {
     const service = renderEntries(fixture).find((e) => e.id === 'sentry-code-repository')
     const consumer = renderEntries(fixture).find((e) => e.id === 'sentry-tool-code-repository')
     expect(service?.config).toBeUndefined()
-    expect(consumer?.config).toBeUndefined()
+    expect(consumer?.config).toEqual({ env: 'test' })
   })
 
   it('never bakes machine-level sources (env var / credential store) — the service resolves them at runtime', () => {
@@ -212,7 +214,7 @@ describe('code leg baseDir', () => {
     const service = entries.find((e) => e.id === 'sentry-code-repository')
     const consumer = entries.find((e) => e.id === 'sentry-tool-code-repository')
     expect(service?.config).toBeUndefined()
-    expect(consumer?.config).toBeUndefined()
+    expect(consumer?.config).toEqual({ env: 'test' })
   })
 
   it('renders only the committed envs.yml codeRepository.baseDir row (team config may enter the assembly)', () => {
@@ -230,17 +232,15 @@ describe('code leg baseDir', () => {
 })
 
 describe('renderPatch', () => {
-  it('emits YAML that round-trips through the real parser', () => {
+  it('renders one aggregate bundle override that round-trips through the real parser', () => {
     const patch = renderPatch(fixture)
-    const parsed = parse(patch) as { insert: { id: string; config?: Record<string, unknown> }[] }[]
+    const parsed = parse(patch) as { id: string; name: string; config?: Record<string, unknown> }[]
     expect(parsed).toHaveLength(1)
-    expect(parsed[0]!.insert).toHaveLength(18)
-    // Provider services stay pool-only: the assembly never mounts them globally
-    expect(parsed[0]!.insert.find((e) => e.id === 'sentry-greptimedb')).toBeUndefined()
-    expect(parsed[0]!.insert.find((e) => e.id === 'sentry-trace')).toBeUndefined()
-    // Number-like strings must survive the round trip as strings.
-    const tapd = parsed[0]!.insert.find((e) => e.id === 'sentry-tapd')
-    expect(tapd?.config?.['workspaceId']).toBe('63822673')
+    expect(parsed[0]).toMatchObject({
+      id: 'sentry',
+      name: '@dsh-sentry/sentry',
+      config: { defaultEnv: 'test' },
+    })
   })
 
   it('keeps the header minimal: env marker + regen pointer, no inline commentary', () => {

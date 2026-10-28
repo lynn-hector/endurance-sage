@@ -1,6 +1,6 @@
 {
   "name": "dsh-sentry-root",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.22.0",
@@ -8,12 +8,15 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "build": "pnpm -r run build",
+    "sync:release": "node scripts/sync-release.ts",
+    "build": "pnpm run sync:release && pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "vitest run",
     "dev": "pnpm --filter @dsh-sentry/dev run start",
     "dev:loader": "pnpm --filter @dsh-sentry/dev run start:loader",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run dev && pnpm run dev:loader",
+    "release:pack": "pnpm run build && node scripts/pack-release.mjs && node scripts/verify-release.mjs && node scripts/smoke-release.mjs",
+    "release:publish": "node scripts/verify-release.mjs && node scripts/publish-release.mjs",
     "profile:link": "node scripts/link-profile.mjs"
   },
   "devDependencies": {

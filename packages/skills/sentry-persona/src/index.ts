@@ -18,6 +18,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { readFileSync } from 'node:fs'
 
 /** Cordis plugin name used by loader diagnostics. */

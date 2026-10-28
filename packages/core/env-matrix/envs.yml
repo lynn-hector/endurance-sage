@@ -1,0 +1,513 @@
+# 环境矩阵 —— 唯一需要手工维护的环境定义文件。
+#
+# 每行环境 = 一组数据源 endpoint + 凭据键名（引用，不是值）。
+# 值放 ~/.dsh/.credentials.yaml（键名即此处的 *Ref 字段）。
+# use-env 切换前按腿校验凭据值是否就绪；缺值或空值只降级该腿并告警，不拦截切换（补值即恢复）。
+#
+# 环境命名与运维环境标识一致（本文件即权威环境矩阵）；凭据键短码：
+#   DP0=dev-platform-hosted-0, DP1=dev-platform-hosted-1, DC0=dev-client-hosted-0，
+#   TP0=tst-platform-hosted-0, TP1=tst-platform-hosted-1, TC0=tst-client-hosted-0，
+#   SC1=sit-client-hosted-1, SC2=sit-client-hosted-2,
+#   PBO=pro-br-saas-aws-eks-novo, TPSG0=tst-platform-aws-eks-sg-0,
+#   PUO=pro-use-saas-aws-eks-novo, PZO=pro-za-saas-aws-eks-novo,
+#   PDO=pro-de-saas-aws-eks-novo, PSO=pro-sg-saas-aws-eks-novo,
+#   TPDE0=tst-platform-aws-eks-de-0, TPUS0=tst-platform-aws-eks-us-0, TPAU0=tst-platform-aws-eks-au-0
+# - dev-platform-hosted-0/1  研发-平台托管 cn-0/cn-1.dev.novo-one.com
+# - dev-client-hosted-0      研发-客户自托管 cn-0.dev-byoi.novo-one.com
+# - tst-platform-hosted-0/1  测试-平台托管 cn-0/cn-1.test.novo-one.com
+# - tst-client-hosted-0      测试-客户自托管 cn-0.test-byoi.novo-one.com
+# - sit-client-hosted-1/2    性能-客户自托管 cn-1/cn-2.sit-byoi.novo-one.com
+# - pro-br-saas-aws-eks-novo   生产-平台自营-亚马逊云-EKS-巴西-0 br.novoone.com
+# - tst-platform-aws-eks-sg-0  新加坡-测试0自营环境 sg-0.pre.novo-one.com
+# - pro-use-saas-aws-eks-novo  生产-平台自营-亚马逊云-EKS-美国东部-0 use.novoone.com
+# - pro-za-saas-aws-eks-novo   生产-平台自营-亚马逊云-EKS-南非-0 za.novoone.com
+# - pro-de-saas-aws-eks-novo   生产-平台自营-亚马逊云-EKS-德国-0 de.novoone.com
+# - pro-sg-saas-aws-eks-novo   生产-平台自营-亚马逊云-EKS-新加坡-0 sg.novoone.com
+# - tst-platform-aws-eks-de-0  德国-测试0自营环境-法兰克福 de-0.pre.novo-one.com
+# - tst-platform-aws-eks-us-0  美国-测试0自营环境-俄勒冈州 us-0.pre.novo-one.com
+# - tst-platform-aws-eks-au-0  澳大利亚-测试0自营环境 au-0.pre.novo-one.com
+#
+# 已实测的凭据事实（tst 三环境 2026-09-02 全腿 probe 通过）：
+# - greptimedb 三环境同凭据（grafana 用户，键 GREPTIMEDB_DP0_USERNAME/PASSWORD），CSV 中该块为陈旧值
+# - grafana 每环境独立密码（admin）；tst 三实例（及 DC0）禁用 basic auth：trace 与 prometheus 均走
+#   表单登录+cookie 不受影响（2026-09-02 起 prometheus 腿统一为表单登录，不再需要 service account token）
+# - dbx / rocketmq：每环境独立 endpoint 与凭据键
+# - zadig 为平台级（唯一）
+# - zadig 用长期 OpenAPI token（ZADIG_API_TOKEN，Zadig 个人设置创建，不过期）；不要用浏览器复制的 dex 会话 token（约 1h 过期）
+# - alertmanager 数据源经 grafana 代理（dp1 实测 uid=alertmanager，2026-10-12）；复用 grafana 腿账密，envs 每环境无需另配
+# - greptimedb 支持 token 模式：greptimedb 腿改配 tokenRef（值=纯 token，dashboard /#/token-generator
+#   页面生成，AES 加密的账密），省略 usernameRef/passwordRef；服务端解密后仍走 Basic。
+#   tokenRef 与账密引用二选一：tokenRef 定义时按 token 接线，渲染与预检都
+#   忽略残留的账密引用（别同配两套）
+#   用法（XX=环境短码）：
+#     greptimedb:
+#       endpoint: https://greptimedb.br.novoone.com
+#       tokenRef: GREPTIMEDB_XX_CONNECT_TOKEN   # 值=纯 token（token-generator 生成的 base64url 串）
+
+dev-platform-hosted-0:
+  envLabel: dev-platform-hosted-0
+  greptimedb:
+    endpoint: https://greptimedb.cn-0.dev.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_DP0_USERNAME
+    passwordRef: GREPTIMEDB_DP0_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-0.dev.novo-one.com
+    greptimedbJaegerDatasourceUid: GreptimeDB-Jaeger
+    usernameRef: GRAFANA_DP0_USERNAME
+    passwordRef: GRAFANA_DP0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus   # 经 grafana 代理，endpoint 复用 grafana
+  dbx:
+    endpoint: https://dbx.cn-0.dev.novo-one.com
+    passwordRef: DBX_DP0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-0.dev.novo-one.com   # 每环境独立 console，登录实测通过
+    usernameRef: ROCKETMQ_DP0_USERNAME
+    passwordRef: ROCKETMQ_DP0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: dev-platform-hosted-0
+    tokenRef: ZADIG_API_TOKEN
+
+dev-platform-hosted-1:
+  envLabel: dev-platform-hosted-1
+  greptimedb:
+    endpoint: https://greptimedb.cn-1.dev.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_DP1_USERNAME   # 值与 DP0 相同（实测），独立成键便于将来分叉
+    passwordRef: GREPTIMEDB_DP1_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-1.dev.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # Jaeger 数据源 uid 随环境漂移（DP0 恰为 GreptimeDB-Jaeger）
+    usernameRef: GRAFANA_DP1_USERNAME
+    passwordRef: GRAFANA_DP1_PASSWORD        # 来自环境清单，已实测 200
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.cn-1.dev.novo-one.com
+    passwordRef: DBX_DP1_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-1.dev.novo-one.com   # 每环境独立 console，登录实测通过
+    usernameRef: ROCKETMQ_DP1_USERNAME   # 值与 DP0 相同（实测）
+    passwordRef: ROCKETMQ_DP1_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: dev-platform-hosted-1
+    tokenRef: ZADIG_API_TOKEN
+
+dev-client-hosted-0:
+  envLabel: dev-client-hosted-0
+  greptimedb:
+    endpoint: https://greptimedb.cn-0.dev-byoi.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_DC0_USERNAME   # 值与 DP0 相同（实测），独立成键便于将来分叉
+    passwordRef: GREPTIMEDB_DC0_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-0.dev-byoi.novo-one.com
+    greptimedbJaegerDatasourceUid: bfo3r2zfv3mkgb   # 2026-09-02 经 /api/datasources 实测校准
+    usernameRef: GRAFANA_DC0_USERNAME
+    passwordRef: GRAFANA_DC0_PASSWORD        # 2026-09-02 实测有效（表单登录 200）；实例禁 basic auth
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.cn-0.dev-byoi.novo-one.com
+    passwordRef: DBX_DC0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-1.dev.novo-one.com   # 每环境独立 console，登录实测通过
+    usernameRef: ROCKETMQ_DC0_USERNAME   # 三环境 console 凭据相同（实测），分叉时改此引用
+    passwordRef: ROCKETMQ_DC0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: dev-client-hosted-0
+    tokenRef: ZADIG_API_TOKEN
+
+tst-platform-hosted-0:
+  envLabel: tst-platform-hosted-0
+  greptimedb:
+    endpoint: https://greptimedb.cn-0.test.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TP0_USERNAME
+    passwordRef: GREPTIMEDB_TP0_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-0.test.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
+    usernameRef: GRAFANA_TP0_USERNAME
+    passwordRef: GRAFANA_TP0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.cn-0.test.novo-one.com
+    passwordRef: DBX_TP0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-0.test.novo-one.com
+    usernameRef: ROCKETMQ_TP0_USERNAME
+    passwordRef: ROCKETMQ_TP0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-platform-hosted-0
+    tokenRef: ZADIG_API_TOKEN
+
+tst-platform-hosted-1:
+  envLabel: tst-platform-hosted-1
+  greptimedb:
+    endpoint: https://greptimedb.cn-1.test.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TP1_USERNAME
+    passwordRef: GREPTIMEDB_TP1_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-1.test.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
+    usernameRef: GRAFANA_TP1_USERNAME
+    passwordRef: GRAFANA_TP1_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.cn-1.test.novo-one.com
+    passwordRef: DBX_TP1_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-1.test.novo-one.com
+    usernameRef: ROCKETMQ_TP1_USERNAME
+    passwordRef: ROCKETMQ_TP1_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-platform-hosted-1
+    tokenRef: ZADIG_API_TOKEN
+
+tst-client-hosted-0:
+  envLabel: tst-client-hosted-0
+  greptimedb:
+    endpoint: https://greptimedb.cn-0.test-byoi.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TC0_USERNAME
+    passwordRef: GREPTIMEDB_TC0_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-0.test-byoi.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 2026-09-02 经 /api/datasources 实测校准
+    usernameRef: GRAFANA_TC0_USERNAME
+    passwordRef: GRAFANA_TC0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.cn-0.test-byoi.novo-one.com
+    passwordRef: DBX_TC0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-0.test-byoi.novo-one.com
+    usernameRef: ROCKETMQ_TC0_USERNAME
+    passwordRef: ROCKETMQ_TC0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-client-hosted-0
+    tokenRef: ZADIG_API_TOKEN
+
+# sit 两环境 2026-09-03 骨架录入：endpoint 按域名族 {组件}.cn-{1,2}.sit-byoi.novo-one.com 推断，
+# rocketmq 两腿 2026-09-03 实测通过；其余腿未实测——补齐凭据后逐腿 probe 校准（uid、zadig envName 是否存在）。
+sit-client-hosted-1:
+  envLabel: sit-client-hosted-1
+  greptimedb:
+    endpoint: https://greptimedb.cn-1.sit-byoi.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_SC1_USERNAME
+    passwordRef: GREPTIMEDB_SC1_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-1.sit-byoi.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 未实测占位（tst 族实测值）；probe grafana-datasources SC1 校准
+    usernameRef: GRAFANA_SC1_USERNAME
+    passwordRef: GRAFANA_SC1_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.cn-1.sit-byoi.novo-one.com
+    passwordRef: DBX_SC1_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-1.sit-byoi.novo-one.com   # 2026-09-03 实测通过（独立 console，不复用平台）
+    usernameRef: ROCKETMQ_SC1_USERNAME
+    passwordRef: ROCKETMQ_SC1_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: sit-client-hosted-1   # 未核实 Zadig 中是否存在同名环境
+    tokenRef: ZADIG_API_TOKEN
+
+sit-client-hosted-2:
+  envLabel: sit-client-hosted-2
+  greptimedb:
+    endpoint: https://greptimedb.cn-2.sit-byoi.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_SC2_USERNAME
+    passwordRef: GREPTIMEDB_SC2_PASSWORD
+  grafana:
+    endpoint: https://grafana.cn-2.sit-byoi.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945   # 未实测占位（tst 族实测值）；probe grafana-datasources SC2 校准
+    usernameRef: GRAFANA_SC2_USERNAME
+    passwordRef: GRAFANA_SC2_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.cn-2.sit-byoi.novo-one.com
+    passwordRef: DBX_SC2_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.cn-2.sit-byoi.novo-one.com   # 2026-09-03 实测通过（独立 console，不复用平台）
+    usernameRef: ROCKETMQ_SC2_USERNAME
+    passwordRef: ROCKETMQ_SC2_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: sit-client-hosted-2   # 未核实 Zadig 中是否存在同名环境
+    tokenRef: ZADIG_API_TOKEN
+
+# 生产-平台自营-亚马逊云-EKS-巴西-0（br.novoone.com 族）：greptimedb connect token 与 grafana(liuzw) 实测通过；
+# dbx/rocketmq 暂无账号（值缺省该腿降级）；zadig 中无此环境。
+pro-br-saas-aws-eks-novo:
+  envLabel: pro-br-saas-aws-eks-novo
+  greptimedb:
+    endpoint: https://greptimedb.br.novoone.com
+    database: public
+    tokenRef: GREPTIMEDB_PBO_CONNECT_TOKEN   # token 模式：dashboard /#/token-generator 生成；配 tokenRef 不留账密引用
+  grafana:
+    endpoint: https://grafana.br.novoone.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_PBO_USERNAME
+    passwordRef: GRAFANA_PBO_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.br.novoone.com
+    passwordRef: DBX_PBO_PASSWORD   # 暂无账号——值缺省时该腿降级（预检不拦截），账号下发后补值即生效
+  rocketmq:
+    endpoint: https://rocketmq.br.novoone.com
+    usernameRef: ROCKETMQ_PBO_USERNAME   # 暂无账号——值缺省时该腿降级（预检不拦截），账号下发后补值即生效
+    passwordRef: ROCKETMQ_PBO_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: pro-br-saas-aws-eks-novo   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+# 新加坡-测试0自营环境（sg-0.pre.novo-one.com 族）：greptimedb/grafana/dbx/rocketmq 实测通过；zadig 中无此环境。
+# endpoint 按 {组件}.sg-0.pre.novo-one.com 推断。
+tst-platform-aws-eks-sg-0:
+  envLabel: tst-platform-aws-eks-sg-0
+  greptimedb:
+    endpoint: https://greptimedb.sg-0.pre.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TPSG0_USERNAME
+    passwordRef: GREPTIMEDB_TPSG0_PASSWORD
+  grafana:
+    endpoint: https://grafana.sg-0.pre.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_TPSG0_USERNAME
+    passwordRef: GRAFANA_TPSG0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.sg-0.pre.novo-one.com
+    passwordRef: DBX_TPSG0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.sg-0.pre.novo-one.com
+    usernameRef: ROCKETMQ_TPSG0_USERNAME
+    passwordRef: ROCKETMQ_TPSG0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-platform-aws-eks-sg-0   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+# 生产自营族（PUO/PZO/PDO/PSO，{组件}.{use,za,de,sg}.novoone.com）：greptimedb 账密模式（家族同凭据）；
+# grafana(aops) 实测通过；dbx/rocketmq 暂无账号；zadig 中无此环境。
+pro-use-saas-aws-eks-novo:
+  envLabel: pro-use-saas-aws-eks-novo
+  greptimedb:
+    endpoint: https://greptimedb.use.novoone.com
+    database: public
+    usernameRef: GREPTIMEDB_PUO_USERNAME
+    passwordRef: GREPTIMEDB_PUO_PASSWORD
+  grafana:
+    endpoint: https://grafana.use.novoone.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_PUO_USERNAME
+    passwordRef: GRAFANA_PUO_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.use.novoone.com
+    passwordRef: DBX_PUO_PASSWORD   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+  rocketmq:
+    endpoint: https://rocketmq.use.novoone.com
+    usernameRef: ROCKETMQ_PUO_USERNAME   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+    passwordRef: ROCKETMQ_PUO_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: pro-use-saas-aws-eks-novo   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+pro-za-saas-aws-eks-novo:
+  envLabel: pro-za-saas-aws-eks-novo
+  greptimedb:
+    endpoint: https://greptimedb.za.novoone.com
+    database: public
+    usernameRef: GREPTIMEDB_PZO_USERNAME
+    passwordRef: GREPTIMEDB_PZO_PASSWORD
+  grafana:
+    endpoint: https://grafana.za.novoone.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_PZO_USERNAME
+    passwordRef: GRAFANA_PZO_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.za.novoone.com
+    passwordRef: DBX_PZO_PASSWORD   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+  rocketmq:
+    endpoint: https://rocketmq.za.novoone.com
+    usernameRef: ROCKETMQ_PZO_USERNAME   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+    passwordRef: ROCKETMQ_PZO_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: pro-za-saas-aws-eks-novo   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+pro-de-saas-aws-eks-novo:
+  envLabel: pro-de-saas-aws-eks-novo
+  greptimedb:
+    endpoint: https://greptimedb.de.novoone.com
+    database: public
+    usernameRef: GREPTIMEDB_PDO_USERNAME
+    passwordRef: GREPTIMEDB_PDO_PASSWORD
+  grafana:
+    endpoint: https://grafana.de.novoone.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_PDO_USERNAME
+    passwordRef: GRAFANA_PDO_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.de.novoone.com
+    passwordRef: DBX_PDO_PASSWORD   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+  rocketmq:
+    endpoint: https://rocketmq.de.novoone.com
+    usernameRef: ROCKETMQ_PDO_USERNAME   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+    passwordRef: ROCKETMQ_PDO_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: pro-de-saas-aws-eks-novo   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+pro-sg-saas-aws-eks-novo:
+  envLabel: pro-sg-saas-aws-eks-novo
+  greptimedb:
+    endpoint: https://greptimedb.sg.novoone.com
+    database: public
+    usernameRef: GREPTIMEDB_PSO_USERNAME
+    passwordRef: GREPTIMEDB_PSO_PASSWORD
+  grafana:
+    endpoint: https://grafana.sg.novoone.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_PSO_USERNAME
+    passwordRef: GRAFANA_PSO_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.sg.novoone.com
+    passwordRef: DBX_PSO_PASSWORD   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+  rocketmq:
+    endpoint: https://rocketmq.sg.novoone.com
+    usernameRef: ROCKETMQ_PSO_USERNAME   # 暂无账号——值缺省时该腿降级，账号下发后补值即生效
+    passwordRef: ROCKETMQ_PSO_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: pro-sg-saas-aws-eks-novo   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+# 预发自营族（TPDE0/TPUS0/TPAU0，{组件}.{de-0,us-0,au-0}.pre.novo-one.com）：凭据值沿用测试族共享（键按环境短码新建），
+# greptimedb/grafana/dbx/rocketmq 实测通过；zadig 中无此环境。
+tst-platform-aws-eks-de-0:
+  envLabel: tst-platform-aws-eks-de-0
+  greptimedb:
+    endpoint: https://greptimedb.de-0.pre.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TPDE0_USERNAME
+    passwordRef: GREPTIMEDB_TPDE0_PASSWORD
+  grafana:
+    endpoint: https://grafana.de-0.pre.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_TPDE0_USERNAME
+    passwordRef: GRAFANA_TPDE0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.de-0.pre.novo-one.com
+    passwordRef: DBX_TPDE0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.de-0.pre.novo-one.com
+    usernameRef: ROCKETMQ_TPDE0_USERNAME
+    passwordRef: ROCKETMQ_TPDE0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-platform-aws-eks-de-0   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+tst-platform-aws-eks-us-0:
+  envLabel: tst-platform-aws-eks-us-0
+  greptimedb:
+    endpoint: https://greptimedb.us-0.pre.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TPUS0_USERNAME
+    passwordRef: GREPTIMEDB_TPUS0_PASSWORD
+  grafana:
+    endpoint: https://grafana.us-0.pre.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_TPUS0_USERNAME
+    passwordRef: GRAFANA_TPUS0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.us-0.pre.novo-one.com
+    passwordRef: DBX_TPUS0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.us-0.pre.novo-one.com
+    usernameRef: ROCKETMQ_TPUS0_USERNAME
+    passwordRef: ROCKETMQ_TPUS0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-platform-aws-eks-us-0   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN
+
+tst-platform-aws-eks-au-0:
+  envLabel: tst-platform-aws-eks-au-0
+  greptimedb:
+    endpoint: https://greptimedb.au-0.pre.novo-one.com
+    database: public
+    usernameRef: GREPTIMEDB_TPAU0_USERNAME
+    passwordRef: GREPTIMEDB_TPAU0_PASSWORD
+  grafana:
+    endpoint: https://grafana.au-0.pre.novo-one.com
+    greptimedbJaegerDatasourceUid: PCD48328C06B18945
+    usernameRef: GRAFANA_TPAU0_USERNAME
+    passwordRef: GRAFANA_TPAU0_PASSWORD
+  prometheus:
+    datasourceUid: prometheus
+  dbx:
+    endpoint: https://dbx.au-0.pre.novo-one.com
+    passwordRef: DBX_TPAU0_PASSWORD
+  rocketmq:
+    endpoint: https://rocketmq.au-0.pre.novo-one.com
+    usernameRef: ROCKETMQ_TPAU0_USERNAME
+    passwordRef: ROCKETMQ_TPAU0_PASSWORD
+  zadig:
+    endpoint: https://zadig.yeastardigital.com
+    project: novo-one-helm-charts-project
+    envName: tst-platform-aws-eks-au-0   # Zadig 中无此环境（probe 403）
+    tokenRef: ZADIG_API_TOKEN

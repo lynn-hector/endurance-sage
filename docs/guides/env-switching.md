@@ -4,84 +4,97 @@ dsh-sentry 的环境路由是 **Session 级绑定**：对话内切换只影响�
 
 ## 两类环境状态
 
-| 状态 | 作用 | 修改方式 |
-|---|---|---|
-| 启动 / 默认环境 | 新 Session，以及旧 Session 没有可用绑定时使用的默认值 | `use-env` CLI 生成装配；`regenerate` 恢复为 DP0 |
-| Session 当前环境 | 某次会话后续证据查询实际使用的环境 | 对话内 `sentry_env_switch` |
+- **启动 / 默认环境**：新 Session，以及旧 Session 没有可用绑定时使用的默认值。由统一 `sentry` bundle 的 `defaultEnv` 配置决定。
+- **Session 当前环境**：某次会话后续证据查询实际使用的环境。通过对话内 `sentry_env_switch` 修改。
 
-两者不要混淆：`use-env` 改默认环境不会重绑在线 Session，`sentry_env_switch` 也不会改仓库里的装配文件。
+两者不要混淆：修改默认环境不会重绑在线 Session，`sentry_env_switch` 也不会修改默认环境或环境矩阵。
 
 ## 配置与状态归属
 
-| 文件 / 状态 | 角色 | 是否手改 |
-|---|---|---|
-| `apps/agent/envs.yml` | 环境矩阵唯一事实来源：endpoint、凭据引用名、数据源 uid、环境别名 | 会——加环境、改端点都在这里 |
-| `apps/profile/cordis.patch.yml` / `cordis.include.yml` | 启动装配与默认环境锚点；环境 Provider 不再作为全局条目写入 | 不手改，由 CLI 生成 |
-| DSH Session 日志中的绑定记录 | 每个 Session 的当前环境及恢复依据 | 不手改，由绑定服务维护 |
-| `~/.dsh/.credentials.yaml` | 凭据值；装配只保存 `*Ref` 键名 | 补凭据时编辑 |
+- `apps/agent/envs.yml`：环境矩阵唯一手工维护源，保存 endpoint、凭据引用名、数据源 uid 和环境别名。
+- `packages/core/env-matrix/envs.yml`：由 `pnpm run sync:release` 同步、随 npm 包发布的默认矩阵，不单独手改。
+- `packages/bundle/sentry/cordis.patch.yml`：发布用统一 bundle 默认装配，由同步命令生成。
+- `apps/profile/cordis.patch.yml` / `cordis.include.yml`：本地 profile 的生成装配，不是 npm 用户的必需文件。
+- DSH Session 日志中的绑定记录：每个 Session 的当前环境及恢复依据，由绑定服务维护。
+- `~/.dsh/.credentials.yaml`：真实凭据值，装配只保存 `*Ref` 键名。
 
-代码仓库根目录属于环境无关的机器配置，不随 Session 环境切换；其配置与生效方式见 [onboarding.md](onboarding.md) 第 2 步。
+代码仓库根目录属于环境无关的机器配置，不随 Session 环境切换；配置方式见[新同事上手指南](onboarding.md#第-4-步可选的代码检索腿)。
 
 ## 对话内切换（推荐）
 
-直接在 dsh 对话里说“列出环境”“当前环境”“切到 TP1”即可。模型使用三个工具：
+直接在 DSH 对话里说“列出环境”“当前环境”“切到 TP1”即可。模型使用三个工具：
 
-| 工具 | 用途 |
-|---|---|
-| `sentry_env_list` | 列出 `envs.yml` 中的环境、别名、凭据就绪度和调用 Session 的当前绑定 |
-| `sentry_env_current` | 返回调用 Session 的环境、绑定来源、持久化状态和逐腿凭据就绪度 |
-| `sentry_env_switch` | 校验目标后只重绑当前 Session；`dryRun: true` 只预检、不改变绑定 |
+- `sentry_env_list`：列出矩阵中的环境、别名、凭据就绪度和调用 Session 的当前绑定。
+- `sentry_env_current`：返回调用 Session 的环境、绑定来源、持久化状态和逐腿凭据就绪度。
+- `sentry_env_switch`：校验目标后只重绑当前 Session；`dryRun: true` 只预检、不改变绑定。
 
-环境名与别名以 `envs.yml` 和 `@dsh-sentry/env-matrix` 为准，不在文档中另维护一份易过期的清单。工具不接受 endpoint、凭据值或任意文件路径。
+环境名与别名以环境矩阵为准。工具不接受 endpoint、凭据值或任意文件路径。
 
 切换结果重点看：
 
 - `env` / `previousEnv`：新旧绑定；
-- `degradedLegs`：目标环境缺凭据的腿。缺值只降级对应腿，不拦截整个切换；
-- `persisted`：绑定是否已确认持久化。若为 `false`，本进程内的新绑定已经生效，但重启后的恢复可能失败，应根据 `persistenceError` 排查。
+- `degradedLegs`：目标环境缺凭据的腿，缺值只降级对应腿；
+- `persisted`：绑定是否已确认持久化。若为 `false`，本进程内已经生效，但重启恢复可能失败，应根据 `persistenceError` 排查。
 
-## CLI：设置启动 / 默认环境
+## 修改启动 / 默认环境
+
+### 本地工作区
+
+`use-env` 是仓库维护者和本地链接安装用户的 CLI：
 
 ```bash
 # 查看环境矩阵与各腿凭据就绪度
 pnpm --filter @dsh-sentry/agent run use-env --list
 
-# 为 sentry profile 生成 TP0 启动装配（不改在线 Session 的绑定）
+# 为 sentry profile 生成 TP0 启动装配，不改在线 Session
 pnpm --filter @dsh-sentry/agent run use-env TP0 -- --profile sentry
 
-# 查看该 profile 装配声明的默认环境；这不是某个 Session 的实时绑定
+# 查看 profile 装配声明的默认环境，不是 Session 实时绑定
 pnpm --filter @dsh-sentry/agent run use-env --current --profile sentry
 
 # 预览装配，不写文件
 pnpm --filter @dsh-sentry/agent run use-env TP0 -- --dry-run
 
-# 重新生成仓库内装配；脚本固定使用 DP0，会重置启动默认环境
+# 重新生成仓库内装配并恢复 DP0
 pnpm --filter @dsh-sentry/agent run regenerate
 ```
 
-裸用 `use-env <环境>` 默认写 `web` profile。独立 sentry profile 应显式传 `--profile sentry`，避免写错目标。
+裸用 `use-env <环境>` 默认写入 `web` profile。独立 sentry profile 应显式传 `--profile sentry`。
+
+### GitLab npm 安装
+
+npm 用户不需要仓库 CLI。可以在对应 profile 的 `cordis.patch.yml` 中覆盖统一入口，例如：
+
+```yaml
+- id: sentry
+  config:
+    defaultEnv: tst-platform-hosted-0
+```
+
+保存后重启宿主。该修改只影响新 Session 的默认环境，已有 Session 仍使用自己的持久绑定。
 
 ## 新增或修改环境
 
-1. 在 `envs.yml` 修改环境行，endpoint 与凭据引用名按该环境实际值填写；
-2. 在 `~/.dsh/.credentials.yaml` 补对应键值；
-3. 用 `use-env --list` 或 `sentry_env_list` 检查就绪度；
-4. 对话内切到目标环境验证。只有需要改变启动默认环境时才运行 `use-env <环境> --profile sentry`。
+1. 在维护仓库的 `apps/agent/envs.yml` 修改环境行，并补充本机凭据。
+2. 执行 `pnpm run sync:release`，同步包内矩阵和 bundle 装配。
+3. 本地链接安装需要更新启动环境时，再执行 `use-env` 或 `regenerate`；仅新增可选环境不需要改默认装配。
+4. 用 `use-env --list` 或 `sentry_env_list` 检查就绪度，并在对话内切换验证。
+5. 需要让 npm 用户获得新环境时，按标准流程发布新版本；用户升级 bundle 后即可获得更新后的矩阵。
 
-凭据值为空或空白都视为未配置。补齐某腿凭据不需要重建 Session，也不需要切换其他环境。
+凭据值为空或空白都视为未配置。补齐某腿凭据不需要重建 Session，也不需要切换到其他环境。
 
 ## 切换后验证
 
 1. **绑定层**：在原会话询问“当前环境”，确认 `sentry_env_current.current` 是目标环境，且 `persisted` 不是 `false`。
 2. **证据层**：执行一次目标环境查询，检查返回 evidence 的 `env` 与数据内容。
-3. **隔离层（需要时）**：开两个会话分别绑定不同环境并查询，确认数据和 evidence 不串环境；一个会话切换不影响另一个。
-4. **恢复层（需要时）**：重启宿主并恢复原会话，确认无需重传环境即可恢复最后绑定。
+3. **隔离层**：需要时开两个会话分别绑定不同环境并查询，确认数据和 evidence 不串环境。
+4. **恢复层**：需要时重启宿主并恢复原会话，确认恢复最后绑定。
 
-进行中的查询仍使用调用开始时的环境快照；切换影响的是该 Session 的后续调用。历史消息与历史 evidence 不会被重写。
+进行中的查询仍使用调用开始时的环境快照；切换影响该 Session 的后续调用。历史消息与历史 evidence 不会被重写。
 
 ## 边界与注意事项
 
-- 环境切换是显式、可审计的模型工具调用；普通证据工具不接受 `env` 参数，不能绕开 Session 绑定临时选后端。
+- 环境切换是显式、可审计的模型工具调用；普通证据工具不接受 `env` 参数。
 - 无法解析调用 Session 时会明确报错，不会退回某个全局环境。
 - Provider 按环境共享并懒创建；会话切换不等于为每个会话复制一套连接。
 - TAPD、代码仓库等环境无关能力不随 Session 切换。

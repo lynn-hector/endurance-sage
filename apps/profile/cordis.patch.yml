@@ -1,52 +1,10 @@
 # dsh-sentry 组装（env: tst-platform-hosted-0）——由 apps/agent/envs.yml 生成，勿手改。
 # 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate
 
-- insert:
-    - id: sentry-env-binding
-      name: '@dsh-sentry/env-binding'
-      config:
-        defaultEnv: tst-platform-hosted-0
-    - id: sentry-env-provider
-      name: '@dsh-sentry/service-env-provider'
-    - id: sentry-tool-env-switcher
-      name: '@dsh-sentry/tool-env-switcher'
-      config:
-        env: tst-platform-hosted-0
-    - id: sentry-tool-log-analyzer
-      name: '@dsh-sentry/tool-log-analyzer'
-    - id: sentry-tool-callflow-analyzer
-      name: '@dsh-sentry/tool-callflow-analyzer'
-    - id: sentry-tool-trace-analyzer
-      name: '@dsh-sentry/tool-trace-analyzer'
-    - id: sentry-tool-metrics-inspector
-      name: '@dsh-sentry/tool-metrics-inspector'
-    - id: sentry-tool-db-inspector
-      name: '@dsh-sentry/tool-db-inspector'
-      config:
-        database: novo_commctl_config
-    - id: sentry-tool-redis-inspector
-      name: '@dsh-sentry/tool-redis-inspector'
-    - id: sentry-tool-zadig-inspector
-      name: '@dsh-sentry/tool-zadig-inspector'
-    - id: sentry-tool-mq-inspector
-      name: '@dsh-sentry/tool-mq-inspector'
-    - id: sentry-tapd
-      name: '@dsh-sentry/service-tapd'
-      config:
-        workspaceId: "63822673"
-        tokenRef: TAPD_TOKEN
-    - id: sentry-tool-tapd-inspector
-      name: '@dsh-sentry/tool-tapd-inspector'
-    - id: sentry-code-repository
-      name: '@dsh-sentry/service-code-repository'
-    - id: sentry-tool-code-repository
-      name: '@dsh-sentry/tool-code-repository'
-    - id: sentry-persona
-      name: '@dsh-sentry/sentry-persona'
-    - id: sentry-skills
-      name: '@dsh-sentry/sentry-skills'
-    - id: sentry-git-guard
-      name: '@dsh-sentry/guard-git'
+- id: sentry
+  name: '@dsh-sentry/sentry'
+  config:
+    defaultEnv: tst-platform-hosted-0
 - id: ui-settings-general
   name: "@deepseek-ai/dsh-client-ui-settings-general"
   config:

@@ -1,0 +1,6 @@
+# 由 pnpm run sync:release 生成，勿手改。
+- insert:
+    - id: sentry
+      name: '@dsh-sentry/sentry'
+      config:
+        defaultEnv: dev-platform-hosted-0

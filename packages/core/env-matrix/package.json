@@ -1,17 +1,17 @@
 {
   "name": "@dsh-sentry/env-matrix",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Environment matrix types, credential readiness checks, Cordis patch rendering, and the shared codegraph index contract (marker/git-dir/availability probes) consumed by the CLI, env-switcher, and tool-code-repository.",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node ../../../scripts/build-package.mjs"
   },
   "dependencies": {
     "yaml": "^2.8.0"
@@ -19,5 +19,18 @@
   "devDependencies": {
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
-  }
+  },
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.yeastar.com/yeastar/infrastructure/golang/endurance/dsh-sentry.git",
+    "directory": "packages/core/env-matrix"
+  },
+  "files": [
+    "dist",
+    "envs.yml"
+  ]
 }

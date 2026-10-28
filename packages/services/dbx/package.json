@@ -1,17 +1,17 @@
 {
   "name": "@dsh-sentry/service-dbx",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "dbx platform client: session login, connection discovery, read-only query proxying.",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node ../../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
@@ -23,5 +23,17 @@
   "devDependencies": {
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
-  }
+  },
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.yeastar.com/yeastar/infrastructure/golang/endurance/dsh-sentry.git",
+    "directory": "packages/services/dbx"
+  },
+  "files": [
+    "dist"
+  ]
 }
