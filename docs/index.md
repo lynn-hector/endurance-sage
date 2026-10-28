@@ -14,6 +14,18 @@
 | 部署到远程服务器（免手改路径） | [guides/deploy.md](guides/deploy.md) |
 | 开发完成后的验证、本地安装、GitLab 发布与安装 | [guides/development-release-install.md](guides/development-release-install.md) |
 
+## 插件开发
+
+| 我想… | 看这里 |
+|---|---|
+| 选择扩展点并了解完整接入流程 | [development/README.md](development/README.md) |
+| 创建包、命名、声明导出与 Config | [development/package-conventions.md](development/package-conventions.md) |
+| 开发 skill 或系统提示词 | [development/skill-and-prompt.md](development/skill-and-prompt.md) |
+| 开发 model-facing tool 与 evidence | [development/tool.md](development/tool.md) |
+| 开发 service、Definition、Provider 与环境路由 | [development/service.md](development/service.md) |
+| 开发工具执行门禁 | [development/guard.md](development/guard.md) |
+| 编写测试并完成 PR 评审 | [development/testing-and-review.md](development/testing-and-review.md) |
+
 ## 了解设计
 
 | 主题 | 看这里 |

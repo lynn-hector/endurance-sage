@@ -4,6 +4,8 @@ stages:
 
 default:
   image: node:24-bookworm
+  tags:
+    - dsh-sentry
   before_script:
     - corepack enable
     - corepack prepare pnpm@11.22.0 --activate
