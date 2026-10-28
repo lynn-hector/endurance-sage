@@ -12,6 +12,7 @@
 | 换 token / 加凭据 | [guides/credentials.md](guides/credentials.md) |
 | 给 sentry profile 加/换插件（第三方与自研分型） | [guides/onboarding.md](guides/onboarding.md) 的「给 sentry profile 加插件（SOP）」 |
 | 部署到远程服务器（免手改路径） | [guides/deploy.md](guides/deploy.md) |
+| 开发完成后的验证、本地安装、GitLab 发布与安装 | [guides/development-release-install.md](guides/development-release-install.md) |
 
 ## 了解设计
 
@@ -20,9 +21,8 @@
 | 系统总览：dsh 与 dsh-sentry 的关系、分层架构、装配管线、代码检索闭环 | [architecture/overview.md](architecture/overview.md) |
 | dsh 宿主装配运行机制（bundle/patch 叠加、注册路线、热重载边界，含官方文档参照） | [architecture/dsh-loading.md](architecture/dsh-loading.md) |
 | git-guard 危险命令双层门禁（A+B 架构、规则分级、局限） | [architecture/git-guard.md](architecture/git-guard.md) |
-| Sentry 插件 seam、Session/Env 解耦与 Skills 重构计划 | [architecture/skills-refactor-plan.md](architecture/skills-refactor-plan.md) |
-| Session 级环境路由与 Provider 池方案（含架构图、并发时序和验收标准） | [architecture/session-env-routing.md](architecture/session-env-routing.md) |
-| 目录职责：apps（agent=装配 / dev=探针）与 packages（插件零件）的关系 | [README 目录结构一节](../README.md#目录结构) |
+| Env / Session 现行架构：状态归属、持久绑定、Provider 池、恢复与验收 | [architecture/session-env-routing.md](architecture/session-env-routing.md) |
+| 目录职责：apps 与 packages 的边界及各文件作用 | [apps/README.md](../apps/README.md) |
 
 ## 数据源对接档案
 

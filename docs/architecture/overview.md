@@ -191,6 +191,7 @@ flowchart TB
 
 | 主题 | 入口 |
 |---|---|
+| Env / Session 绑定、持久化与 Provider 池 | [architecture/session-env-routing.md](architecture/session-env-routing.md) |
 | git-guard 双层门禁 | [architecture/git-guard.md](git-guard.md) |
 | 启动与挂载（headless / web GUI） | [guides/runbook.md](../guides/runbook.md) |
 | 新同事从零接入 | [guides/onboarding.md](../guides/onboarding.md) |

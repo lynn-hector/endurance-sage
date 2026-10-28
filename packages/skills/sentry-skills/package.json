@@ -1,17 +1,17 @@
 {
   "name": "@dsh-sentry/sentry-skills",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Methodology skills for the sentry plugins: model-loadable instruction bodies ported from the original SKILL.md / prompts / methodology assets.",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node ../../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
@@ -22,5 +22,18 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
-  }
+  },
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.yeastar.com/yeastar/infrastructure/golang/endurance/dsh-sentry.git",
+    "directory": "packages/skills/sentry-skills"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ]
 }

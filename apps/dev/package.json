@@ -30,6 +30,7 @@
     "@deepseek-ai/dsh-tools": "^0.2.1-rc.3",
     "@dsh-sentry/datasource": "workspace:*",
     "@dsh-sentry/env-matrix": "workspace:*",
+    "@dsh-sentry/sentry": "workspace:*",
     "@dsh-sentry/sentry-persona": "workspace:*",
     "@dsh-sentry/sentry-skills": "workspace:*",
     "@dsh-sentry/service-alertmanager": "workspace:*",

@@ -1,33 +1,28 @@
 ---
 name: code-repository
-description: 跨仓代码检索、读取与 ff-only 同步：sentry_search_code（codegraph 索引优先、ripgrep 回退）+ sentry_read_code + sentry_sync_code（git pull --ff-only 刷新配置仓库，更新后自动增量重建 codegraph 索引）。从错误信息/日志行/慢 SQL 定位到代码行，作为交叉验证的 code 证据。
+description: 跨仓代码检索、读取与按需 ff-only 同步：sentry_search_code 定位错误、函数或 SQL 相关代码，sentry_read_code 读取带行号上下文，sentry_sync_code 仅在版本疑似滞后时刷新配置内仓库并更新索引。
 ---
 
 # code-repository：跨仓代码检索、读取与同步
 
 ## 使用边界
 
-在产品代码仓库中定位与异常、错误信息或功能相关的代码片段。触发场景：
+用于把日志异常、慢 SQL、trace 中的调用位置或用户提供的功能点定位到产品代码，并取得带行号的证据。
 
-- 根据错误信息/日志行/慢 SQL 搜索相关代码。
-- 其他排查技能（db/redis/trace）定位到可疑调用后，回到代码确认逻辑。
-- 需要读取指定文件片段。
-- 本地检出疑似落后（行号/内容对不上），需要 ff-only 同步。
+触发场景：
 
-跳过场景：
+- 根据错误文本、函数名、SQL 或调用点搜索代码。
+- 读取搜索结果或指定文件的完整上下文。
+- 有明确迹象表明本地检出落后于目标版本，需要同步后重新核对。
 
-- 只讨论代码架构，没有具体检索目标。
+跳过场景：只讨论代码架构而没有具体检索目标。
 
 执行原则：
 
-- 只读：搜索和读取（sentry_search_code / sentry_read_code），不修改任何文件。
-- 同步：sentry_sync_code 仅对配置发现的仓库执行 `git pull --ff-only`——只快进、不合并、不重写历史、不丢本地改动；本地分叉或工作区不干净时以错误回报而不是强行同步。快进后自动增量重建该仓的 codegraph 索引（失败不影响同步结果）。只允许操作配置内仓库（repos/baseDir/repoPath 发现到的），不接受任意路径。
-- 优先返回带行号上下文的代码片段。
-- 搜索结果为空时，缩短关键词或换同义词重试；怀疑检出滞后（行号对不上、代码不存在）时先 sentry_sync_code 同步再重试。
-
-为什么是工具而不是模型直接读文件：会话沙箱把原生文件工具限制在会话工作区内，产品仓库在别处；工具在宿主进程内执行受控只读检索，是对沙箱的受控豁免。sentry_sync_code 同在宿主进程执行、不经 bash 管线（git-guard 拦不到它），因此护栏内建于工具本身：固定参数的 `git pull --ff-only` + 只操作配置发现的仓库，模型无法注入命令或指定任意路径。
-
-来源纪律：代码腿的检索根目录（baseDir；行内团队配置可进装配，环境变量/凭据库中的机器路径由服务构造期解析、不进装配）与对话工作区互不相干。不要把会话工作区里的检出当代码事实来源——两者版本/行号可能漂移；代码证据一律以 `sentry_search_code` / `sentry_read_code` 返回为准。
+- 搜索和读取是只读操作，不修改文件。
+- 代码事实以 `sentry_search_code` / `sentry_read_code` 的产品仓库检出为准，不使用会话工作区中的同名仓库替代。
+- 优先返回能解释异常的上下文，不把代码存在或文本相同直接当作运行时根因。
+- 搜索为空先缩短关键词、换同义词或调整 repo/language；只有行号、符号或版本明显对不上时才考虑同步，不把同步当作普通空结果的默认动作。
 
 ## 工具
 
@@ -35,49 +30,47 @@ description: 跨仓代码检索、读取与 ff-only 同步：sentry_search_code�
 
 | 参数 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `query` | 是 | - | 搜索关键词或错误信息（固定字符串、大小写不敏感） |
-| `repo` | 否 | 全部 | 限定仓库（名称或路径） |
-| `language` | 否 | - | 语言过滤：go/python/java/typescript/javascript/proto/sql/yaml/json |
+| `query` | 是 | - | 固定字符串搜索，大小写不敏感 |
+| `repo` | 否 | 全部 | 限定配置内仓库，名称或路径 |
+| `language` | 否 | - | go/python/java/typescript/javascript/proto/sql/yaml/json |
 | `maxResults` | 否 | `20` | 最大返回片段数 |
 
-搜索后端（自动选择）：仓库有 `.codegraph/` 索引 → `codegraph query --json`（索引损坏或无结果时回退）；否则 → `ripgrep`，语言 glob 过滤，±2 行上下文，相邻匹配区间合并。
+有 `.codegraph/` 索引时优先 codegraph，无索引、索引损坏或需要回退时使用 ripgrep。返回带行号上下文的片段。
 
 ### sentry_read_code — 读取文件
 
 | 参数 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `repo` | 是 | - | 仓库名（搜索结果里的 `repo` 字段）或路径 |
+| `repo` | 是 | - | 搜索结果中的仓库名或配置路径 |
 | `file` | 是 | - | 相对仓库根的文件路径 |
-| `startLine` | 否 | `1` | 起始行（1 起） |
+| `startLine` | 否 | `1` | 起始行，1 起 |
 | `endLine` | 否 | 文件末 | 结束行 |
 
-返回带行号前缀的文件内容；先搜索后读取，确认片段的完整上下文。
+先搜索再读取关键片段，确认条件分支、调用关系和异常处理上下文。
 
-### sentry_sync_code — 同步仓库（ff-only）
+### sentry_sync_code — 按需同步仓库
 
 | 参数 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `repo` | 否 | 全部 | 限定一个**配置内**仓库（名称或配置路径）；不能指定任意目录 |
-| `dryRun` | 否 | `false` | 只列出目标仓库的当前分支/HEAD，不执行 pull |
+| `repo` | 否 | 全部配置内仓库 | 同步目标；怀疑单个仓库滞后时应明确指定 |
+| `dryRun` | 否 | `false` | 只返回目标仓库当前分支和 HEAD，不执行 pull |
 
-对配置发现到的仓库执行 `git pull --ff-only`：只快进；本地分叉、工作区不干净、无上游时返回该仓库的 git 错误，不做任何合并/重置/丢弃。每仓结果含 `head_before → head_after`（短 sha）、分支名与 git 输出摘要；有更新（或下述自愈触发）的仓库若带 `.codegraph/` 索引，会接着跑增量 `codegraph sync --quiet` 刷新索引（结果记在每仓的 `index_sync`/`index_error`，失败不影响 pull 结果，搜索无结果时仍会回退 ripgrep）。
+同步会对配置内仓库执行 `git pull --ff-only`，不是只读查询。它只快进，不合并、不重置、不丢弃本地改动；分叉、工作区状态或上游问题按错误返回。只允许操作配置发现的仓库，模型不能指定任意路径或注入命令。
 
-什么时候用：行号/内容与日志或链路证据对不上、怀疑本地检出落后于部署版本时，先同步再重新搜索。
+有更新或索引 HEAD 不一致时会尝试增量重建 codegraph；索引失败不改变 pull 结果，搜索仍可回退 ripgrep。详细规则见 [索引与同步细节](references/index-and-sync.md)。
 
-索引自愈：clone-repos 在装有 codegraph 的机器上会为每个仓库自动初始化索引并记录建索引时的 HEAD（`.git/dsh-codegraph-head`）。sentry_sync_code 每次运行会将该标记与当前 HEAD 比对——切分支、手工 pull 等任何带外变更导致不一致时自动重建该仓索引（哪怕本次 pull 无更新；pull 失败不阻断自愈）。重建失败时标记保持旧值，下次 sync 自动重试，期间检索回退 ripgrep。
+## 输出与证据语义
 
-## 输出格式
+统一 evidence 信封，`type: code`，`source: code-repository`。搜索结果的 `data.results[]` 含 `repo/file/line_start/line_end/content/score`；score 仅 codegraph 路径有值，ripgrep 路径恒 0。仓库未配置时 confidence 为 0 并带配置提示。
 
-统一 evidence 信封，`type: code`，`source: code-repository`。搜索结果 `data.results[]` 每项含 `repo/file/line_start/line_end/content/score`（score 仅 codegraph 路径有值，rg 路径恒 0）。仓库未配置时 `confidence: 0` 并带配置提示。
+- 搜索为空只表示当前关键词、仓库和本地版本未命中，不证明代码或功能不存在。
+- 本地代码能解释异常只是代码证据，还需确认它是否属于实际部署版本，并与日志、trace 或指标对齐。
+- 同步后的最新代码也不一定等于故障时运行版本；排查历史故障应结合 Zadig 的镜像、分支或 commit。
 
 ## 使用示例
 
 ```json
-{ "query": "timeout connecting to redis" }
-```
-
-```json
-{ "query": "GetConfig", "repo": "novo-commctl-config", "language": "go", "maxResults": 5 }
+{ "query": "timeout connecting to redis", "language": "go", "maxResults": 10 }
 ```
 
 ```json
@@ -86,16 +79,16 @@ description: 跨仓代码检索、读取与 ff-only 同步：sentry_search_code�
 
 ## 推荐链路
 
-1. 从日志/链路/慢 SQL 中提取错误信息或函数名。
-2. `sentry_search_code` 跨仓搜索（结合 project-context 技能的仓库布局判断去哪个仓）。
-3. 结果为空或行号对不上时：先 `sentry_sync_code` 同步（或缩短关键词重试）。
-4. `sentry_read_code` 读取关键片段的完整上下文。
-5. 代码片段作为 code 证据参与交叉验证（"日志 + 代码"两类证据定根因）。
+1. 从日志、链路或慢 SQL 提取具有区分度的错误文本、函数名或 SQL 片段。
+2. 搜索代码，必要时用 `project-context` 确认仓库布局。
+3. 读取关键片段，说明代码路径与异常之间的关系和仍缺少的运行时证据。
+4. 搜索为空时先调整查询；只有版本疑似滞后时先 dryRun 核对 HEAD，再按需同步。
+5. 将代码与日志、trace、指标或部署版本交叉验证。
 
 ## 检查清单
 
-- [ ] 查询关键词是否足够具体。
-- [ ] 是否返回了带行号的代码片段。
-- [ ] 证据可疑时是否先 sentry_sync_code 同步过再下结论。
-- [ ] 是否结合了错误信息或 trace 上下文。
-- [ ] 是否说明了代码片段与异常的相关性。
+- [ ] 查询关键词是否具体，空结果是否先尝试了合理变体。
+- [ ] 是否读取了带行号的必要上下文，而非只凭搜索摘要。
+- [ ] 是否区分本地代码、最新代码与实际部署版本。
+- [ ] 是否仅在版本疑似滞后时同步，并限制到目标仓库。
+- [ ] 是否用运行时证据验证代码所提示的因果路径。

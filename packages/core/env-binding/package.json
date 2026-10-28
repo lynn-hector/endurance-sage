@@ -1,18 +1,18 @@
 {
   "name": "@dsh-sentry/env-binding",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Session-scoped environment bindings persisted as DSH plugin records and folded through a host-only projection.",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run tests"
+    "test": "vitest run tests",
+    "build": "node ../../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
@@ -26,5 +26,17 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
-  }
+  },
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.yeastar.com/yeastar/infrastructure/golang/endurance/dsh-sentry.git",
+    "directory": "packages/core/env-binding"
+  },
+  "files": [
+    "dist"
+  ]
 }

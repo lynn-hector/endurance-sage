@@ -41,7 +41,6 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import { assemblyAnchorEnv } from '@dsh-sentry/env-matrix'
 import {
   buildSearchSummary,
   buildSyncSummary,
@@ -86,10 +85,9 @@ function asEvidence(value: unknown): JsonValue {
 
 /** Register the search, read and (config-gated) sync tools. */
 export function apply(ctx: Context, config: Config): void {
-  // Env label resolves per call from the assembly anchor: this plugin injects
-  // a service, so a service config swap can leave this instance frozen on
-  // boot-time config (see @dsh-sentry/env-matrix).
-  const anchorEnv = (): string => assemblyAnchorEnv() ?? config.env ?? 'unknown'
+  // The aggregate bundle and legacy renderer both provide the startup env.
+  // Evidence does not depend on repository-local assembly files.
+  const anchorEnv = (): string => config.env ?? 'unknown'
   const refs = (): string[] => [`env:${anchorEnv()}:code`]
 
   ctx.tools.register(defineTool({

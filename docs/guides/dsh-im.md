@@ -1,6 +1,8 @@
 # dsh-im 使用指南（IM 渠道的会话与工作区）
 
-sentry profile 内置 `@xmanrui/dsh-im`，把 dsh 接入飞书/钉钉/企微等 IM。本文说明它在**会话复用**和**工作区切换**上的实际行为（依据 4.7.0 源码，`src/channels/shared/workspace-session.mjs` 与各渠道 bridge）。
+本地 `apps/profile` 内置 `@xmanrui/dsh-im`，把 DSH 接入飞书、钉钉、企微等 IM。统一的 `@dsh-sentry/sentry` npm bundle 只包含 sentry 能力，不强制安装 IM；通过 GitLab 安装的用户如需 IM，应在目标 profile 中单独安装并配置 dsh-im。
+
+本文说明 dsh-im 在**会话复用**和**工作区切换**上的实际行为，依据当前工作区安装的 5.6.0 源码（`src/channels/shared/workspace-session.mjs` 与各渠道 bridge）。
 
 ## 会话是复用还是新建？
 

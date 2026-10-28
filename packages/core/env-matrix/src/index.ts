@@ -10,7 +10,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse, stringify } from 'yaml'
 
@@ -338,13 +338,21 @@ export function renderEntries(row: EnvRow): Entry[] {
         tokenRef: 'TAPD_TOKEN',
       },
     },
-    { id: 'sentry-tool-tapd-inspector', name: '@dsh-sentry/tool-tapd-inspector' },
+    {
+      id: 'sentry-tool-tapd-inspector',
+      name: '@dsh-sentry/tool-tapd-inspector',
+      config: { env },
+    },
     {
       id: 'sentry-code-repository',
       name: '@dsh-sentry/service-code-repository',
       config: codeBaseDir === undefined ? undefined : { baseDir: codeBaseDir },
     },
-    { id: 'sentry-tool-code-repository', name: '@dsh-sentry/tool-code-repository' },
+    {
+      id: 'sentry-tool-code-repository',
+      name: '@dsh-sentry/tool-code-repository',
+      config: { env },
+    },
     { id: 'sentry-persona', name: '@dsh-sentry/sentry-persona' },
     { id: 'sentry-skills', name: '@dsh-sentry/sentry-skills' },
     { id: 'sentry-git-guard', name: '@dsh-sentry/guard-git' },
@@ -451,7 +459,12 @@ export function renderPatch(row: EnvRow): string {
     `# dsh-sentry 组装（env: ${row.envLabel}）——由 apps/agent/envs.yml 生成，勿手改。`,
     REGEN_NOTE,
   ].join('\n')
-  return `${header}\n\n- insert:\n${stringifyEntries(renderEntries(row))}\n`
+  const entries: Entry[] = [{
+    id: 'sentry',
+    name: '@dsh-sentry/sentry',
+    config: { defaultEnv: row.envLabel },
+  }]
+  return `${header}\n\n${stringifyEntries(entries)}\n`
 }
 
 export function renderIncludePatch(row: EnvRow): string {
@@ -459,75 +472,42 @@ export function renderIncludePatch(row: EnvRow): string {
     `# dsh-sentry 组装（env: ${row.envLabel}，include 格式）——由 apps/agent/envs.yml 生成，勿手改。`,
     REGEN_NOTE,
   ].join('\n')
-  return `${header}\n${stringifyEntries(renderEntries(row), '  ')}\n`
+  const entries: Entry[] = [{
+    id: 'sentry',
+    name: '@dsh-sentry/sentry',
+    config: { defaultEnv: row.envLabel },
+  }]
+  return `${header}\n${stringifyEntries(entries, '  ')}\n`
 }
 
 /**
- * The environment an assembly text declares.
- *
- * Structural source first: the env-switcher entry's `config.env` — real YAML
- * the renderer emits and the loader consumes; editing or losing the comment
- * header cannot desync it. The header comment remains the human summary and
- * the legacy fallback for assemblies written before this convention.
+ * The startup/default environment an assembly declares. The aggregate bundle
+ * uses `sentry.config.defaultEnv`; the env-switcher form remains supported for
+ * legacy assemblies. The human-readable header is only a fallback.
  */
 export function extractCurrentEnv(text: string): string | undefined {
   try {
-    const entry = assemblyEntries(parse(text))?.find(item => item.id === ENV_SWITCHER_ENTRY_ID)
-    const env = entry?.config?.['env']
-    if (typeof env === 'string' && env.length > 0) return env
+    const entries = assemblyEntries(parse(text))
+    const bundleEnv = entries?.find(item => item.id === 'sentry')?.config?.['defaultEnv']
+    if (typeof bundleEnv === 'string' && bundleEnv.length > 0) return bundleEnv
+    const legacyEnv = entries?.find(item => item.id === ENV_SWITCHER_ENTRY_ID)?.config?.['env']
+    if (typeof legacyEnv === 'string' && legacyEnv.length > 0) return legacyEnv
   } catch {
     // unparseable text — the header fallback below still gets a chance
   }
   return /^# dsh-sentry 组装（env: (.+?)(?:，include 格式)?）/m.exec(text)?.[1]
 }
 
-// ---------------------------------------------------------------------------
-// Assembly anchor reading — the startup/default environment an assembly
-// declares.
-//
-// After the Session refactor the only consumers are env-agnostic shared
-// services (TAPD, code repositories), which label their evidence with the
-// host assembly's anchor env. Reading per call — instead of trusting plugin
-// config — keeps the label correct even when a service config swap leaves a
-// tool plugin frozen on its boot-time config (cordis `Fiber.update`'s
-// non-active branch stashes the new config silently, with no log).
-// ---------------------------------------------------------------------------
-
-/** Locations of the two generated assembly files, checked in this order. */
-export interface AssemblyPaths {
-  /** Include-format assembly (`cordis.include.yml`), preferred source. */
-  include: string
-  /** Direct-write patch assembly (`cordis.patch.yml`). */
-  patch: string
-}
-
-/** Repo-relative default assembly locations (`apps/profile/*`), or `$DSH_SENTRY_ASSEMBLY_DIR` when set. */
-export function defaultAssemblyPaths(): AssemblyPaths {
-  const override = process.env.DSH_SENTRY_ASSEMBLY_DIR
-  if (override !== undefined && override.length > 0) {
-    return {
-      include: join(override, 'cordis.include.yml'),
-      patch: join(override, 'cordis.patch.yml'),
-    }
-  }
-  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
-  return {
-    include: join(repoRoot, 'apps/profile/cordis.include.yml'),
-    patch: join(repoRoot, 'apps/profile/cordis.patch.yml'),
-  }
-}
-
 /**
- * Repo-relative default matrix location (`apps/agent/envs.yml`), or
- * `$DSH_SENTRY_ENVS_PATH` when set. Shared by the Session binding store and
- * the environment Provider pool so a profile assembly never needs to repeat
- * the path.
+ * Default matrix shipped in this npm package, or `$DSH_SENTRY_ENVS_PATH` when
+ * explicitly overridden. Both src/index.ts and dist/index.js are one level
+ * below the package root, so development and published layouts resolve the
+ * same resource without knowing the repository location.
  */
 export function defaultEnvsPath(): string {
   const override = process.env.DSH_SENTRY_ENVS_PATH
   if (override !== undefined && override.length > 0) return override
-  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
-  return join(repoRoot, 'apps/agent/envs.yml')
+  return fileURLToPath(new URL('../envs.yml', import.meta.url))
 }
 
 /** Assembly entries flattened from either file format (bare list or `- insert:`). */
@@ -551,24 +531,6 @@ function assemblyEntries(parsed: unknown): Entry[] | undefined {
 function isEntry(value: unknown): value is Entry {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && typeof (value as Entry).id === 'string'
-}
-
-/**
- * The startup/default environment the assembly files declare — the anchor
- * written when `use-env` generated them (env-switcher `config.env`); runtime
- * switching no longer rewrites these files. Returns `undefined` when neither
- * file is readable or parseable; callers fall back to plugin config.
- */
-export function assemblyAnchorEnv(paths: AssemblyPaths = defaultAssemblyPaths()): string | undefined {
-  for (const file of [paths.include, paths.patch]) {
-    try {
-      const env = extractCurrentEnv(readFileSync(file, 'utf8'))
-      if (env !== undefined) return env
-    } catch {
-      // unreadable file — try the next source
-    }
-  }
-  return undefined
 }
 
 function stringifyEntries(entries: Entry[], indent = '    '): string {

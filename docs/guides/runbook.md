@@ -1,110 +1,100 @@
 # DSH 启动与加载手册
 
-dsh-sentry 的插件通过 DSH **profile + patch 叠加层**机制加载。本手册覆盖两种已实测的启动方式：headless（一次性 CLI）和 web（常驻 GUI）。
+dsh-sentry 通过 DSH profile 加载统一的 `@dsh-sentry/sentry` bundle。本文只描述当前的 headless 一次性任务和 Web 常驻服务；安装、升级与发布命令见[开发验证、发布与安装](development-release-install.md)。
 
 ## 概念速览
 
-| 概念 | 说明 |
-|---|---|
-| profile | `~/.dsh/profiles/<name>` 下的独立运行单元：自己的 `package.json`（插件依赖）+ `cordis.patch.yml`（用户 patch 层）。profile 之间互不可见。 |
-| bundle | profile 的基础插件组合（`dsh-base`、`dsh-web-app`、`dsh-headless` 等），按 `dsh.profile.bundles` 顺序叠加。 |
-| patch 层 | 在 bundle 之上的用户修改：`- id: <行id>` 覆盖已有行，`- insert: [...]` 追加新行。sentry 插件就是用 insert 加入的。 |
-| link 依赖 | `dsh plugin add <本地路径>` 安装的包是 pnpm link，指向 dsh-sentry 工作区。**改 dsh-sentry 代码后只需重启宿主即生效，不用重装。** |
-| 凭据 | `$DSH_HOME/.credentials.yaml`（优先）+ 进程环境变量。插件里写的是引用名（如 `GREPTIMEDB_DP0_USERNAME`），不是明文。 |
-| 模型 | 沿用 `$DSH_HOME/settings.yaml`（当前 kimi/k3），sentry 插件不引入自己的模型配置。 |
+- **profile**：`~/.dsh/profiles/<name>` 下的独立运行单元，保存插件依赖和 `cordis.patch.yml`。不同 profile 的插件互不可见。
+- **统一 bundle**：`@dsh-sentry/sentry` 负责加载全部 sentry 插件。用户只需安装这一个包，不再逐条安装 evidence、datasource、service 和 tool。
+- **patch 层**：在 bundle 之上覆盖配置。sentry 默认只有一个 `id: sentry` 的装配入口，`defaultEnv` 等配置在这里覆盖。
+- **凭据**：`$DSH_HOME/.credentials.yaml` 或进程环境变量保存真实值；插件配置只包含 `*Ref` 引用名。
+- **模型**：沿用 `$DSH_HOME/settings.yaml`，sentry bundle 不引入自己的模型配置。
 
-## 方式一：headless（一次性任务，适合快速验证）
+本地 `apps/profile` 还声明了 Web、IM 等开发用宿主 bundle；npm 包 `@dsh-sentry/sentry` 只包含 sentry 能力，不强制安装 GUI 或 IM。
 
-```bash
-cd <deepseek-harness 检出目录>   # dsh 宿主源码仓；也可用 npm i -g dsh 后直接 dsh
+## 方式一：headless 一次性任务
 
-# 首次：初始化 profile 并安装 sentry 插件（只需一次）
-pnpm dsh plugin --profile headless add \
-  <dsh-sentry 仓库>/packages/core/evidence \
-  <dsh-sentry 仓库>/packages/core/datasource \
-  <dsh-sentry 仓库>/packages/services/greptimedb \
-  <dsh-sentry 仓库>/packages/tools/tool-log-analyzer
+适用于快速检查工具、执行单次排查或接入自动化任务。
 
-# 每次运行：带 sentry 叠加层启动一个一次性会话
-pnpm dsh --profile headless \
-  --patch <dsh-sentry 仓库>/apps/agent/sentry.cordis.patch.yml \
-  "<排查任务>"
-```
+### 使用 GitLab 版本
 
-- 叠加层文件：`apps/agent/sentry.cordis.patch.yml`（本仓库内，可改 endpoint/环境标签）。
-- 运行结束自动退出；session 持久化在 `~/.dsh/sessions`。
-- 示例任务：「列出近 30 分钟有日志的服务」「查 commctl-config 近 30 分钟的 ERROR 日志模式」。
-
-## 方式二：web（GUI 页面，适合交互排查）
-
-> 现行默认接入方式已改为**独立 sentry profile**（`pnpm run profile:link sentry` → `dsh --profile sentry --port 3090`），见 [onboarding.md](onboarding.md)。本节保留手工往 web profile 装插件的原始步骤，供调试加载机制时参考。
+在已经初始化的 headless profile 中安装统一 bundle：
 
 ```bash
-cd <deepseek-harness 检出目录>
-
-# 首次：安装 sentry 插件到 web profile（只需一次）
-pnpm dsh plugin --profile web add \
-  <dsh-sentry 仓库>/packages/core/evidence \
-  <dsh-sentry 仓库>/packages/core/datasource \
-  <dsh-sentry 仓库>/packages/services/greptimedb \
-  <dsh-sentry 仓库>/packages/tools/tool-log-analyzer
+dsh plugin --profile headless add @dsh-sentry/sentry@<version>
 ```
 
-然后把 sentry 行写进 `~/.dsh/profiles/web/cordis.patch.yml`（已配置好，内容如下）：
-
-```yaml
-- insert:
-    - id: sentry-greptimedb
-      name: '@dsh-sentry/service-greptimedb'
-      config:
-        endpoint: https://greptimedb.cn-0.dev.novo-one.com
-        database: public
-        usernameRef: GREPTIMEDB_DP0_USERNAME
-        passwordRef: GREPTIMEDB_DP0_PASSWORD
-    - id: sentry-tool-log-analyzer
-      name: '@dsh-sentry/tool-log-analyzer'
-      config:
-        env: dev-platform-hosted-0
-```
+执行一次性任务：
 
 ```bash
-# 预检（不启动服务，打印组合后的完整配置树，grep 验证 sentry 行）
-pnpm dsh --dump-config --profile web | grep -A 10 sentry
-
-# 重启 web 服务生效（插件树是启动时加载的）
-pnpm dsh web
+dsh --profile headless "列出近 30 分钟有日志的服务"
+dsh --profile headless "查 commctl-config 近 30 分钟的 ERROR 日志模式"
 ```
 
-重启后刷新 http://127.0.0.1:3080，**开新对话**（旧对话的上下文不含新工具目录）。
+运行结束后进程退出，Session 按 DSH 宿主机制持久化。
+
+### 使用本地工作区
+
+先按[本地安装流程](development-release-install.md#二本地安装与运行)完成构建和 `profile:link sentry`，然后执行：
+
+```bash
+dsh --profile sentry "列出所有环境"
+dsh --profile sentry "查 commctl-config 近 30 分钟的 ERROR 日志模式"
+```
+
+## 方式二：Web 常驻服务
+
+无论通过 GitLab 还是本地工作区安装，完成装配后都使用相同的启动方式：
+
+```bash
+# 输出 bundle 与 patch 合并后的最终配置，做启动前检查
+dsh --profile sentry --dump-config
+
+# 启动 Web GUI
+dsh --profile sentry --port 3090
+```
+
+打开 `http://127.0.0.1:3090`，安装或升级插件后应**新建对话**再验证工具。旧对话的上下文不会自动获得新的工具目录。
+
+可以过滤统一 bundle 的配置入口：
+
+```bash
+dsh --profile sentry --dump-config | grep -A 12 'sentry'
+```
+
+`dump-config` 只验证安装和配置装配，不验证 GreptimeDB、Zadig 等外部数据源的连通性。
 
 ## 凭据配置
 
-真实查询需要把凭据写进 `$DSH_HOME/.credentials.yaml`（或运行前 export 同名环境变量）：
+真实查询需要把凭据写入 `$DSH_HOME/.credentials.yaml`，或在运行前 export 同名环境变量。例如：
 
 ```yaml
 GREPTIMEDB_DP0_USERNAME: <用户名>
 GREPTIMEDB_DP0_PASSWORD: <密码>
 ```
 
-引用名以 `apps/agent/envs.yml` 各环境行的 `*Ref` 字段为准（唯一事实来源）；endpoint 不同时改 `envs.yml` 对应行后重新生成。
+引用名以 `apps/agent/envs.yml` 中各环境的 `*Ref` 字段为准。npm 安装用户获得的是包内默认矩阵，通常只需补本机凭据；详细规则见[凭据管理](credentials.md)。
 
-## 改了 dsh-sentry 代码之后
+## 修改本地源码之后
 
-两个 profile 都是 link 依赖指向本工作区：
+当前发布包从 `dist` 加载，不是直接加载 TypeScript 源码。本地链接开发时，修改代码后应执行：
 
-1. `pnpm typecheck && pnpm test` 确认本仓库验证通过；
-2. 重启对应宿主（headless 每次运行都是新进程，无需额外操作；web 需要重启进程）。
+```bash
+pnpm run build
+pnpm run verify
+```
+
+然后重启 Web 宿主。headless 每次运行都会创建新进程，但也必须先完成构建。只修改源码而不构建，可能继续加载旧的 `dist` 文件。
 
 ## 常见问题
 
-| 症状 | 原因与处理 |
-|---|---|
-| 模型说没有 sentry 工具 | web 未重启；或对话是重启前开的旧对话——开新对话。 |
-| evidence 报「endpoint 或凭据缺失」 | 凭据引用名在 credentials store 和环境中都没有。检查 `.credentials.yaml` 键名与 patch 里的 `usernameRef`/`passwordRef` 是否一致。 |
-| evidence 报 `GreptimeDB HTTP 401` | 凭据本身错了（用户不存在/密码错误），链路是好的。 |
-| `pnpm install` 后类型冲突（同一包两份实例） | dsh-* 依赖范围不一致导致 pnpm 双实例。本仓库所有 `@deepseek-ai/dsh-*` 统一用 `^0.1.0-rc.7`，不要单独 pin 某个包。 |
-| 想看插件有没有进配置树 | `pnpm dsh --dump-config --profile <name> \| grep sentry`，不启动服务的只读预检。 |
+- **模型说没有 sentry 工具**：确认已安装统一 bundle、重启宿主，并新建对话；再用 `dump-config` 检查 profile。
+- **提示 endpoint 或凭据缺失**：检查 `.credentials.yaml` 的键名是否与矩阵中的 `*Ref` 完全一致。
+- **返回 HTTP 401**：配置链路已经到达服务端，优先检查凭据值和账号权限。
+- **依赖或类型冲突**：不要单独固定某个 `@deepseek-ai/dsh-*` 版本；当前仓库统一使用 `0.2.1-rc.3` 版本线。
+- **本地修改没有生效**：确认已执行 `pnpm run build` 并重启宿主。
+- **重复注册插件**：不要同时保留旧的逐插件 patch 和新的统一 bundle；移除旧条目后再启动。
 
-## 当前已加载的 sentry 能力
+## 当前能力的事实来源
 
-全部工具与数据源清单见 [README 能力全景](../../README.md#能力全景)（以仓库装配文件 `apps/profile/cordis.include.yml` 为准）。加插件（第三方与自研流程不同，先分型）见 [onboarding.md](onboarding.md)「给 sentry profile 加插件（SOP）」一节；日常更新见同文末节。
+工具与数据源清单见 [README 能力全景](../../README.md#能力全景)。实际加载集合由 `packages/bundle/sentry` 和 `renderEntries()` 决定，`apps/profile/cordis.include.yml` 只是本地 profile 的生成装配壳，不再维护逐插件清单。

@@ -23,7 +23,7 @@ TAPD_TOKEN: <token>
 
 往已有文件补键时保持该文件原有形态即可；历史事故：只读顶层键的旧版校验会把嵌套形态下的一切环境误判为缺凭据。
 
-凭据库同时承载**机器本地配置键**。当前只有 `DSH_SENTRY_CODE_BASE`：代码检索腿 backend 组的检出根目录，整体优先级为 `envs.yml` 行内值 > 环境变量 > 凭据库，空值继续回退。行内团队配置可进入装配；环境变量与凭据库只在服务构造期解析，不进入装配，修改后重启宿主生效、无需 regenerate。引导 clone 见 [onboarding.md](onboarding.md) 第 2 步。这类键不是机密，但放这里能让“一台机器只配一个文件”；dsh 宿主只解析被 `*Ref` 引用的键，其余键由 dsh-sentry 读取，互不影响。
+凭据库同时承载**机器本地配置键**。当前只有 `DSH_SENTRY_CODE_BASE`：代码检索腿 backend 组的检出根目录，整体优先级为 `envs.yml` 行内值 > 环境变量 > 凭据库，空值继续回退。行内团队配置可进入装配；环境变量与凭据库只在服务构造期解析，不进入装配，修改后重启宿主生效、无需 regenerate。引导 clone 见 [onboarding.md](onboarding.md) 第 4 步。这类键不是机密，但放这里能让“一台机器只配一个文件”；dsh 宿主只解析被 `*Ref` 引用的键，其余键由 dsh-sentry 读取，互不影响。
 
 ## 各数据源 token 获取方式
 
@@ -51,10 +51,12 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 
 ## 换 token 的操作
 
-只需改 `~/.dsh/.credentials.yaml` 一处，然后触发 profile patch 重载（touch 或重新生成 `cordis.patch.yml`）。**不要**在 dsh 进程运行时动 profile 的 `node_modules`——独立 profile（符号链接模式）下不要对**仓库**跑 `pnpm install`，引入模式下不要对 `~/.dsh/profiles/web` 跑——会卡死 patch 热重载（事故记录见 incidents）。
+只需修改本机 `~/.dsh/.credentials.yaml`，不需要修改环境矩阵、npm 包或 bundle。保存后重启宿主即可；本地链接开发也可以按现有 profile patch 热重载机制触发重载。
 
-## 给 profile 挂新插件包
+不要在 DSH 进程运行期间重装其正在使用的依赖：本地符号链接模式下不要对仓库执行 `pnpm install`，引入模式下不要对 `~/.dsh/profiles/web` 执行安装，以免触发 patch 热重载问题。GitLab 版本升级同样应先停止 DSH。
 
-单一事实来源：[onboarding.md](onboarding.md) 的「给 sentry profile 加插件（SOP）」一节。要点：先看插件包带不带自带 `cordis.patch.yml`——第三方插件 = 依赖 + `dsh.profile.bundles` 列表双注册（**不要**再进 renderEntries，会 `duplicate loader entry id` 启动失败）；自研 `@dsh-sentry/*` 包才走 renderEntries + regenerate 全流程。凭据相关的 `*Ref` 引用配置见本文上文。
+## 插件与部署边界
 
-部署全流程见 [deploy.md](deploy.md)。
+普通用户只安装统一的 `@dsh-sentry/sentry` bundle，不需要逐插件维护凭据装配。自研插件由维护者在 `packages/` 和 `renderEntries()` 中增加，再通过 `pnpm run sync:release` 纳入统一 bundle；不要把新包直接加入 `apps/profile/package.json` 作为发布流程。
+
+本地安装、GitLab 发布和版本升级统一见[开发验证、发布与安装](development-release-install.md)。服务器常驻运行见 [deploy.md](deploy.md)。

@@ -1,17 +1,17 @@
 {
   "name": "@dsh-sentry/tool-log-analyzer",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Log analyzer tools: query k8s container logs from GreptimeDB, extract anomaly patterns.",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node ../../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
@@ -29,5 +29,17 @@
     "@dsh-sentry/service-env-provider": "workspace:*",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
-  }
+  },
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.yeastar.com/yeastar/infrastructure/golang/endurance/dsh-sentry.git",
+    "directory": "packages/tools/tool-log-analyzer"
+  },
+  "files": [
+    "dist"
+  ]
 }
