@@ -47,3 +47,7 @@
       name: '@dsh-sentry/sentry-skills'
     - id: sentry-git-guard
       name: '@dsh-sentry/guard-git'
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-09-28.1
