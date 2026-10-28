@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/callflow-store",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "type": "module",
   "description": "Backend-neutral SIP call-flow Service Definition occupying ctx.callflowStore.",
   "exports": {

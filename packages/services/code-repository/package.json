@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-code-repository",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "type": "module",
   "description": "Local code repository query (git/rg) as a Cordis service.",
   "exports": {

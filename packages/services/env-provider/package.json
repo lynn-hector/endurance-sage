@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-env-provider",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "type": "module",
   "description": "Session-routed, per-environment Provider pool with isolated Cordis service scopes.",
   "exports": {

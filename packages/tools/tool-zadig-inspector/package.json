@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/tool-zadig-inspector",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "type": "module",
   "description": "Zadig inspector tools: deployment/environment/release queries.",
   "exports": {
