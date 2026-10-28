@@ -38,7 +38,7 @@ try {
     const result = spawnSync('pnpm', [
       'publish', join(rootDir, pkg.tarball),
       '--registry', registry,
-      '--userconfig', userconfig,
+      `--config.userconfig=${userconfig}`,
       '--no-git-checks',
     ], { env: { ...process.env, CI: 'true' }, stdio: 'inherit' })
     if (result.status !== 0) throw new Error(`Failed to publish ${pkg.name}@${pkg.version}`)
