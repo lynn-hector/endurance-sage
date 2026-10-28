@@ -40,10 +40,17 @@ for (const dir of packageDirs) {
       default: './dist/index.js',
     },
   }
+  // 插件管理器的 display meta 由 dsh-app-boot 的 readPluginMeta 读取：只认包内导出的
+  // locale/<lang>.json 与 manifest 的 icon 字段。bundle 需额外导出这两个子路径，
+  // 否则 listPlugins 对该条目没有 meta（fallback 也不生效，因为 ./package.json 未导出）。
+  if (manifest.name === '@dsh-sentry/sentry') {
+    manifest.exports['./package.json'] = './package.json'
+    manifest.exports['./locale/*.json'] = './locale/*.json'
+  }
   manifest.files = ['dist']
   if (manifest.name === '@dsh-sentry/env-matrix') manifest.files.push('envs.yml')
   if (manifest.name === '@dsh-sentry/sentry-skills') manifest.files.push('skills')
-  if (manifest.name === '@dsh-sentry/sentry') manifest.files.push('cordis.patch.yml')
+  if (manifest.name === '@dsh-sentry/sentry') manifest.files.push('cordis.patch.yml', 'locale/*.json', 'icon.svg')
   manifest.scripts = {
     ...manifest.scripts,
     build: 'node ../../../scripts/build-package.mjs',

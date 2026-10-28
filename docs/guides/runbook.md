@@ -93,6 +93,7 @@ pnpm run verify
 - **返回 HTTP 401**：配置链路已经到达服务端，优先检查凭据值和账号权限。
 - **依赖或类型冲突**：不要单独固定某个 `@deepseek-ai/dsh-*` 版本；当前仓库统一使用 `0.2.1-rc.3` 版本线。
 - **本地修改没有生效**：确认已执行 `pnpm run build` 并重启宿主。
+- **插件管理页面里 sentry 条目只有包名、没有标题/描述/图标**：宿主从 `packages/bundle/sentry` 的 `locale/{en,zh}.json` 与 manifest `icon` 读取展示元数据，且要求包导出 `./locale/*.json`、`./package.json`；先跑 `node scripts/sync-release.ts` 确认清单，再重启宿主（运行中进程不重新解析包）。
 - **重复注册插件**：不要同时保留旧的逐插件 patch 和新的统一 bundle；移除旧条目后再启动。
 
 ## 当前能力的事实来源

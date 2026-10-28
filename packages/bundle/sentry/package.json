@@ -3,6 +3,7 @@
   "version": "0.1.5",
   "type": "module",
   "description": "Versioned DSH bundle for the complete dsh-sentry investigator plugin set.",
+  "icon": "./icon.svg",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "build": "node ../../../scripts/build-package.mjs"
@@ -62,11 +63,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "dist",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
   ],
   "dsh": {
     "bundle": {

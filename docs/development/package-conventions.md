@@ -131,6 +131,7 @@ readFileSync(new URL('./persona.md', import.meta.url), 'utf8')
 
 - `sentry-skills/skills/` 整体作为发布资源，由发布同步脚本显式加入 `files`。
 - `env-matrix/envs.yml` 和 bundle patch 也有专门发布规则。
+- `bundle/sentry/locale/{en,zh}.json` 与 `icon.svg` 是插件管理器的展示元数据（`meta`）：宿主 `readPluginMeta` 只从 `exports` 里的 `./locale/*.json` 与 manifest 的 `icon` 字段读取，所以同步脚本额外补这两个导出与 `files` 条目，`verify-release.mjs` 校验 tarball 内容。改完 `exports` 或 locale 必须重启宿主，运行中的进程沿用旧的包解析结果。
 - 新增不属于上述位置的包外资源时，必须同步调整构建/发布规则并增加 tarball 内容验证。
 
 不得依赖“本地工作区恰好存在”的仓库相对路径读取运行时资源；发布安装后该路径可能不存在。

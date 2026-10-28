@@ -81,6 +81,7 @@ sequenceDiagram
 | Session 当前环境 | 对话内 `sentry_env_switch` 只更新当前 Session 的持久化绑定；不写 patch、不依赖 watcher，其他 Session 不变 |
 | 代码根目录的环境变量 / 凭据库键 `DSH_SENTRY_CODE_BASE` | 重启宿主；由代码仓库服务构造期解析，无需 regenerate，也不进入装配 |
 | 插件代码（`packages/` 源码） | 重启宿主（依赖 link 指向工作区，不用重装） |
+| 包清单 `exports` / `locale/*.json` / `icon`（插件管理器展示元数据） | 重启宿主；`listPlugins` 的 `meta` 由宿主按当前 `exports` 解析，运行中进程沿用旧解析结果 |
 | 依赖集合 / bundles 数组 / profile 的 package.json | 停进程 → `pnpm install` → 重启 |
 
 铁律：**永远不要在 dsh 进程运行期间对仓库跑 `pnpm install`**——符号链接模式下 profile 的 `node_modules` 就是仓库的，运行中重装会卡死 patch 热重载（有事故记录）。
