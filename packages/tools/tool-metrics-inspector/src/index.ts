@@ -123,7 +123,7 @@ export function apply(ctx: Context, _config: Config): void {
       'Query Prometheus metrics over a time range or at a single instant (`time`) and return one evidence envelope per call. '
       + 'Read-only. `metrics` accepts built-in short names '
       + '(qps / latency_p99 / latency_p95 / error_rate / cpu / memory) or raw PromQL expressions; '
-      + 'at least qps, latency_p99 and error_rate should be queried together when triaging. '
+      + 'select metrics that match the service type and current hypothesis instead of always querying every RED metric. '
       + 'Prefer a tight time window (5–30 minutes around the symptom).',
     parameters: {
       start: { type: 'string', description: 'Range start, ISO8601 (e.g. 2026-07-22T10:00:00Z). Required in range mode; ignored when `time` is given.' },

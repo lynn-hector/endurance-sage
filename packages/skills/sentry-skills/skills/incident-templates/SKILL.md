@@ -125,10 +125,10 @@ triage_intake:
 
 收集信息阶段：先复述已记录的信息（服务/环境/症状），再列出还需要确认的问题。
 
-进入排查阶段：说明将基于 defect-troubleshooting 方法论调度哪些技能、预计步骤，然后执行。
+进入排查阶段：根据场景选择通用或专项流程，简要说明下一步所需技能和查询，然后执行；无需预报完整 10 步或列出所有可能用到的工具。
 
 ## 使用原则
 
 - 模板变量用实际内容填充；没有的信息标注"未知"，不要编造。
-- diagnosis-report 和 action-plan 必须在根因经交叉验证后输出（见 defect-troubleshooting 第 2.8 节红线）。
+- diagnosis-report 和 action-plan 必须在根因经交叉验证后输出（见 defect-troubleshooting 第 2.8 节约束）。
 - 所有变更类建议必须带验证标准和回滚方案。

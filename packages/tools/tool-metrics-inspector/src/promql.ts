@@ -25,8 +25,8 @@
  * `app`, HTTP RED metrics follow the Spring naming
  * (`http_server_requests_seconds_*` with `status`/`outcome` labels, present
  * on the Java services), and the Go commctl services expose only
- * `go_*`/`process_*`/business metrics — RED short names may return empty
- * for them, which is an honest zero, not an error.
+ * `go_*`/`process_*`/business metrics — RED short names may return no
+ * matching series for them, which is not equivalent to a numeric zero.
  */
 export const METRIC_TEMPLATES: Record<string, readonly [string, string]> = {
   qps: [

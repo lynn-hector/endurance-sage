@@ -114,6 +114,8 @@ evidence:
 
 查询失败时 `confidence=0`，`data.error` 包含错误原因。
 
+**多通话边界**：当 `summary.call_ids` 多于 1 个时，`milestones`、`pdd_ms`、`error_responses` 和首尾时间都是所有命中消息的聚合结果，只能用于发现“查询混入了多通话”，不能直接作为任一单通话的接通或 PDD 结论。必须先按 `call_id` 分组还原各自时序，再分别计算和解释里程碑；无法拆清时明确标注不可判定。
+
 ## 推荐链路
 
 1. `callId` 直查信令流，看时序与响应码，定位断点（未到达 / 被拒 / 振铃未接 / 异常挂断）。
@@ -134,6 +136,6 @@ evidence:
 
 - [ ] 时间窗是否覆盖通话发生时段（默认 24h，老通话需要显式放宽）。
 - [ ] 是否还原了 INVITE→180→200→BYE 完整时序并指出断点。
-- [ ] `summary.call_ids` 多于 1 个时，是否按 call_id 分通话解读时序（milestones/PDD 是全体混算的）。
+- [ ] `summary.call_ids` 多于 1 个时，是否先按 call_id 分组重算时序，并避免引用全局 milestones/PDD 作为单通话结论。
 - [ ] ≥400 的响应码是否都已解释。
 - [ ] 是否用 `summary.trace_ids` 桥接回应用层日志/链路。
