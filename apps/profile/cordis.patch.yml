@@ -1,9 +1,13 @@
 # dsh-sentry 组装（env: tst-platform-hosted-0）——由 apps/agent/envs.yml 生成，勿手改。
 # 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate
 
-    - id: sentry
-      name: '@dsh-sentry/sentry'
-      config:
-        defaultEnv: tst-platform-hosted-0
-    - id: sentry-ui-settings
-      name: '@dsh-sentry/ui-settings'
+- id: sentry
+  name: '@dsh-sentry/sentry'
+  config:
+    defaultEnv: tst-platform-hosted-0
+- id: sentry-ui-settings
+  name: '@dsh-sentry/ui-settings'
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-09-28.1
