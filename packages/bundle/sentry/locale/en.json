@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sentry (dsh-sentry)",
+    "description": "Fault-investigation bundle: switches the bound environment, gathers logs, traces, metrics, DB/cache/MQ state and deployment history with read-only tools, and turns production symptoms into evidence-backed root-cause reports."
+  }
+}

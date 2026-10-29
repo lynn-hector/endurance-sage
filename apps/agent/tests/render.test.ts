@@ -32,12 +32,16 @@ const fixture: EnvRow = {
     envName: 'tst-platform-hosted-0',
     tokenRef: 'ZADIG_API_TOKEN',
   },
+  kubernetes: {
+    endpointRef: 'KUBERNETES_MCP_ENDPOINT',
+    context: 'test',
+  },
 }
 
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders the 18 host plugins in dependency order', () => {
+  it('renders the 19 host plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
       // 宿主级 Session 路由栈在最前：绑定存储 + Provider 池（环境无关条目）
       'sentry-env-binding',
@@ -50,6 +54,7 @@ describe('renderEntries', () => {
       'sentry-tool-db-inspector',
       'sentry-tool-redis-inspector',
       'sentry-tool-zadig-inspector',
+      'sentry-tool-kubernetes-inspector',
       'sentry-tool-mq-inspector',
       'sentry-tapd',
       'sentry-tool-tapd-inspector',
@@ -88,7 +93,7 @@ describe('renderEntries', () => {
 describe('renderProviderEntries', () => {
   const providers = renderProviderEntries(fixture)
 
-  it('renders the 7 Provider services the pool mounts per environment', () => {
+  it('renders the 8 Provider services the pool mounts per environment', () => {
     expect(providers.map((e) => e.id)).toEqual([
       'sentry-greptimedb',
       'sentry-trace',
@@ -96,6 +101,7 @@ describe('renderProviderEntries', () => {
       'sentry-alertmanager',
       'sentry-dbx',
       'sentry-zadig',
+      'sentry-kubernetes',
       'sentry-service-rocketmq',
     ])
   })
@@ -141,6 +147,22 @@ describe('renderProviderEntries', () => {
     })
   })
 
+  it('renders the kubernetes leg from the row: gateway endpoint ref + pinned context, no credential values', () => {
+    const entry = providers.find((e) => e.id === 'sentry-kubernetes')
+    expect(entry?.name).toBe('@dsh-sentry/service-kubernetes')
+    expect(entry?.config).toEqual({
+      endpointRef: 'KUBERNETES_MCP_ENDPOINT',
+      context: 'test',
+    })
+  })
+
+  it('omits the kubernetes Provider entirely when the row carries no kubernetes block', () => {
+    const { kubernetes: _kubernetes, ...legacyRow } = fixture
+    const rendered = renderProviderEntries(legacyRow)
+    expect(rendered.find((e) => e.id === 'sentry-kubernetes')).toBeUndefined()
+    expect(rendered).toHaveLength(7)
+  })
+
   it('no credential values anywhere — refs only', () => {
     const text = JSON.stringify(providers)
     expect(text).not.toMatch(/password:\s*['"]?\w/i)
@@ -168,13 +190,14 @@ describe('renderProviderEntries', () => {
 })
 
 describe('requiredCredentialRefs', () => {
-  it('collects exactly the eight refs an env needs', () => {
+  it('collects exactly the nine refs an env needs', () => {
     expect(requiredCredentialRefs(fixture).sort()).toEqual([
       'DBX_TEST_PASSWORD',
       'GRAFANA_TEST_PASSWORD',
       'GRAFANA_TEST_USERNAME',
       'GREPTIMEDB_TEST_PASSWORD',
       'GREPTIMEDB_TEST_USERNAME',
+      'KUBERNETES_MCP_ENDPOINT',
       'ROCKETMQ_LOCAL_PASSWORD',
       'ROCKETMQ_LOCAL_USERNAME',
       'ZADIG_API_TOKEN',
@@ -193,7 +216,7 @@ describe('requiredCredentialRefs', () => {
     const refs = requiredCredentialRefs(tokenRow)
     expect(refs).toContain('GREPTIMEDB_TEST_CONNECT_TOKEN')
     expect(refs).not.toContain('GREPTIMEDB_TEST_USERNAME')
-    expect(refs).toHaveLength(7)
+    expect(refs).toHaveLength(8)
   })
 })
 
@@ -232,15 +255,18 @@ describe('code leg baseDir', () => {
 })
 
 describe('renderPatch', () => {
-  it('renders one aggregate bundle override that round-trips through the real parser', () => {
+  it('renders the aggregate bundle override plus the ui-settings Loader entry, round-tripping through the real parser', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { id: string; name: string; config?: Record<string, unknown> }[]
-    expect(parsed).toHaveLength(1)
+    expect(parsed).toHaveLength(2)
     expect(parsed[0]).toMatchObject({
       id: 'sentry',
       name: '@dsh-sentry/sentry',
       config: { defaultEnv: 'test' },
     })
+    // ui-settings 是 profile 级 Loader 条目（web 设置页），随装配携带、无 config
+    expect(parsed[1]).toMatchObject({ id: 'sentry-ui-settings', name: '@dsh-sentry/ui-settings' })
+    expect(parsed[1]?.config).toBeUndefined()
   })
 
   it('keeps the header minimal: env marker + regen pointer, no inline commentary', () => {
@@ -265,9 +291,16 @@ describe('envs.yml contract', () => {
         expect(row.greptimedb.passwordRef, `${name}.greptimedb.passwordRef`).toMatch(/^[A-Z0-9_]+$/)
       }
       expect(row.zadig.tokenRef, `${name}.zadig.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
-      // 8 条必备引用：prometheus 腿统一走表单登录（grafana 账号密码），
-      // 不再为禁 basic auth 的实例配 service account token
-      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(greptimedbTokenMode ? 7 : 8)
+      // kubernetes 腿可选但当前矩阵全量接线：context 与环境名 1:1；网关地址经凭据库
+      // 解析（平台级共享单键）；tokenRef 预留给网关鉴权（启用后进入就绪推导与必备引用数）
+      expect(row.kubernetes?.context, `${name}.kubernetes.context`).toBe(name)
+      expect(row.kubernetes?.endpointRef, `${name}.kubernetes.endpointRef`).toBe('KUBERNETES_MCP_ENDPOINT')
+      if (row.kubernetes?.tokenRef !== undefined) {
+        expect(row.kubernetes.tokenRef, `${name}.kubernetes.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
+      }
+      // 9 条必备引用：prometheus 腿统一走表单登录（grafana 账号密码）+ kubernetes
+      // 网关地址键；greptimedb token 模式少一对账密
+      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(greptimedbTokenMode ? 8 : 9)
     }
   })
 })

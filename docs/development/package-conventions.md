@@ -34,7 +34,7 @@ packages/<group>/<package>/
 |---|---|---|
 | tool 包目录与包名 | `tool-<domain>` / `@dsh-sentry/tool-<domain>` | `tool-metrics-inspector` |
 | 环境 Provider 包 | 优先 `<backend>` / `@dsh-sentry/service-<backend>` | `services/prometheus` → `service-prometheus` |
-| 共享命名 service | `service-<domain>` / `@dsh-sentry/service-<domain>` | `service-tapd` |
+| 共享命名 service | `<domain>` / `@dsh-sentry/service-<domain>` | `services/tapd` → `service-tapd` |
 | Definition 包 | `<capability>-store` / `@dsh-sentry/<capability>-store` | `metrics-store` |
 | guard 包 | `guard-<domain>` / `@dsh-sentry/guard-<domain>` | `git-guard` → `guard-git` |
 | model-facing tool | `sentry_<verb>_<noun>`，snake_case | `sentry_query_metrics` |
@@ -131,6 +131,7 @@ readFileSync(new URL('./persona.md', import.meta.url), 'utf8')
 
 - `sentry-skills/skills/` 整体作为发布资源，由发布同步脚本显式加入 `files`。
 - `env-matrix/envs.yml` 和 bundle patch 也有专门发布规则。
+- `bundle/sentry/locale/{en,zh}.json` 与 `icon.svg` 是插件管理器的展示元数据（`meta`）：宿主 `readPluginMeta` 只从 `exports` 里的 `./locale/*.json` 与 manifest 的 `icon` 字段读取，所以同步脚本额外补这两个导出与 `files` 条目，`verify-release.mjs` 校验 tarball 内容。改完 `exports` 或 locale 必须重启宿主，运行中的进程沿用旧的包解析结果。
 - 新增不属于上述位置的包外资源时，必须同步调整构建/发布规则并增加 tarball 内容验证。
 
 不得依赖“本地工作区恰好存在”的仓库相对路径读取运行时资源；发布安装后该路径可能不存在。

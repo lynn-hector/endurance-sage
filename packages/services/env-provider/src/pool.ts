@@ -3,6 +3,7 @@ import type { CacheStore } from '@dsh-sentry/cache-store'
 import type { CallflowStore } from '@dsh-sentry/callflow-store'
 import type { DbStore } from '@dsh-sentry/db-store'
 import { readMatrix, renderProviderEntries, type EnvRow } from '@dsh-sentry/env-matrix'
+import type { KubernetesStore } from '@dsh-sentry/kubernetes-store'
 import type { LogStore } from '@dsh-sentry/log-store'
 import type { MetricsStore } from '@dsh-sentry/metrics-store'
 import type { MqStore } from '@dsh-sentry/mq-store'
@@ -16,6 +17,7 @@ import type { AlertmanagerService as AlertmanagerProvider } from '@dsh-sentry/se
 import RocketMqService from '@dsh-sentry/service-rocketmq'
 import ZadigService from '@dsh-sentry/service-zadig'
 import type { ZadigService as ZadigProvider } from '@dsh-sentry/service-zadig'
+import KubernetesService from '@dsh-sentry/service-kubernetes'
 
 /**
  * The per-environment Provider bundle one Tool call leases. Missing legs are
@@ -32,6 +34,7 @@ export interface EnvProviderBundle {
   alertmanager?: AlertmanagerProvider
   mqStore?: MqStore
   zadig?: ZadigProvider
+  kubernetesStore?: KubernetesStore
 }
 
 type BundleSlot = keyof EnvProviderBundle
@@ -73,6 +76,7 @@ const ISOLATED_SLOTS: readonly BundleSlot[] = [
   'alertmanager',
   'mqStore',
   'zadig',
+  'kubernetesStore',
 ]
 
 type ProviderPlugin =
@@ -83,6 +87,7 @@ type ProviderPlugin =
   | typeof AlertmanagerPlugin
   | typeof RocketMqService
   | typeof ZadigService
+  | typeof KubernetesService
 
 /**
  * Per-leg Provider wiring. Configs come from `renderEntries()` — the same
@@ -102,6 +107,9 @@ const PROVIDER_SERVICES: ReadonlyArray<{
   { packageName: '@dsh-sentry/service-alertmanager', leg: 'alertmanager', plugin: AlertmanagerPlugin, slots: ['alertmanager'] },
   { packageName: '@dsh-sentry/service-rocketmq', leg: 'rocketmq', plugin: RocketMqService, slots: ['mqStore'] },
   { packageName: '@dsh-sentry/service-zadig', leg: 'zadig', plugin: ZadigService, slots: ['zadig'] },
+  // 可选腿：矩阵行省略 kubernetes 块时 renderProviderEntries 不渲染该插件配置，
+  // 走“环境矩阵未渲染 …”的逐腿降级路径
+  { packageName: '@dsh-sentry/service-kubernetes', leg: 'kubernetes', plugin: KubernetesService, slots: ['kubernetesStore'] },
 ]
 
 function requireError(env: string, slot: BundleSlot, reason: string): Error {

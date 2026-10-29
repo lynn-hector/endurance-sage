@@ -10,8 +10,11 @@ import z from '@deepseek-ai/schemastery'
 import {
   credentialReadiness,
   credentialStorePath as defaultCredentialStorePath,
+  credentialValues,
+  DEFAULT_ENV_REF,
   defaultEnvsPath,
   readMatrix,
+  resolveCodeBaseDir,
   resolveEnvName,
   type EnvRow,
   type LegReadiness,
@@ -215,6 +218,21 @@ interface PersistenceResult {
   persistenceError?: string
 }
 
+export interface DefaultEnvInfo {
+  /** 本机偏好；别名归一为 canonical 名，失效值原样返回以便界面提示。 */
+  preference?: string
+  /** 下一个新 Session 实际使用的默认环境。 */
+  effectiveEnv: string
+  /** 装配文件声明的环境；本机偏好未设置或失效时作为新 Session 默认环境。 */
+  assemblyEnv: string
+}
+
+/** 非机密的机器级全局配置，供设置页只读展示。 */
+export interface GlobalConfigInfo {
+  /** 代码检索腿的实际检出根目录（环境变量 > 凭据库）；未配置时缺省。 */
+  codeBaseDir?: string
+}
+
 /**
  * Owns the Session-to-Env route. Plugin records are the only durable fact;
  * the projection is a derived, host-only read model.
@@ -243,6 +261,28 @@ export class SessionEnvBindingStore extends Service {
 
   async current(session: Session): Promise<ResolvedEnvBinding> {
     return this.serialize(session, () => this.currentUnlocked(session))
+  }
+
+  /** Read the machine-local preference and the two default layers for the settings UI. */
+  defaultEnv(): DefaultEnvInfo {
+    const matrix = this.matrix()
+    const effectiveEnv = this.resolveDefault(matrix).env
+    const assemblyEnv = resolveEnvName(this.config.defaultEnv, matrix) ?? this.config.defaultEnv
+    const stored = credentialValues(this.config.credentialStorePath).get(DEFAULT_ENV_REF)?.trim()
+    const preference = stored === undefined || stored === ''
+      ? undefined
+      : resolveEnvName(stored, matrix) ?? stored
+    return {
+      ...(preference === undefined ? {} : { preference }),
+      effectiveEnv,
+      assemblyEnv,
+    }
+  }
+
+  /** Read non-secret machine-global values for the settings UI (read-only). */
+  globalConfig(): GlobalConfigInfo {
+    const codeBaseDir = resolveCodeBaseDir(undefined, this.config.credentialStorePath)
+    return codeBaseDir === undefined ? {} : { codeBaseDir }
   }
 
   /** Initialize a new Session without ever overwriting an existing binding. */
@@ -353,7 +393,20 @@ export class SessionEnvBindingStore extends Service {
     return readMatrix(this.config.envsPath)
   }
 
+  /**
+   * 默认环境解析顺序：机器本地偏好键（`DSH_SENTRY_DEFAULT_ENV`，凭据库/环境
+   * 变量，经 `credentialValues` 与其余凭据同一张平面）> 装配环境
+   * （`defaultEnv`，同时是生成插件装配的锚点）。偏好键未设置或失效
+   * （矩阵漂移、手误）时使用装配环境——默认环境是可用性配置而非安全边界，
+   * 不因偏好失效拦截 Session 初始化；装配值失效仍 fail-loud。
+   * 每次解析现读文件，写入后下一个新 Session 即生效，无需重启宿主。
+   */
   private resolveDefault(matrix: Matrix): EnvTarget {
+    const stored = credentialValues(this.config.credentialStorePath).get(DEFAULT_ENV_REF)?.trim()
+    if (stored !== undefined && stored !== '') {
+      const preferred = resolveEnvName(stored, matrix)
+      if (preferred !== undefined) return this.target(preferred, matrix)
+    }
     const env = resolveEnvName(this.config.defaultEnv, matrix)
     if (env === undefined) {
       throw new EnvBindingError(

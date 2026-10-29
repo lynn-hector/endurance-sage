@@ -119,7 +119,7 @@
 | 共享 service tool | `packages/tools/tool-tapd-inspector/` |
 | Service Definition | `packages/core/metrics-store/` |
 | Provider | `packages/services/prometheus/` |
-| 共享命名 service | `packages/services/service-tapd/` |
+| 共享命名 service | `packages/services/tapd/` |
 | Guard | `packages/guard/git-guard/` |
 
 阅读参考实现时同时阅读其 `tests/`，测试也是接口契约的一部分。

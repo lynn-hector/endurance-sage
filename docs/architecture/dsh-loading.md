@@ -50,7 +50,7 @@ sequenceDiagram
 - id: sentry-env-binding    # 行 id：patch 覆盖的寻址键，profile 内唯一
   name: '@dsh-sentry/env-binding'   # npm 包名（或本地路径）
   config:                   # 用户配置，加载时按插件导出的 schema 校验、补默认值
-    defaultEnv: tst-platform-hosted-0  # 新 Session 的默认环境，不是全局实时路由
+    defaultEnv: tst-platform-hosted-0  # 装配环境；DSH_SENTRY_DEFAULT_ENV 未设置或失效时作为新 Session 默认环境
 ```
 
 预检：`dsh --profile sentry --dump-config | grep sentry-` 打印组合后的完整配置树（不启动服务），验证装配是否成功。
@@ -77,10 +77,11 @@ sequenceDiagram
 
 | 改动 | 生效方式 |
 |---|---|
-| patch 层（`cordis.patch.yml`：宿主插件 config、insert 行增删） | **watcher 热重载**。`use-env <env> -- --profile sentry` 只更新启动装配与默认环境，不重绑在线 Session；不要裸用默认的 web profile 目标 |
+| patch 层（`cordis.patch.yml`：宿主插件 config、insert 行增删） | **watcher 热重载**。`use-env <env> -- --profile sentry` 只更新装配环境，不重绑在线 Session，也不覆盖有效的 `DSH_SENTRY_DEFAULT_ENV`；不要裸用默认的 web profile 目标 |
 | Session 当前环境 | 对话内 `sentry_env_switch` 只更新当前 Session 的持久化绑定；不写 patch、不依赖 watcher，其他 Session 不变 |
 | 代码根目录的环境变量 / 凭据库键 `DSH_SENTRY_CODE_BASE` | 重启宿主；由代码仓库服务构造期解析，无需 regenerate，也不进入装配 |
 | 插件代码（`packages/` 源码） | 重启宿主（依赖 link 指向工作区，不用重装） |
+| 包清单 `exports` / `locale/*.json` / `icon`（插件管理器展示元数据） | 重启宿主；`listPlugins` 的 `meta` 由宿主按当前 `exports` 解析，运行中进程沿用旧解析结果 |
 | 依赖集合 / bundles 数组 / profile 的 package.json | 停进程 → `pnpm install` → 重启 |
 
 铁律：**永远不要在 dsh 进程运行期间对仓库跑 `pnpm install`**——符号链接模式下 profile 的 `node_modules` 就是仓库的，运行中重装会卡死 patch 热重载（有事故记录）。

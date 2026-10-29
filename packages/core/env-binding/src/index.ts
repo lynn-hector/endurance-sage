@@ -9,10 +9,12 @@ export {
   EnvBindingError,
   SessionEnvBindingStore,
   type Config,
+  type DefaultEnvInfo,
   type DegradedLeg,
   type EnvBindingErrorCode,
   type EnvSwitchResult,
   type EnvTarget,
+  type GlobalConfigInfo,
   type ResolvedEnvBinding,
   type SessionCallContext,
 } from './store.ts'

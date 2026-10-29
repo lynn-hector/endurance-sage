@@ -3,6 +3,7 @@
   "version": "0.1.5",
   "type": "module",
   "description": "Versioned DSH bundle for the complete dsh-sentry investigator plugin set.",
+  "icon": "./icon.svg",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "build": "node ../../../scripts/build-package.mjs"
@@ -16,6 +17,7 @@
     "@dsh-sentry/env-matrix": "workspace:*",
     "@dsh-sentry/evidence": "workspace:*",
     "@dsh-sentry/guard-git": "workspace:*",
+    "@dsh-sentry/kubernetes-store": "workspace:*",
     "@dsh-sentry/log-store": "workspace:*",
     "@dsh-sentry/metrics-store": "workspace:*",
     "@dsh-sentry/mq-store": "workspace:*",
@@ -26,6 +28,7 @@
     "@dsh-sentry/service-dbx": "workspace:*",
     "@dsh-sentry/service-env-provider": "workspace:*",
     "@dsh-sentry/service-greptimedb": "workspace:*",
+    "@dsh-sentry/service-kubernetes": "workspace:*",
     "@dsh-sentry/service-prometheus": "workspace:*",
     "@dsh-sentry/service-rocketmq": "workspace:*",
     "@dsh-sentry/service-tapd": "workspace:*",
@@ -35,6 +38,7 @@
     "@dsh-sentry/tool-code-repository": "workspace:*",
     "@dsh-sentry/tool-db-inspector": "workspace:*",
     "@dsh-sentry/tool-env-switcher": "workspace:*",
+    "@dsh-sentry/tool-kubernetes-inspector": "workspace:*",
     "@dsh-sentry/tool-log-analyzer": "workspace:*",
     "@dsh-sentry/tool-metrics-inspector": "workspace:*",
     "@dsh-sentry/tool-mq-inspector": "workspace:*",
@@ -43,6 +47,7 @@
     "@dsh-sentry/tool-trace-analyzer": "workspace:*",
     "@dsh-sentry/tool-zadig-inspector": "workspace:*",
     "@dsh-sentry/trace-store": "workspace:*",
+    "@dsh-sentry/ui-settings": "workspace:*",
     "@deepseek-ai/cordis": "^4.0.5",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
@@ -62,11 +67,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "dist",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
   ],
   "dsh": {
     "bundle": {

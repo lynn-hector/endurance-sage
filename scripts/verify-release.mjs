@@ -29,6 +29,10 @@ for (const pkg of release.packages) {
   if (pkg.name === '@dsh-sentry/sentry' && !files.includes('package/cordis.patch.yml')) {
     throw new Error('sentry bundle tarball is missing cordis.patch.yml')
   }
+  if (pkg.name === '@dsh-sentry/sentry'
+    && !['package/locale/en.json', 'package/locale/zh.json', 'package/icon.svg'].every(file => files.includes(file))) {
+    throw new Error('sentry bundle tarball is missing its display metadata resources')
+  }
 
   const manifest = JSON.parse(read(tarball, ['-xOf'], 'package/package.json'))
   if (manifest.version !== release.version || manifest.private === true) {
@@ -36,6 +40,12 @@ for (const pkg of release.packages) {
   }
   if (manifest.exports?.['.']?.default !== './dist/index.js') {
     throw new Error(`${pkg.name} does not export its compiled entry`)
+  }
+  // 宿主 readPluginMeta 通过 ESM 解析 <包名>/locale/<lang>.json 与 <包名>/package.json；
+  // 未导出这两个子路径时 listPlugins 里该插件没有任何 meta。
+  if (pkg.name === '@dsh-sentry/sentry'
+    && (manifest.exports?.['./locale/*.json'] === undefined || manifest.exports?.['./package.json'] === undefined)) {
+    throw new Error('sentry bundle does not export its display metadata resources')
   }
   for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
     for (const [name, spec] of Object.entries(manifest[section] ?? {})) {

@@ -22,7 +22,7 @@
 | 状态 | 权威来源 / 所有者 | 生命周期与约束 |
 |---|---|---|
 | 环境矩阵 | `apps/agent/envs.yml` | 声明 canonical 环境名、endpoint、数据源 uid 和 credential ref；唯一手工维护点 |
-| 启动默认 Env | 生成装配中的 `env-binding.defaultEnv` | 仅用于新 Session 初始化、无记录迁移和失效绑定恢复；不覆盖已有有效绑定 |
+| 新 Session 默认 Env | 机器本地偏好键 `DSH_SENTRY_DEFAULT_ENV`（凭据库/环境变量）> 生成装配中的 `env-binding.defaultEnv`（装配环境） | 仅用于新 Session 初始化、无记录迁移和失效绑定恢复；不覆盖已有有效绑定；偏好键未设置或失效时使用装配环境 |
 | Session 绑定事实 | Session 日志中的 `plugin:dsh-sentry/env-binding` | 追加式保存；最后一条 schema 有效记录生效；随 resume、fork 和导出日志携带 |
 | Session 绑定读模型 | `dshSentryEnvBinding` projection | host-only，从完整 Session 日志折叠；是派生状态，不是第二份事实来源 |
 | Provider 实例 | `EnvProviderPool` | 按 Env 和配置版本懒创建、复用、换代与释放 |
@@ -32,14 +32,14 @@
 | 凭据值 | `$DSH_HOME/.credentials.yaml` 或进程环境 | 不进入 Session 绑定记录；缺失时按腿降级 |
 | 用户与 Session 的关系 | 外层 SDK / BFF | 负责鉴权和会话定位，不复制 Env 绑定事实 |
 
-“当前环境”默认指**调用 Session 的绑定环境**。`use-env --current` 读取的是装配默认环境，不代表某个在线 Session 的实时绑定。
+“当前环境”默认指**调用 Session 的绑定环境**。`use-env --current` 读取的是装配环境，不代表某个在线 Session 的实时绑定，也不覆盖有效的 `DSH_SENTRY_DEFAULT_ENV`。
 
 ## 3. 总体结构
 
 ```mermaid
 flowchart TB
     matrix["apps/agent/envs.yml<br/>环境矩阵与 Provider 配置来源"]
-    assembly["生成装配<br/>env-binding.defaultEnv"]
+    assembly["生成装配 / 装配环境<br/>env-binding.defaultEnv"]
     log["DSH Session 日志<br/>plugin:dsh-sentry/env-binding"]
     projection["host-only projection<br/>dshSentryEnvBinding"]
     binding["SessionEnvBindingStore<br/>解析绑定 / 默认迁移 / 失效恢复 / 显式切换"]
@@ -172,7 +172,9 @@ type EnvBindingRecord = {
 | fork | 继承 fork 点的绑定；之后父子 Session 独立切换 |
 | compact | 不改变原始日志和绑定，不从模型可见摘要推导 Env |
 | JSONL 导出后恢复 | 记录保留则恢复；记录丢失则按无记录迁移，不伪造原环境 |
-| 默认 Env 未配置或已移除 | 返回 `DEFAULT_ENV_INVALID`，不任意选择矩阵第一项 |
+| 默认 Env 未配置或已移除 | 返回 `DEFAULT_ENV_INVALID`，不任意选择矩阵第一项（机器本地偏好键失效时先降级回装配默认值，仅当装配值也失效才走到这里） |
+
+新 Session 默认 Env 的解析顺序：机器本地偏好键 `DSH_SENTRY_DEFAULT_ENV`（凭据库 `$DSH_HOME/.credentials.yaml` 或进程环境，值为 canonical 名或短名）优先；未设置或失效时使用装配环境 `env-binding.defaultEnv`。装配环境同时是启动期生成插件装配的锚点（bundle 按 `sentry.config.defaultEnv` 选择矩阵行），不是单纯的个人偏好备份。偏好键每次解析现读文件——偏好变更后，**下一个新 Session 即生效**，无需重启宿主，在线 Session 不受影响；偏好键因矩阵漂移失效时使用装配环境，不拦截 Session 初始化（默认环境是可用性配置，不是安全边界）。设置页展示解析结果，并可编辑/清除本机偏好键（经凭据 Remote set/unset 落盘），不写装配文件；凭据 Remote 只返回配置状态，具体环境名由宿主 `sentrySettings.getDefaultEnv` 这一非机密窄接口读取并回显。全局配置卡片另经 `getGlobalConfig` 展示代码检索根目录实际值，以及 Zadig token 等跨环境共享键的配置状态。
 
 plugin record 的格式迁移是 best-effort。正常 resume 应恢复最后绑定；记录确实丢失时允许默认迁移，但必须通过 `source` 和返回状态保持可观测。
 
@@ -186,7 +188,8 @@ Provider 配置由 `renderProviderEntries(row)` 从同一份 `envs.yml` 推导�
 - Prometheus → `metricsStore`；
 - Alertmanager → `alertmanager`；
 - RocketMQ → `mqStore`；
-- Zadig → `zadig`。
+- Zadig → `zadig`；
+- Kubernetes（经 kubernetes-mcp-server 网关桥接；地址由凭据库 `KUBERNETES_MCP_ENDPOINT` 解析，按环境行 `kubernetes.context` 选集群）→ `kubernetesStore`。
 
 生命周期规则：
 

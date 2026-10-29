@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="dsh-sentry">
+  <!-- 占位图标：放大镜 + 故障脉冲。替换时保持文件名与 viewBox 即可。 -->
+  <circle cx="444" cy="444" r="288" fill="none" stroke="#4A5699" stroke-width="72"/>
+  <path d="M300 444h96l48-96 56 192 48-96h152" fill="none" stroke="#C45FA0" stroke-width="56"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M668 668l188 188" fill="none" stroke="#E5594F" stroke-width="88" stroke-linecap="round"/>
+</svg>
