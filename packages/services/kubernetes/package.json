@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-kubernetes",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "KubernetesStore Provider bridging the platform kubernetes-mcp-server gateway (streamable HTTP MCP) as the kubernetesStore seam.",
   "exports": {

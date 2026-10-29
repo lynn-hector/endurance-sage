@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/tool-kubernetes-inspector",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Kubernetes inspector tools: session-env-bound read-only pod/log/event/resource views.",
   "exports": {

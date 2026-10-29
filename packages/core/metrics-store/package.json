@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/metrics-store",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Backend-neutral metrics Service Definition occupying ctx.metricsStore.",
   "exports": {

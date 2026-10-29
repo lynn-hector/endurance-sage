@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/tool-tapd-inspector",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "TAPD inspector tool: defect-ticket queries in the unified evidence envelope.",
   "exports": {

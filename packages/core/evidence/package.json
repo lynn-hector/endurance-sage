@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/evidence",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Unified evidence envelope (templates/evidence-format.md): types, builders, validators.",
   "exports": {

@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/log-store",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Backend-neutral log query Service Definition occupying ctx.logStore.",
   "exports": {

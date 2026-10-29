@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/cache-store",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Backend-neutral cache key inspection Service Definition occupying ctx.cacheStore.",
   "exports": {

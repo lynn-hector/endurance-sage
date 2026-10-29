@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/sentry-skills",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Methodology skills for the sentry plugins: model-loadable instruction bodies ported from the original SKILL.md / prompts / methodology assets.",
   "exports": {

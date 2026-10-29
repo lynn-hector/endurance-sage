@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-zadig",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Zadig OpenAPI client as a Cordis service.",
   "exports": {

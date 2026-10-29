@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/sentry-persona",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Always-on investigator persona for the sentry deployment, ported from the original AGENTS.md constitution.",
   "exports": {

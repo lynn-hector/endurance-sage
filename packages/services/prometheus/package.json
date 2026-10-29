@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/service-prometheus",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "MetricsStore Provider: Prometheus HTTP API via direct or Grafana-ds-query proxy transport.",
   "exports": {

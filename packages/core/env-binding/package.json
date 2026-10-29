@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/env-binding",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Session-scoped environment bindings persisted as DSH plugin records and folded through a host-only projection.",
   "exports": {

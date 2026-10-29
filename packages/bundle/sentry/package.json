@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/sentry",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Versioned DSH bundle for the complete dsh-sentry investigator plugin set.",
   "icon": "./icon.svg",

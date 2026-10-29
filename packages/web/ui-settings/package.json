@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/ui-settings",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Web settings section for viewing environment configuration and editing machine-local defaults and credentials in the DSH settings shell.",
   "dsh": {

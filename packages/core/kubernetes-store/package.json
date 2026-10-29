@@ -1,6 +1,6 @@
 {
   "name": "@dsh-sentry/kubernetes-store",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Backend-neutral Kubernetes read-only view Service Definition occupying ctx.kubernetesStore.",
   "exports": {
