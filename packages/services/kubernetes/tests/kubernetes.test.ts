@@ -422,3 +422,112 @@ describe('curated call builders', () => {
     expect(namespaces).toEqual(['middleware', 'middleware'])
   })
 })
+
+describe('extended gateway tools (top / namespaces / nodes)', () => {
+  function calledTool(calls: FetchCall[]): { name: string; arguments: Record<string, unknown> } {
+    return calls.find(call => call.body['method'] === 'tools/call')?.body['params'] as { name: string; arguments: Record<string, unknown> }
+  }
+
+  it('listPods with allNamespaces calls pods_list without a namespace', async () => {
+    const gateway = gatewayStub()
+    vi.stubGlobal('fetch', gateway.mock)
+
+    const service = makeService()
+    await service.listPods({ allNamespaces: true, labelSelector: 'app=a', limit: 50, continue: 'tok-1' })
+
+    expect(calledTool(gateway.calls).name).toBe('pods_list')
+    expect(toolCallArguments(gateway.calls)).toEqual({ labelSelector: 'app=a', limit: 50, continue: 'tok-1', context: CONTEXT })
+  })
+
+  it('topPods pins all_namespaces=false and the default namespace, mapping labelSelector to snake_case', async () => {
+    const gateway = gatewayStub()
+    vi.stubGlobal('fetch', gateway.mock)
+
+    const service = makeService()
+    await service.topPods({ labelSelector: 'app=a', limit: 20 })
+
+    expect(calledTool(gateway.calls).name).toBe('pods_top')
+    expect(toolCallArguments(gateway.calls)).toEqual({
+      all_namespaces: false,
+      namespace: 'novo-one',
+      label_selector: 'app=a',
+      limit: 20,
+      context: CONTEXT,
+    })
+  })
+
+  it('topPods with allNamespaces sets all_namespaces=true and drops the namespace', async () => {
+    const gateway = gatewayStub()
+    vi.stubGlobal('fetch', gateway.mock)
+
+    const service = makeService()
+    await service.topPods({ allNamespaces: true, namespace: 'ignored' })
+
+    expect(toolCallArguments(gateway.calls)).toEqual({ all_namespaces: true, context: CONTEXT })
+  })
+
+  it('topNodes maps the selector to snake_case and passes paging through', async () => {
+    const gateway = gatewayStub()
+    vi.stubGlobal('fetch', gateway.mock)
+
+    const service = makeService()
+    await service.topNodes({ labelSelector: 'node-role.kubernetes.io/worker=', limit: 10, continue: 'tok-2' })
+
+    expect(calledTool(gateway.calls).name).toBe('nodes_top')
+    expect(toolCallArguments(gateway.calls)).toEqual({
+      label_selector: 'node-role.kubernetes.io/worker=',
+      limit: 10,
+      continue: 'tok-2',
+      context: CONTEXT,
+    })
+  })
+
+  it('listNamespaces only forwards fieldSelector/limit/continue', async () => {
+    const gateway = gatewayStub()
+    vi.stubGlobal('fetch', gateway.mock)
+
+    const service = makeService()
+    await service.listNamespaces({ fieldSelector: 'status.phase=Active', limit: 30, continue: 'tok-3' })
+
+    expect(calledTool(gateway.calls).name).toBe('namespaces_list')
+    expect(toolCallArguments(gateway.calls)).toEqual({ fieldSelector: 'status.phase=Active', limit: 30, continue: 'tok-3', context: CONTEXT })
+  })
+
+  it('getNodeLogs maps source/tail to the gateway query/tailLines and returns text', async () => {
+    const gateway = gatewayStub()
+    vi.stubGlobal('fetch', gateway.mock)
+
+    const service = makeService()
+    const text = await service.getNodeLogs('node-a', { source: 'kubelet', tail: 50 })
+
+    expect(calledTool(gateway.calls).name).toBe('nodes_log')
+    expect(toolCallArguments(gateway.calls)).toEqual({ name: 'node-a', query: 'kubelet', tailLines: 50, context: CONTEXT })
+    expect(text).toBe('echo nodes_log')
+  })
+
+  it('getNodeStatsSummary parses the text-only Summary JSON into the seam object', async () => {
+    const summary = { node: { nodeName: 'node-a', cpu: { usageNanoCores: 813000000 } }, pods: [{ podRef: { name: 'p-1' } }] }
+    const mock = vi.fn(async (_url: string | URL, init: RequestInit): Promise<Response> => {
+      const body = JSON.parse(init.body as string) as Record<string, unknown>
+      if (body['method'] === 'initialize') {
+        return sse({ jsonrpc: '2.0', id: 1, result: {} }, { 'mcp-session-id': 'SID-1' })
+      }
+      if (body['method'] === 'notifications/initialized') return new Response('', { status: 202 })
+      return sse({
+        jsonrpc: '2.0',
+        id: body['id'],
+        result: { content: [{ type: 'text', text: JSON.stringify(summary) }] },
+      })
+    })
+    vi.stubGlobal('fetch', mock)
+
+    const service = makeService()
+    const result = await service.getNodeStatsSummary('node-a')
+
+    expect(result.object).toEqual(summary)
+    const call = mock.mock.calls.map(args => JSON.parse(args[1].body as string) as Record<string, unknown>)
+      .find(body => body['method'] === 'tools/call')?.['params'] as { name: string; arguments: Record<string, unknown> }
+    expect(call.name).toBe('nodes_stats_summary')
+    expect(call.arguments).toEqual({ name: 'node-a', context: CONTEXT })
+  })
+})

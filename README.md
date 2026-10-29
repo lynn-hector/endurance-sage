@@ -17,7 +17,7 @@
 | Redis | `sentry_query_redis` | 单个 key 的值、TTL 与类型查询 |
 | MQ | `sentry_query_mq` | RocketMQ 消息记录、详情与消费轨迹；消息数量不等于消费积压 |
 | CI/CD | `sentry_query_zadig` | Zadig 服务状态、镜像版本、最近部署与工作流历史 |
-| K8s | `sentry_query_k8s_pods` / `sentry_read_k8s_pod_logs` / `sentry_list_k8s_events` / `sentry_query_k8s_resource` | 经 kubernetes-mcp-server 网关的只读集群视图：Pod 状态、容器日志、事件与任意资源对象；集群随 Session 环境自动路由 |
+| K8s | `sentry_query_k8s_pods` / `sentry_read_k8s_pod_logs` / `sentry_list_k8s_events` / `sentry_query_k8s_resource` / `sentry_top_k8s_pods` / `sentry_top_k8s_nodes` / `sentry_list_k8s_namespaces` / `sentry_read_k8s_node_logs` / `sentry_read_k8s_node_stats` | 经 kubernetes-mcp-server 网关的只读集群视图：Pod 状态、容器日志、事件、任意资源对象、Pod/节点资源用量、命名空间与节点日志/统计；集群随 Session 环境自动路由 |
 | 缺陷单 | `sentry_query_tapd` | TAPD 候选已知缺陷与修复状态对账 |
 | 代码 | `sentry_search_code` / `sentry_read_code` / `sentry_sync_code` | 跨仓代码检索与读取；按需 ff-only 同步配置内仓库并维护 codegraph 索引 |
 | 环境 | `sentry_env_list` / `sentry_env_current` / `sentry_env_switch` | 查看和切换当前 Session 的环境绑定，不影响其他 Session |

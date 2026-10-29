@@ -52,6 +52,26 @@ class FakeKubernetesStore extends KubernetesStore {
   override async listResources(): Promise<KubernetesListResult> {
     return { items: [], continue: null, remainingItemCount: null, text: 'rows table' }
   }
+
+  override async listNamespaces(): Promise<KubernetesListResult> {
+    return { items: [{ Name: 'novo-one', Status: 'Active' }], continue: null, remainingItemCount: null, text: 'namespaces table' }
+  }
+
+  override async topPods(): Promise<KubernetesListResult> {
+    return { items: [], continue: null, remainingItemCount: null, text: 'pods top table' }
+  }
+
+  override async topNodes(): Promise<KubernetesListResult> {
+    return { items: [], continue: null, remainingItemCount: null, text: 'nodes top table' }
+  }
+
+  override async getNodeLogs(): Promise<string> {
+    return 'node log line'
+  }
+
+  override async getNodeStatsSummary(name: string): Promise<KubernetesObject> {
+    return { object: { node: { nodeName: name }, pods: [] }, text: 'summary' }
+  }
 }
 
 describe('KubernetesStore Definition', () => {
