@@ -184,11 +184,11 @@ try {
   } else if (leg === 'kubernetes') {
     if (row.kubernetes === undefined) throw new Error(`环境 ${envName} 未配置 kubernetes 腿（envs.yml 缺 kubernetes 块）`)
     await ctx.plugin(KubernetesService, {
-      endpoint: row.kubernetes.endpoint!,
+      endpointRef: row.kubernetes.endpointRef!,
       context: row.kubernetes.context!,
     })
-    // MCP 握手（initialize + initialized）+ 一次业务命名空间 pod 行查询：
-    // 同时验证网关可达、context 存在（404/未知 context 会以工具错误返回）与只读取数路径。
+    // MCP 握手（initialize + initialized，网关地址由 Provider 从凭据库解析）+ 一次业务命名空间
+    // pod 行查询：同时验证网关可达、context 存在（404/未知 context 会以工具错误返回）与只读取数路径。
     const pods = await ctx.kubernetesStore.listPods({ namespace: 'novo-one', limit: 5 })
     console.log(`KUBERNETES PROBE OK — context=${row.kubernetes.context} novo-one 前 ${pods.items.length} 个 Pod`)
     for (const item of pods.items.slice(0, 5)) {

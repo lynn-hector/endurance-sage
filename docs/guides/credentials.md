@@ -55,7 +55,12 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 
 ### Kubernetes（网关桥接，当前免鉴权）
 
-K8s 视图腿经平台级 kubernetes-mcp-server 网关（Rancher 多集群 kubeconfig）只读取数：集群凭据、`read_only` 强制与 Secret 拦截全部在服务端一次解决，**本机凭据库目前无需任何键**。网关启用鉴权后，envs.yml 每行 kubernetes 腿补 `tokenRef`（Bearer token），该腿自动进入逐环境就绪推导与切换预检。网关侧加鉴权（token/OIDC）或 IP 白名单仍在推进中——在落地前，能路由到网关的内网客户端都可读全部集群资源。
+K8s 视图腿经平台级 kubernetes-mcp-server 网关（Rancher 多集群 kubeconfig）只读取数：集群凭据、`read_only` 强制与 Secret 拦截全部在服务端一次解决。网关地址按"一机一文件"寄存在本机凭据库（值非机密，先例 `DSH_SENTRY_DEFAULT_ENV` / `DSH_SENTRY_CODE_BASE`）：
+
+- `KUBERNETES_MCP_ENDPOINT`：网关地址（如 `http://192.168.5.126:19080/mcp`），平台级共享，所有环境同键同值；矩阵行只写引用（`kubernetes.endpointRef`）。缺值时该腿逐环境降级（use-env 预检与设置页可见），补值即恢复。
+- 网关启用鉴权后，envs.yml 各行 kubernetes 腿补 `tokenRef`（Bearer token），届时该键自动进入逐环境就绪推导与切换预检。
+
+网关侧加鉴权（token/OIDC）或 IP 白名单仍在推进中——在落地前，能路由到网关的内网客户端都可读全部集群资源。
 
 ## 换 token 的操作
 

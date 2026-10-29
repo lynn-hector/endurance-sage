@@ -329,13 +329,13 @@ export function renderProviderEntries(row: EnvRow): Entry[] {
       },
     },
     // kubernetes 腿是可选的（矩阵行省略 kubernetes 块即不渲染，Pool 记为该腿
-    // 不可用）；网关 endpoint 平台级共享，环境差异只在 context 名
+    // 不可用）；网关地址经凭据库解析（endpointRef 平台级共享单键），环境差异只在 context 名
     ...(row.kubernetes !== undefined
       ? [{
           id: 'sentry-kubernetes',
           name: '@dsh-sentry/service-kubernetes',
           config: {
-            endpoint: row.kubernetes.endpoint,
+            endpointRef: row.kubernetes.endpointRef,
             context: row.kubernetes.context,
             ...(row.kubernetes.tokenRef !== undefined ? { tokenRef: row.kubernetes.tokenRef } : {}),
           },

@@ -12,6 +12,7 @@ import KubernetesService, { parseRpcBody } from '../src/index.ts'
  */
 
 const ENDPOINT = 'http://kubernetes-mcp.test/mcp'
+const ENDPOINT_REF = 'KUBERNETES_MCP_ENDPOINT'
 const CONTEXT = 'tst-platform-hosted-1'
 
 function sse(payload: unknown, headers: Record<string, string> = {}): Response {
@@ -87,8 +88,9 @@ function gatewayStub(options: { failFirstSession?: boolean } = {}) {
 }
 
 function makeService(extra: Record<string, unknown> = {}): KubernetesService {
+  vi.stubEnv(ENDPOINT_REF, ENDPOINT)
   return new KubernetesService(new Context(), {
-    endpoint: ENDPOINT,
+    endpointRef: ENDPOINT_REF,
     context: CONTEXT,
     ...extra,
   })
@@ -116,24 +118,44 @@ describe('parseRpcBody — SSE or JSON', () => {
 })
 
 describe('KubernetesService identity', () => {
-  it('exposes a stable backendRef carrying the bound context', () => {
+  it('exposes the bound context; the endpoint and backendRef resolve after the first handshake', () => {
     const service = makeService()
-    expect(service.backendRef).toBe(`kubernetes:${CONTEXT}@${ENDPOINT}`)
     expect(service.context).toBe(CONTEXT)
     expect(service.namespace).toBe('novo-one')
     expect(service.configured).toBe(true)
+    expect(service.endpoint).toBeUndefined()
+    expect(service.backendRef).toBe(`kubernetes:${CONTEXT}@unresolved`)
   })
 
-  it('reports itself unconfigured without endpoint or context', () => {
+  it('resolves the gateway URL from the endpointRef credential at the first handshake', async () => {
+    const gateway = gatewayStub()
+    vi.stubGlobal('fetch', gateway.mock)
+
+    const service = makeService()
+    await service.listPods({})
+
+    expect(service.endpoint).toBe(ENDPOINT)
+    expect(service.backendRef).toBe(`kubernetes:${CONTEXT}@${ENDPOINT}`)
+  })
+
+  it('fails with a leg-local hint when the endpoint credential has no value', async () => {
+    vi.stubEnv(ENDPOINT_REF, '')
+    vi.stubGlobal('fetch', vi.fn())
+    const service = new KubernetesService(new Context(), { endpointRef: ENDPOINT_REF, context: CONTEXT })
+    await expect(service.listPods({})).rejects.toThrow(`凭据 ${ENDPOINT_REF} 缺值`)
+  })
+
+  it('reports itself unconfigured without endpointRef or context', () => {
     expect(new KubernetesService(new Context()).configured).toBe(false)
-    expect(new KubernetesService(new Context(), { endpoint: ENDPOINT, context: '' }).configured).toBe(false)
+    expect(new KubernetesService(new Context(), { endpointRef: ENDPOINT_REF, context: '' }).configured).toBe(false)
   })
 
   it('occupies the kubernetesStore seam slot when plugged', async () => {
     const ctx = new Context()
-    await ctx.plugin(KubernetesService, { endpoint: ENDPOINT, context: CONTEXT })
+    await ctx.plugin(KubernetesService, { endpointRef: ENDPOINT_REF, context: CONTEXT })
     expect(ctx.kubernetesStore).toBeInstanceOf(KubernetesStore)
-    expect(ctx.kubernetesStore.backendRef).toBe(`kubernetes:${CONTEXT}@${ENDPOINT}`)
+    expect(ctx.kubernetesStore.context).toBe(CONTEXT)
+    expect(ctx.kubernetesStore.backendRef).toBe(`kubernetes:${CONTEXT}@unresolved`)
     await ctx.fiber.dispose()
   })
 })

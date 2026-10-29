@@ -33,7 +33,7 @@ const fixture: EnvRow = {
     tokenRef: 'ZADIG_API_TOKEN',
   },
   kubernetes: {
-    endpoint: 'http://192.168.5.126:19080/mcp',
+    endpointRef: 'KUBERNETES_MCP_ENDPOINT',
     context: 'test',
   },
 }
@@ -147,11 +147,11 @@ describe('renderProviderEntries', () => {
     })
   })
 
-  it('renders the kubernetes leg from the row: gateway endpoint + pinned context, no credential keys', () => {
+  it('renders the kubernetes leg from the row: gateway endpoint ref + pinned context, no credential values', () => {
     const entry = providers.find((e) => e.id === 'sentry-kubernetes')
     expect(entry?.name).toBe('@dsh-sentry/service-kubernetes')
     expect(entry?.config).toEqual({
-      endpoint: 'http://192.168.5.126:19080/mcp',
+      endpointRef: 'KUBERNETES_MCP_ENDPOINT',
       context: 'test',
     })
   })
@@ -190,13 +190,14 @@ describe('renderProviderEntries', () => {
 })
 
 describe('requiredCredentialRefs', () => {
-  it('collects exactly the eight refs an env needs', () => {
+  it('collects exactly the nine refs an env needs', () => {
     expect(requiredCredentialRefs(fixture).sort()).toEqual([
       'DBX_TEST_PASSWORD',
       'GRAFANA_TEST_PASSWORD',
       'GRAFANA_TEST_USERNAME',
       'GREPTIMEDB_TEST_PASSWORD',
       'GREPTIMEDB_TEST_USERNAME',
+      'KUBERNETES_MCP_ENDPOINT',
       'ROCKETMQ_LOCAL_PASSWORD',
       'ROCKETMQ_LOCAL_USERNAME',
       'ZADIG_API_TOKEN',
@@ -215,7 +216,7 @@ describe('requiredCredentialRefs', () => {
     const refs = requiredCredentialRefs(tokenRow)
     expect(refs).toContain('GREPTIMEDB_TEST_CONNECT_TOKEN')
     expect(refs).not.toContain('GREPTIMEDB_TEST_USERNAME')
-    expect(refs).toHaveLength(7)
+    expect(refs).toHaveLength(8)
   })
 })
 
@@ -290,16 +291,16 @@ describe('envs.yml contract', () => {
         expect(row.greptimedb.passwordRef, `${name}.greptimedb.passwordRef`).toMatch(/^[A-Z0-9_]+$/)
       }
       expect(row.zadig.tokenRef, `${name}.zadig.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
-      // kubernetes 腿可选但当前矩阵全量接线：context 与环境名 1:1，网关平台级共享；
-      // tokenRef 预留给网关鉴权（启用后进入就绪推导与必备引用数）
+      // kubernetes 腿可选但当前矩阵全量接线：context 与环境名 1:1；网关地址经凭据库
+      // 解析（平台级共享单键）；tokenRef 预留给网关鉴权（启用后进入就绪推导与必备引用数）
       expect(row.kubernetes?.context, `${name}.kubernetes.context`).toBe(name)
-      expect(row.kubernetes?.endpoint, `${name}.kubernetes.endpoint`).toMatch(/^https?:\/\//)
+      expect(row.kubernetes?.endpointRef, `${name}.kubernetes.endpointRef`).toBe('KUBERNETES_MCP_ENDPOINT')
       if (row.kubernetes?.tokenRef !== undefined) {
         expect(row.kubernetes.tokenRef, `${name}.kubernetes.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
       }
-      // 8 条必备引用：prometheus 腿统一走表单登录（grafana 账号密码），
-      // 不再为禁 basic auth 的实例配 service account token
-      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(greptimedbTokenMode ? 7 : 8)
+      // 9 条必备引用：prometheus 腿统一走表单登录（grafana 账号密码）+ kubernetes
+      // 网关地址键；greptimedb token 模式少一对账密
+      expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(greptimedbTokenMode ? 8 : 9)
     }
   })
 })

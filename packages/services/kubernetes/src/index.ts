@@ -14,6 +14,9 @@
  *
  * The seam (`@dsh-sentry/kubernetes-store`, slot `kubernetesStore`) speaks
  * Kubernetes vocabulary only; everything below it is Provider internal:
+ * - the gateway URL resolves from the `endpointRef` credential
+ *   (`KUBERNETES_MCP_ENDPOINT`, machine-local value — one file per machine,
+ *   same precedent as DEFAULT_ENV/CODE_BASE_REF) once per session handshake;
  * - `initialize` returns the session id in the `mcp-session-id` response
  *   header, then `notifications/initialized` completes the handshake;
  * - every response may be `text/event-stream` (`event: message` + one
@@ -34,7 +37,6 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
-  endpointField,
   resolveCredential,
   secretField,
   timeoutMsField,
@@ -73,8 +75,8 @@ export interface McpToolResult {
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
 export interface Config {
-  /** Gateway base URL, e.g. `http://192.168.5.126:19080/mcp`. */
-  endpoint: string
+  /** Credential reference holding the gateway base URL, e.g. `KUBERNETES_MCP_ENDPOINT` (machine-local, platform-shared). */
+  endpointRef: string
   /** Kubeconfig context this environment binds to (the env row's cluster). */
   context: string
   /** Business namespace used when a caller omits one. */
@@ -135,7 +137,8 @@ export function parseRpcBody(body: string): Record<string, unknown> {
 
 export class KubernetesService extends KubernetesStore {
   static Config: z<Config> = z.object({
-    endpoint: endpointField('kubernetes-mcp-server 网关地址，如 http://192.168.5.126:19080/mcp'),
+    endpointRef: z.string().required().role('credential-ref')
+      .description('MCP 网关地址的凭据引用（KUBERNETES_MCP_ENDPOINT，机器本地值、平台级共享单键）'),
     context: z.string().required().description('本环境绑定的 kubeconfig context（Rancher 集群名，随环境行配置）'),
     namespace: z.string().default('novo-one').description('工具缺省的业务命名空间'),
     tokenRef: credentialRefField('网关 Bearer token 的凭据引用（网关启用鉴权后配置）'),
@@ -143,25 +146,29 @@ export class KubernetesService extends KubernetesStore {
     timeoutMs: timeoutMsField(30_000),
   })
 
-  /** Gateway URL verbatim from config, for evidence metadata. */
-  readonly endpoint: string
   private readonly config: Config
   private readonly timeoutMs: number
+  /** Gateway URL resolved from `endpointRef` at the first session handshake. */
+  private resolvedEndpoint: string | undefined
   /** MCP session id from the `mcp-session-id` initialize response header. */
   private sessionId: string | undefined
-  /** Single-flight initialize so concurrent first calls share one handshake. */
-  private ready: Promise<void> | undefined
+  /** Single-flight initialize so concurrent first calls share one handshake; resolves to the gateway URL. */
+  private ready: Promise<string> | undefined
 
-  constructor(ctx: Context, config: Config = { endpoint: '', context: '' }) {
+  constructor(ctx: Context, config: Config = { endpointRef: '', context: '' }) {
     super(ctx)
-    this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
     this.timeoutMs = config.timeoutMs ?? 30_000
     this.config = config
   }
 
-  /** Configuration suffices when endpoint and bound context are present. */
+  /** Configuration suffices when the endpoint ref and bound context are present. */
   override get configured(): boolean {
-    return this.endpoint.length > 0 && this.config.context.length > 0
+    return this.config.endpointRef.length > 0 && this.config.context.length > 0
+  }
+
+  /** Gateway URL as resolved from the credential ref; undefined before the first handshake. */
+  get endpoint(): string | undefined {
+    return this.resolvedEndpoint
   }
 
   /** Kubeconfig context every call is pinned to. */
@@ -178,9 +185,11 @@ export class KubernetesService extends KubernetesStore {
    * Stable, non-secret backend identity used in evidence refs and
    * `backend_ref` — context included, because one gateway serves every
    * environment and the context is what this Provider actually selects.
+   * Before the first successful handshake the endpoint shows as
+   * `unresolved` (the address itself lives in the machine-local store).
    */
   override get backendRef(): string {
-    return `kubernetes:${this.config.context}@${this.endpoint}`
+    return `kubernetes:${this.config.context}@${this.resolvedEndpoint ?? 'unresolved'}`
   }
 
   /** Gateway contexts the server's kubeconfig offers (probe/calibration helper; not part of the seam). */
@@ -293,10 +302,10 @@ export class KubernetesService extends KubernetesStore {
 
   /** One JSON-RPC request; a 404 session expiry re-initializes once and retries. */
   private async rpc(method: string, params?: Record<string, unknown>, retried = false): Promise<Record<string, unknown>> {
-    await this.ensureSession()
+    const endpoint = await this.ensureSession()
     let response: Response
     try {
-      response = await fetch(this.endpoint, {
+      response = await fetch(endpoint, {
         method: 'POST',
         headers: this.requestHeaders(),
         body: JSON.stringify({
@@ -353,14 +362,33 @@ export class KubernetesService extends KubernetesStore {
     this.tokenHeader = token !== undefined && token.length > 0 ? `Bearer ${token}` : undefined
   }
 
-  /** Lazy single-flight MCP handshake: initialize → capture session id → initialized notification. */
-  private async ensureSession(): Promise<void> {
-    if (this.sessionId !== undefined) return
+  /**
+   * Resolve the gateway URL from the `endpointRef` credential once per
+   * Provider (credentials hot-reload applies to the next Provider
+   * generation; a missing value fails every call with a leg-local hint).
+   */
+  private async resolveGateway(): Promise<string> {
+    if (this.resolvedEndpoint !== undefined) return this.resolvedEndpoint
+    const endpoint = this.config.endpointRef.length > 0
+      ? await resolveCredential(this.ctx, this.config.endpointRef)
+      : undefined
+    if (endpoint === undefined || endpoint.length === 0) {
+      const ref = this.config.endpointRef.length > 0 ? this.config.endpointRef : 'endpointRef 未配置'
+      throw new Error(`请求 Kubernetes MCP 失败: 凭据 ${ref} 缺值——K8s 视图腿已降级，在 ~/.dsh/.credentials.yaml 或环境变量补值即恢复`)
+    }
+    this.resolvedEndpoint = endpoint.replace(/\/+$/, '')
+    return this.resolvedEndpoint
+  }
+
+  /** Lazy single-flight MCP handshake: resolve endpoint → initialize → capture session id → initialized notification. Returns the gateway URL. */
+  private async ensureSession(): Promise<string> {
+    if (this.sessionId !== undefined && this.resolvedEndpoint !== undefined) return this.resolvedEndpoint
     this.ready ??= (async () => {
+      const endpoint = await this.resolveGateway()
       await this.resolveTokenHeader()
       let response: Response
       try {
-        response = await fetch(this.endpoint, {
+        response = await fetch(endpoint, {
           method: 'POST',
           headers: this.requestHeaders(),
           body: JSON.stringify({
@@ -395,7 +423,7 @@ export class KubernetesService extends KubernetesStore {
       // initialized notification: the gateway tolerates an empty 202 body; failures here
       // fail the handshake so the next call starts clean.
       try {
-        const notify = await fetch(this.endpoint, {
+        const notify = await fetch(endpoint, {
           method: 'POST',
           headers: this.requestHeaders(),
           body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
@@ -409,9 +437,10 @@ export class KubernetesService extends KubernetesStore {
         this.ready = undefined
         throw new Error(`请求 Kubernetes MCP 失败: initialized 通知失败: ${errorMessage(cause)}`)
       }
+      return endpoint
     })()
     try {
-      await this.ready
+      return await this.ready
     } catch (cause) {
       this.ready = undefined
       throw cause

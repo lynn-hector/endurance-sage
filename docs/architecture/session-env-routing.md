@@ -189,7 +189,7 @@ Provider 配置由 `renderProviderEntries(row)` 从同一份 `envs.yml` 推导�
 - Alertmanager → `alertmanager`；
 - RocketMQ → `mqStore`；
 - Zadig → `zadig`；
-- Kubernetes（经 kubernetes-mcp-server 网关桥接，按环境行 `kubernetes.context` 选集群）→ `kubernetesStore`。
+- Kubernetes（经 kubernetes-mcp-server 网关桥接；地址由凭据库 `KUBERNETES_MCP_ENDPOINT` 解析，按环境行 `kubernetes.context` 选集群）→ `kubernetesStore`。
 
 生命周期规则：
 

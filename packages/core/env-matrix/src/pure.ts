@@ -25,6 +25,8 @@ export interface EnvLeg {
   passwordRef?: string
   /** 腿特定 token 引用，语义随腿变化：prometheus 腿=Bearer token；greptimedb 腿=dashboard connect token（解密还原账密，见 docs/guides/credentials.md）；kubernetes 腿=MCP 网关 Bearer token（网关启用鉴权后配置） */
   tokenRef?: string
+  /** kubernetes 腿的 MCP 网关地址引用（机器本地值，平台级共享单键；网关地址不进矩阵，先例 DEFAULT_ENV/CODE_BASE_REF 的"一机一文件"寄存） */
+  endpointRef?: string
   /** kubernetes 腿的 kubeconfig context 名（Rancher 多集群选择，随环境行配置，与环境名基本 1:1） */
   context?: string
 }
@@ -82,6 +84,13 @@ export interface LegReadiness {
 export const TAPD_TOKEN_REF = 'TAPD_TOKEN'
 
 /**
+ * kubernetes 网关地址键（机器本地、非机密）：值是 MCP 网关 URL，寄存凭据库
+ * 只为"一机一文件"（与 DEFAULT_ENV/CODE_BASE_REF 同一先例）。平台级共享，
+ * 所有环境行同键同值；缺值时 kubernetes 腿逐环境降级，补值即恢复。
+ */
+export const KUBERNETES_MCP_ENDPOINT_REF = 'KUBERNETES_MCP_ENDPOINT'
+
+/**
  * 默认环境偏好键（机器本地、非机密）：值为 canonical 环境名或短名。写入本机
  * 凭据库（"一台机器只配一个文件"，与 CODE_BASE_REF 同一先例）；宿主
  * `env-binding` 解析默认环境时以 凭据库/环境变量 > 装配环境的顺序取值，
@@ -107,6 +116,7 @@ export interface PlatformCredentialRef {
 export const PLATFORM_CREDENTIAL_REFS: readonly PlatformCredentialRef[] = [
   { ref: TAPD_TOKEN_REF, system: 'tapd', hint: 'TAPD 网页 → 我的设置 → 个人访问令牌' },
   { ref: CODE_BASE_REF, system: 'code-repository', hint: '本机业务代码检出根目录（路径，非机密）；留空时代码检索腿不启用' },
+  { ref: KUBERNETES_MCP_ENDPOINT_REF, system: 'kubernetes', hint: 'kubernetes-mcp-server 网关地址（机器本地值，非机密），如 http://192.168.5.126:19080/mcp；缺值时 K8s 视图腿降级' },
 ] as const
 
 export function resolveEnvName(input: string, matrix: Matrix): string | undefined {
@@ -139,6 +149,7 @@ export function requiredCredentialRefs(row: EnvRow): string[] {
     row.rocketmq.passwordRef,
     row.zadig.tokenRef,
     row.prometheus.tokenRef,
+    row.kubernetes?.endpointRef,
     row.kubernetes?.tokenRef,
   ].filter((ref): ref is string => typeof ref === 'string' && ref.length > 0)
 }
@@ -195,9 +206,11 @@ export function legReadiness(row: EnvRow, hasValue: (ref: string) => boolean): L
     legs.push(evaluate('rocketmq', [row.rocketmq.usernameRef, row.rocketmq.passwordRef]))
   }
   if (row.zadig.tokenRef !== undefined) legs.push(evaluate('zadig', [row.zadig.tokenRef]))
-  // kubernetes 网关当前免鉴权：无 tokenRef 时不产生独立就绪腿（网关、集群凭据都在
-  // 服务端）；网关启用鉴权后配置 tokenRef，本腿自动进入逐环境就绪推导
-  if (row.kubernetes?.tokenRef !== undefined) legs.push(evaluate('kubernetes', [row.kubernetes.tokenRef]))
+  // kubernetes 网关地址经凭据库解析（endpointRef 恒配置）；tokenRef 是网关启用
+  // 鉴权后的附加键。任一键缺值只降级本腿，不拦截环境切换
+  if (row.kubernetes !== undefined && (row.kubernetes.endpointRef !== undefined || row.kubernetes.tokenRef !== undefined)) {
+    legs.push(evaluate('kubernetes', [row.kubernetes.endpointRef, row.kubernetes.tokenRef]))
+  }
   return legs
 }
 
@@ -236,7 +249,12 @@ export function legCredentialRefs(row: EnvRow): Array<{ leg: LegReadiness['leg']
     })
   }
   if (row.zadig.tokenRef !== undefined) legs.push({ leg: 'zadig', refs: [row.zadig.tokenRef] })
-  if (row.kubernetes?.tokenRef !== undefined) legs.push({ leg: 'kubernetes', refs: [row.kubernetes.tokenRef] })
+  if (row.kubernetes !== undefined && (row.kubernetes.endpointRef !== undefined || row.kubernetes.tokenRef !== undefined)) {
+    legs.push({
+      leg: 'kubernetes',
+      refs: [row.kubernetes.endpointRef, row.kubernetes.tokenRef].filter((ref): ref is string => ref !== undefined),
+    })
+  }
   return legs
 }
 

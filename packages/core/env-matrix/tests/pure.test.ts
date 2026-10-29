@@ -22,7 +22,7 @@ const basicRow: EnvRow = {
     passwordRef: 'ROCKETMQ_TEST_PASSWORD',
   },
   zadig: { endpoint: 'https://zadig.test', project: 'p', envName: 'test', tokenRef: 'ZADIG_API_TOKEN' },
-  kubernetes: { endpoint: 'http://kubernetes-mcp.test/mcp', context: 'test' },
+  kubernetes: { endpointRef: 'KUBERNETES_MCP_ENDPOINT', context: 'test' },
 }
 
 const tokenRow: EnvRow = {
@@ -36,7 +36,7 @@ const tokenRow: EnvRow = {
 describe('legReadiness（纯推导）', () => {
   it('全值就绪时每条腿 ok', () => {
     const legs = legReadiness(basicRow, () => true)
-    expect(legs.map(leg => leg.leg)).toEqual(['greptimedb', 'grafana', 'dbx', 'rocketmq', 'zadig'])
+    expect(legs.map(leg => leg.leg)).toEqual(['greptimedb', 'grafana', 'dbx', 'rocketmq', 'zadig', 'kubernetes'])
     expect(legs.every(leg => leg.ok)).toBe(true)
     // prometheus 未配 tokenRef（统一走 grafana 表单登录），不产生独立腿
   })
@@ -64,18 +64,21 @@ describe('legReadiness（纯推导）', () => {
     expect(greptimedb?.missingRefs).toEqual(['GREPTIMEDB_TEST_PASSWORD'])
   })
 
-  it('kubernetes 腿免鉴权时不产生独立就绪项；配置 tokenRef 后随值就绪/降级', () => {
-    // 网关当前免鉴权：无 tokenRef → 不进入就绪推导（凭据在服务端）
-    expect(legReadiness(basicRow, () => true).find(leg => leg.leg === 'kubernetes')).toBeUndefined()
+  it('kubernetes 腿随 endpointRef 值就绪/降级；tokenRef 是网关鉴权后的附加键', () => {
+    // 网关地址经凭据库解析：endpointRef 缺值只降级本腿
+    expect(legReadiness(basicRow, ref => ref === 'KUBERNETES_MCP_ENDPOINT').find(leg => leg.leg === 'kubernetes'))
+      .toMatchObject({ leg: 'kubernetes', ok: true, missingRefs: [] })
+    expect(legReadiness(basicRow, () => false).find(leg => leg.leg === 'kubernetes'))
+      .toMatchObject({ leg: 'kubernetes', ok: false, missingRefs: ['KUBERNETES_MCP_ENDPOINT'] })
 
     const gatedRow: EnvRow = {
       ...basicRow,
-      kubernetes: { endpoint: 'http://kubernetes-mcp.test/mcp', context: 'test', tokenRef: 'KUBERNETES_MCP_TOKEN' },
+      kubernetes: { endpointRef: 'KUBERNETES_MCP_ENDPOINT', context: 'test', tokenRef: 'KUBERNETES_MCP_TOKEN' },
     }
-    expect(legReadiness(gatedRow, ref => ref === 'KUBERNETES_MCP_TOKEN').find(leg => leg.leg === 'kubernetes'))
+    expect(legReadiness(gatedRow, ref => ref !== 'KUBERNETES_MCP_ENDPOINT').find(leg => leg.leg === 'kubernetes'))
+      .toMatchObject({ leg: 'kubernetes', ok: false, missingRefs: ['KUBERNETES_MCP_ENDPOINT'] })
+    expect(legReadiness(gatedRow, () => true).find(leg => leg.leg === 'kubernetes'))
       .toMatchObject({ leg: 'kubernetes', ok: true, missingRefs: [] })
-    expect(legReadiness(gatedRow, () => false).find(leg => leg.leg === 'kubernetes'))
-      .toMatchObject({ leg: 'kubernetes', ok: false, missingRefs: ['KUBERNETES_MCP_TOKEN'] })
   })
 })
 
@@ -91,13 +94,13 @@ describe('legCredentialRefs（形状视图，与就绪无关）', () => {
     expect(legs.find(leg => leg.leg === 'greptimedb')?.refs).toEqual(['GREPTIMEDB_TEST_TOKEN'])
   })
 
-  it('kubernetes 腿只在配置 tokenRef 时列出键（免鉴权网关无凭据键）', () => {
-    expect(legCredentialRefs(basicRow).find(leg => leg.leg === 'kubernetes')).toBeUndefined()
+  it('kubernetes 腿列出 endpointRef，tokenRef 是附加键', () => {
+    expect(legCredentialRefs(basicRow).find(leg => leg.leg === 'kubernetes')?.refs).toEqual(['KUBERNETES_MCP_ENDPOINT'])
     const gatedRow: EnvRow = {
       ...basicRow,
-      kubernetes: { endpoint: 'http://kubernetes-mcp.test/mcp', context: 'test', tokenRef: 'KUBERNETES_MCP_TOKEN' },
+      kubernetes: { endpointRef: 'KUBERNETES_MCP_ENDPOINT', context: 'test', tokenRef: 'KUBERNETES_MCP_TOKEN' },
     }
-    expect(legCredentialRefs(gatedRow).find(leg => leg.leg === 'kubernetes')?.refs).toEqual(['KUBERNETES_MCP_TOKEN'])
+    expect(legCredentialRefs(gatedRow).find(leg => leg.leg === 'kubernetes')?.refs).toEqual(['KUBERNETES_MCP_ENDPOINT', 'KUBERNETES_MCP_TOKEN'])
   })
 
   it('与 legReadiness 的腿集合一致（同一接线规则的两面）', () => {
@@ -116,6 +119,7 @@ describe('matrixCredentialRefs（目录并集）', () => {
     })
     expect(refs).toContain('TAPD_TOKEN')
     expect(refs).toContain('DSH_SENTRY_CODE_BASE')
+    expect(refs).toContain('KUBERNETES_MCP_ENDPOINT')
     expect(refs).toContain('GREPTIMEDB_TEST_TOKEN')
     expect(refs).toContain('ZADIG_API_TOKEN')
     expect([...refs].sort()).toEqual(refs)

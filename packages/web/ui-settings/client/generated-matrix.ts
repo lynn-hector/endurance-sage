@@ -35,7 +35,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "dev-platform-hosted-0"
     }
   },
@@ -72,7 +72,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "dev-platform-hosted-1"
     }
   },
@@ -109,7 +109,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "dev-client-hosted-0"
     }
   },
@@ -146,7 +146,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "tst-platform-hosted-0"
     }
   },
@@ -183,7 +183,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "tst-platform-hosted-1"
     }
   },
@@ -220,7 +220,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "tst-client-hosted-0"
     }
   },
@@ -257,7 +257,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "sit-client-hosted-1"
     }
   },
@@ -294,7 +294,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "sit-client-hosted-2"
     }
   },
@@ -330,7 +330,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "pro-br-saas-aws-eks-novo"
     }
   },
@@ -367,7 +367,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "tst-platform-aws-eks-sg-0"
     }
   },
@@ -404,7 +404,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "pro-use-saas-aws-eks-novo"
     }
   },
@@ -441,7 +441,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "pro-za-saas-aws-eks-novo"
     }
   },
@@ -478,7 +478,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "pro-de-saas-aws-eks-novo"
     }
   },
@@ -515,7 +515,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "pro-sg-saas-aws-eks-novo"
     }
   },
@@ -552,7 +552,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "tst-platform-aws-eks-de-0"
     }
   },
@@ -589,7 +589,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "tst-platform-aws-eks-us-0"
     }
   },
@@ -626,7 +626,7 @@ export const MATRIX: Matrix = {
       "tokenRef": "ZADIG_API_TOKEN"
     },
     "kubernetes": {
-      "endpoint": "http://192.168.5.126:19080/mcp",
+      "endpointRef": "KUBERNETES_MCP_ENDPOINT",
       "context": "tst-platform-aws-eks-au-0"
     }
   }

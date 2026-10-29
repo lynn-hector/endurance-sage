@@ -196,7 +196,7 @@ Tool ─────────────→ Definition ←──────
 - datasource UID、数据库、项目等非秘密配置。
 - `*Ref` 凭据引用名。
 
-真实值保存在 `$DSH_HOME/.credentials.yaml` 或进程环境。不得为了本地联调把秘密写进矩阵。
+真实值保存在 `$DSH_HOME/.credentials.yaml` 或进程环境。不得为了本地联调把秘密写进矩阵。平台级共享、机器本地的非机密值（如 kubernetes 网关地址 `KUBERNETES_MCP_ENDPOINT`）也寄存凭据库并以 `*Ref` 引用——先例 `DSH_SENTRY_DEFAULT_ENV` / `DSH_SENTRY_CODE_BASE` 的"一机一文件"。
 
 如果新腿需要凭据 readiness，还要更新 `credentialReadiness()` 及对应测试，使缺失凭据只降级该腿，不阻断整个环境切换。
 
