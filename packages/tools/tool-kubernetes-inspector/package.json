@@ -20,7 +20,7 @@
     "@deepseek-ai/dsh-tools": "^0.2.1-rc.3",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@dsh-sentry/evidence": "workspace:*",
-    "@dsh-sentry/service-kubernetes": "workspace:*"
+    "@dsh-sentry/kubernetes-store": "workspace:*"
   },
   "devDependencies": {
     "@dsh-sentry/env-matrix": "workspace:*",

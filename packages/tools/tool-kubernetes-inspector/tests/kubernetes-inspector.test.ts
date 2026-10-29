@@ -1,18 +1,21 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import KubernetesService, {
-  type ListQuery,
-  type McpToolResult,
-  type PodLogQuery,
-} from '@dsh-sentry/service-kubernetes'
+import {
+  KubernetesStore,
+  type KubernetesListQuery,
+  type KubernetesListResult,
+  type KubernetesLogQuery,
+  type KubernetesObject,
+} from '@dsh-sentry/kubernetes-store'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as kubernetesInspector from '../src/index.ts'
 
 /**
- * Fake-Provider contract test: the tools must talk to the `ctx.kubernetes`
- * slot only, never expose a context/cluster parameter, and stamp every
- * evidence branch (success / error) with the Provider's own backend
- * identity plus the session env marker.
+ * Fake-Provider contract test against the Definition: the tools must talk
+ * to the `ctx.kubernetesStore` seam only (never the Provider class), never
+ * expose a context/cluster parameter, and stamp every evidence branch
+ * (success / error) with the Provider's own backend identity plus the
+ * session env marker.
  */
 
 class StubSystemPrompt extends Service {
@@ -57,22 +60,18 @@ class FailingEnvProviders extends Service {
   }
 
   async forCall(): Promise<never> {
-    throw new Error('环境 test 的 kubernetes Provider 不可用: 网络不可达')
+    throw new Error('环境 test 的 kubernetesStore Provider 不可用: 网络不可达')
   }
 }
 
 const FAKE_BACKEND_REF = 'kubernetes:tst-platform-hosted-1@http://kubernetes-mcp.test/mcp'
 
-function toolResult(structured: Record<string, unknown> | undefined, text: string): McpToolResult {
-  return { structured, text }
-}
-
-class FakeKubernetesService extends KubernetesService {
-  podLists: Array<ListQuery & { namespace: string }> = []
+class FakeKubernetesStore extends KubernetesStore {
+  podLists: Array<KubernetesListQuery & { namespace: string }> = []
   podDetails: Array<{ name: string; namespace: string }> = []
-  logCalls: Array<{ name: string; query: PodLogQuery & { namespace: string } }> = []
-  eventCalls: ListQuery[] = []
-  resourceLists: Array<{ apiVersion: string; kind: string; query: ListQuery }> = []
+  logCalls: Array<{ name: string; query: KubernetesLogQuery & { namespace: string } }> = []
+  eventCalls: KubernetesListQuery[] = []
+  resourceLists: Array<{ apiVersion: string; kind: string; query: KubernetesListQuery }> = []
   resourceGets: Array<{ apiVersion: string; kind: string; name: string; namespace: string | undefined }> = []
   error?: Error
 
@@ -80,66 +79,91 @@ class FakeKubernetesService extends KubernetesService {
     return FAKE_BACKEND_REF
   }
 
-  override async listPods(query: ListQuery = {}): Promise<McpToolResult> {
+  override get configured(): boolean {
+    return true
+  }
+
+  override get context(): string {
+    return 'tst-platform-hosted-1'
+  }
+
+  override get namespace(): string {
+    return 'novo-one'
+  }
+
+  override async listPods(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
     this.podLists.push({ ...query, namespace: query.namespace ?? 'novo-one' })
     if (this.error) throw this.error
-    return toolResult({
+    return {
       items: [
         { Name: 'commctl-config-6c7679b978-ghj6s', Namespace: 'novo-one', Status: 'Running', Ready: '1/1', Restarts: '0', Age: '4h', Node: 'node-a' },
         { Name: 'commctl-sip-5d8f7c9b4-x2plm', Namespace: 'novo-one', Status: 'CrashLoopBackOff', Ready: '0/1', Restarts: '12 (5m ago)', Age: '2d', Node: 'node-b' },
       ],
       continue: 'tok-9',
       remainingItemCount: 37,
-    }, '# pods table')
+      text: '# pods table',
+    }
   }
 
-  override async getPod(name: string, namespace?: string): Promise<McpToolResult> {
+  override async getPod(name: string, namespace?: string): Promise<KubernetesObject> {
     this.podDetails.push({ name, namespace: namespace ?? 'novo-one' })
     if (this.error) throw this.error
-    return toolResult({
-      apiVersion: 'v1',
-      kind: 'Pod',
-      metadata: { name, namespace: namespace ?? 'novo-one' },
-      spec: { nodeName: 'node-a', containers: [{ name: 'commctl-config', image: 'hub.yeastardigital.com/novo-one/commctl-config:tag' }] },
-      status: { phase: 'Running' },
-    }, 'pod object')
+    return {
+      object: {
+        apiVersion: 'v1',
+        kind: 'Pod',
+        metadata: { name, namespace: namespace ?? 'novo-one' },
+        spec: { nodeName: 'node-a', containers: [{ name: 'commctl-config', image: 'hub.yeastardigital.com/novo-one/commctl-config:tag' }] },
+        status: { phase: 'Running' },
+      },
+      text: 'pod object',
+    }
   }
 
-  override async getPodLogs(name: string, query: PodLogQuery = {}): Promise<string> {
+  override async getPodLogs(name: string, query: KubernetesLogQuery = {}): Promise<string> {
     this.logCalls.push({ name, query: { ...query, namespace: query.namespace ?? 'novo-one' } })
     if (this.error) throw this.error
     return '{"level":"info","msg":"serving"}\n{"level":"error","msg":"panic: runtime error"}'
   }
 
-  override async listEvents(query: ListQuery = {}): Promise<McpToolResult> {
+  override async listEvents(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
     this.eventCalls.push(query)
     if (this.error) throw this.error
-    return toolResult({
+    return {
       items: [
         { Namespace: 'novo-one', Type: 'Warning', Reason: 'BackOff', InvolvedObject: 'commctl-sip-5d8f7c9b4-x2plm', Message: 'Back-off restarting failed container' },
         { Namespace: 'novo-one', Type: 'Normal', Reason: 'Pulled', InvolvedObject: 'commctl-config-6c7679b978-ghj6s', Message: 'Container image already present' },
       ],
-    }, 'events table')
+      continue: null,
+      remainingItemCount: null,
+      text: 'events table',
+    }
   }
 
-  override async getResource(apiVersion: string, kind: string, name: string, namespace?: string): Promise<McpToolResult> {
+  override async getResource(apiVersion: string, kind: string, name: string, namespace?: string): Promise<KubernetesObject> {
     this.resourceGets.push({ apiVersion, kind, name, namespace })
     if (this.error) throw this.error
-    return toolResult({
-      apiVersion,
-      kind,
-      metadata: { name, namespace: namespace ?? 'novo-one' },
-      spec: { replicas: 2 },
-      status: { readyReplicas: 2 },
-    }, 'object')
+    return {
+      object: {
+        apiVersion,
+        kind,
+        metadata: { name, namespace: namespace ?? 'novo-one' },
+        spec: { replicas: 2 },
+        status: { readyReplicas: 2 },
+      },
+      text: 'object',
+    }
   }
 
-  override async listResources(apiVersion: string, kind: string, query: ListQuery = {}): Promise<McpToolResult> {
+  override async listResources(apiVersion: string, kind: string, query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
     this.resourceLists.push({ apiVersion, kind, query })
     if (this.error) throw this.error
-    return toolResult({
+    return {
       items: [{ Name: 'commctl-config', Namespace: 'novo-one', Ready: '2/2', Available: 2, Images: 'hub.yeastardigital.com/novo-one/commctl-config:tag' }],
-    }, 'resource table')
+      continue: null,
+      remainingItemCount: null,
+      text: 'resource table',
+    }
   }
 }
 
@@ -153,18 +177,14 @@ interface Envelope {
 }
 
 let ctx: Context
-let service: FakeKubernetesService
+let service: FakeKubernetesStore
 
 beforeEach(async () => {
   ctx = new Context()
   await ctx.plugin(StubSystemPrompt)
   await ctx.plugin(ToolRuntime)
-  await ctx.plugin(FakeKubernetesService, {
-    endpoint: 'http://kubernetes-mcp.test/mcp',
-    context: 'tst-platform-hosted-1',
-    namespace: 'novo-one',
-  })
-  service = ctx.kubernetes as FakeKubernetesService
+  await ctx.plugin(FakeKubernetesStore)
+  service = ctx.kubernetesStore as FakeKubernetesStore
   await ctx.plugin(StubEnvProviders, { env: 'test' })
   await ctx.plugin(kubernetesInspector)
 })
@@ -181,7 +201,7 @@ function tool(name: ToolName) {
   return found
 }
 
-describe('tool-kubernetes-inspector KubernetesService Consumer', () => {
+describe('tool-kubernetes-inspector KubernetesStore Consumer', () => {
   it('registers exactly the four curated read-only tools', () => {
     for (const name of ['sentry_query_k8s_pods', 'sentry_read_k8s_pod_logs', 'sentry_list_k8s_events', 'sentry_query_k8s_resource']) {
       expect(ctx.tools.get(name), name).not.toBeUndefined()
@@ -326,7 +346,7 @@ describe('tool-kubernetes-inspector KubernetesService Consumer', () => {
       expect(output.evidence.data).toMatchObject({
         backend_ref: 'kubernetes:unresolved',
         env: 'unknown',
-        error: '环境 test 的 kubernetes Provider 不可用: 网络不可达',
+        error: '环境 test 的 kubernetesStore Provider 不可用: 网络不可达',
       })
     } finally {
       await bareCtx.fiber.dispose()

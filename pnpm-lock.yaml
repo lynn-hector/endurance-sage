@@ -197,7 +197,7 @@ importers:
         version: link:../../packages/services/greptimedb
       '@dsh-sentry/service-kubernetes':
         specifier: workspace:*
-        version: link:../../packages/services/service-kubernetes
+        version: link:../../packages/services/kubernetes
       '@dsh-sentry/service-prometheus':
         specifier: workspace:*
         version: link:../../packages/services/prometheus
@@ -354,7 +354,7 @@ importers:
         version: link:../../services/greptimedb
       '@dsh-sentry/service-kubernetes':
         specifier: workspace:*
-        version: link:../../services/service-kubernetes
+        version: link:../../services/kubernetes
       '@dsh-sentry/service-prometheus':
         specifier: workspace:*
         version: link:../../services/prometheus
@@ -528,6 +528,19 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
 
+  packages/core/kubernetes-store:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.5
+        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
+
   packages/core/log-store:
     dependencies:
       '@deepseek-ai/cordis':
@@ -682,6 +695,9 @@ importers:
       '@dsh-sentry/env-matrix':
         specifier: workspace:*
         version: link:../../core/env-matrix
+      '@dsh-sentry/kubernetes-store':
+        specifier: workspace:*
+        version: link:../../core/kubernetes-store
       '@dsh-sentry/log-store':
         specifier: workspace:*
         version: link:../../core/log-store
@@ -702,7 +718,7 @@ importers:
         version: link:../greptimedb
       '@dsh-sentry/service-kubernetes':
         specifier: workspace:*
-        version: link:../service-kubernetes
+        version: link:../kubernetes
       '@dsh-sentry/service-prometheus':
         specifier: workspace:*
         version: link:../prometheus
@@ -760,6 +776,28 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
 
+  packages/services/kubernetes:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.5
+        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+      '@deepseek-ai/schemastery':
+        specifier: ^3.18.1
+        version: 3.18.5
+      '@dsh-sentry/datasource':
+        specifier: workspace:*
+        version: link:../../core/datasource
+      '@dsh-sentry/kubernetes-store':
+        specifier: workspace:*
+        version: link:../../core/kubernetes-store
+    devDependencies:
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
+
   packages/services/prometheus:
     dependencies:
       '@deepseek-ai/cordis':
@@ -796,25 +834,6 @@ importers:
       '@dsh-sentry/mq-store':
         specifier: workspace:*
         version: link:../../core/mq-store
-    devDependencies:
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.2.0
-        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
-
-  packages/services/service-kubernetes:
-    dependencies:
-      '@deepseek-ai/cordis':
-        specifier: ^4.0.5
-        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
-      '@deepseek-ai/schemastery':
-        specifier: ^3.18.1
-        version: 3.18.5
-      '@dsh-sentry/datasource':
-        specifier: workspace:*
-        version: link:../../core/datasource
     devDependencies:
       typescript:
         specifier: ^5.9.0
@@ -1086,9 +1105,9 @@ importers:
       '@dsh-sentry/evidence':
         specifier: workspace:*
         version: link:../../core/evidence
-      '@dsh-sentry/service-kubernetes':
+      '@dsh-sentry/kubernetes-store':
         specifier: workspace:*
-        version: link:../../services/service-kubernetes
+        version: link:../../core/kubernetes-store
     devDependencies:
       '@dsh-sentry/env-matrix':
         specifier: workspace:*

@@ -2,8 +2,9 @@
  * Kubernetes inspector tools: read-only pod / log / event / resource views
  * that follow the calling session's bound environment.
  *
- * The heavy lifting stays behind `service-kubernetes` (the MCP gateway
- * bridge); this package only curates the model surface: four tools instead
+ * The heavy lifting stays behind the `kubernetesStore` seam (Provider
+ * today: `service-kubernetes`, the MCP gateway bridge); this package only
+ * curates the model surface: four tools instead
  * of the gateway's fourteen, no `context` parameter anywhere (the Provider
  * pins the session environment's cluster into every call), and the standard
  * evidence envelope (`source: kubernetes-inspector`, `env` marker, provider
@@ -26,7 +27,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { buildEvidence } from '@dsh-sentry/evidence'
-import type { McpToolResult } from '@dsh-sentry/service-kubernetes'
+import type {} from '@dsh-sentry/kubernetes-store'
 import type {} from '@dsh-sentry/service-env-provider'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -58,10 +59,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function isRow(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 /** Page-size ceiling for row-returning tools — keeps evidence envelopes bounded. */
 const MAX_LIMIT = 200
 
@@ -71,36 +68,19 @@ function clampLimit(value: number | undefined, fallback: number): number {
   return Math.min(Math.trunc(raw), MAX_LIMIT)
 }
 
-/** Shared list-shape extraction from a gateway tool result. */
-function listRows(result: McpToolResult): {
-  items: unknown[]
-  continueToken: string | null
-  remainingItemCount: number | null
-} {
-  const structured = result.structured ?? {}
-  const items = Array.isArray(structured['items']) ? structured['items'] : []
-  const continueToken = typeof structured['continue'] === 'string' ? structured['continue'] : null
-  const remaining = structured['remainingItemCount']
-  return {
-    items,
-    continueToken,
-    remainingItemCount: typeof remaining === 'number' ? remaining : null,
-  }
-}
-
 /** Register the four Kubernetes view tools. */
 export function apply(ctx: Context, _config: Config): void {
   // The Provider, env label and lease one call fixed at its start, typed
   // through the Cordis slot — tools never bind the Provider class itself.
   interface CallProvider {
     env: string
-    store: Context['kubernetes']
+    store: Context['kubernetesStore']
     release: () => Promise<void>
   }
 
   const routeService = async (exec: ToolRunContext): Promise<CallProvider> => {
     const lease = await ctx.envProviders.forCall(exec)
-    return { env: lease.env, store: lease.require('kubernetes'), release: lease.release }
+    return { env: lease.env, store: lease.require('kubernetesStore'), release: lease.release }
   }
 
   ctx.tools.register(defineTool({
@@ -133,7 +113,7 @@ export function apply(ctx: Context, _config: Config): void {
 
         if (pod !== undefined) {
           const result = await store.getPod(pod, namespace)
-          const podObject = result.structured ?? {}
+          const podObject = result.object
           const status = (podObject['status'] as Record<string, unknown> | undefined)?.['phase']
           return buildEvidence({
             source: SOURCE,
@@ -154,15 +134,14 @@ export function apply(ctx: Context, _config: Config): void {
           }) as unknown as JsonValue
         }
 
-        const result = await store.listPods({
+        const rows = await store.listPods({
           namespace,
           ...(args.labelSelector !== undefined ? { labelSelector: args.labelSelector } : {}),
           ...(args.fieldSelector !== undefined ? { fieldSelector: args.fieldSelector } : {}),
           limit: clampLimit(args.limit, 100),
           ...(args.continueToken !== undefined ? { continue: args.continueToken } : {}),
         })
-        const rows = listRows(result)
-        const notRunning = rows.items.filter(item => isRow(item) && item['Status'] !== 'Running')
+        const notRunning = rows.items.filter(item => item['Status'] !== 'Running')
         let summary = `集群 ${identity.context} 命名空间 ${namespace} 共 ${rows.items.length} 个 Pod`
         if (rows.remainingItemCount !== null) summary += `，其后还有约 ${rows.remainingItemCount} 个（用 continueToken 翻页）`
         if (notRunning.length > 0) summary += `，其中 ${notRunning.length} 个非 Running`
@@ -177,7 +156,7 @@ export function apply(ctx: Context, _config: Config): void {
             mode: 'pod_list' as const,
             item_count: rows.items.length,
             items: rows.items,
-            continue: rows.continueToken,
+            continue: rows.continue,
             remaining_item_count: rows.remainingItemCount,
           },
           summary,
@@ -302,14 +281,13 @@ export function apply(ctx: Context, _config: Config): void {
         const refs = (): string[] => [identity.backendRef, `env:${env}:kubernetes`]
         const namespace = typeof args.namespace === 'string' && args.namespace.length > 0 ? args.namespace : undefined
 
-        const result = await store.listEvents({
+        const rows = await store.listEvents({
           ...(namespace !== undefined ? { namespace } : {}),
           ...(args.fieldSelector !== undefined ? { fieldSelector: args.fieldSelector } : {}),
           limit: clampLimit(args.limit, 100),
           ...(args.continueToken !== undefined ? { continue: args.continueToken } : {}),
         })
-        const rows = listRows(result)
-        const warnings = rows.items.filter(item => isRow(item) && item['Type'] === 'Warning')
+        const warnings = rows.items.filter(item => item['Type'] === 'Warning')
         const scope = namespace ?? '全部命名空间'
         let summary = `集群 ${identity.context} ${scope} 最近 ${rows.items.length} 条事件`
         if (warnings.length > 0) summary += `，其中 ${warnings.length} 条 Warning`
@@ -325,7 +303,7 @@ export function apply(ctx: Context, _config: Config): void {
             item_count: rows.items.length,
             warning_count: warnings.length,
             items: rows.items,
-            continue: rows.continueToken,
+            continue: rows.continue,
             remaining_item_count: rows.remainingItemCount,
           },
           summary,
@@ -372,7 +350,7 @@ export function apply(ctx: Context, _config: Config): void {
 
         if (name !== undefined) {
           const result = await store.getResource(apiVersion, kind, name, namespace)
-          const object = result.structured ?? {}
+          const object = result.object
           return buildEvidence({
             source: SOURCE,
             type: TYPE,
@@ -393,12 +371,11 @@ export function apply(ctx: Context, _config: Config): void {
           }) as unknown as JsonValue
         }
 
-        const result = await store.listResources(apiVersion, kind, {
+        const rows = await store.listResources(apiVersion, kind, {
           ...(namespace !== undefined ? { namespace } : {}),
           ...(args.labelSelector !== undefined ? { labelSelector: args.labelSelector } : {}),
           limit: clampLimit(args.limit, 50),
         })
-        const rows = listRows(result)
         const scope = namespace ?? '全部命名空间'
         return buildEvidence({
           source: SOURCE,
@@ -413,7 +390,7 @@ export function apply(ctx: Context, _config: Config): void {
             kind,
             item_count: rows.items.length,
             items: rows.items,
-            continue: rows.continueToken,
+            continue: rows.continue,
             remaining_item_count: rows.remainingItemCount,
           },
           summary: `${kind} ${scope} 共 ${rows.items.length} 行`,

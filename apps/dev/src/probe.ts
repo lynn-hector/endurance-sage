@@ -189,14 +189,10 @@ try {
     })
     // MCP 握手（initialize + initialized）+ 一次业务命名空间 pod 行查询：
     // 同时验证网关可达、context 存在（404/未知 context 会以工具错误返回）与只读取数路径。
-    const pods = await ctx.kubernetes.listPods({ namespace: 'novo-one', limit: 5 })
-    const items = Array.isArray(pods.structured?.['items']) ? pods.structured!['items']! : []
-    console.log(`KUBERNETES PROBE OK — context=${row.kubernetes.context} novo-one 前 ${items.length} 个 Pod`)
-    for (const item of items.slice(0, 5)) {
-      if (typeof item === 'object' && item !== null) {
-        const row_ = item as Record<string, unknown>
-        console.log(`  ${String(row_['Name'])} | ${String(row_['Status'])} | ready=${String(row_['Ready'])} | restarts=${String(row_['Restarts'])}`)
-      }
+    const pods = await ctx.kubernetesStore.listPods({ namespace: 'novo-one', limit: 5 })
+    console.log(`KUBERNETES PROBE OK — context=${row.kubernetes.context} novo-one 前 ${pods.items.length} 个 Pod`)
+    for (const item of pods.items.slice(0, 5)) {
+      console.log(`  ${String(item['Name'])} | ${String(item['Status'])} | ready=${String(item['Ready'])} | restarts=${String(item['Restarts'])}`)
     }
   } else if (leg === 'grafana-datasources') {
     // 校准用：列出该环境 Grafana 的全部数据源（name/type/uid），

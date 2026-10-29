@@ -1,6 +1,6 @@
 /**
- * Kubernetes read-only view as a Cordis service, bridged over the platform
- * `kubernetes-mcp-server` gateway (streamable HTTP MCP).
+ * KubernetesStore Provider: Kubernetes read-only view bridged over the
+ * platform `kubernetes-mcp-server` gateway (streamable HTTP MCP).
  *
  * The deployed gateway (kubernetes-mcp-server, read_only toolset, Secret
  * denied server-side) fronts every cluster through Rancher-managed
@@ -12,7 +12,8 @@
  * physically cannot land on the gateway's default context
  * (`tst-platform-hosted-1`) by forgetting a parameter.
  *
- * Transport contract (probed against v0.0.69, protocol 2025-06-18):
+ * The seam (`@dsh-sentry/kubernetes-store`, slot `kubernetesStore`) speaks
+ * Kubernetes vocabulary only; everything below it is Provider internal:
  * - `initialize` returns the session id in the `mcp-session-id` response
  *   header, then `notifications/initialized` completes the handshake;
  * - every response may be `text/event-stream` (`event: message` + one
@@ -29,7 +30,7 @@
  * @module @dsh-sentry/service-kubernetes
  */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   credentialRefField,
@@ -38,38 +39,36 @@ import {
   secretField,
   timeoutMsField,
 } from '@dsh-sentry/datasource'
+import {
+  KubernetesStore,
+  type KubernetesListQuery,
+  type KubernetesListResult,
+  type KubernetesLogQuery,
+  type KubernetesObject,
+} from '@dsh-sentry/kubernetes-store'
+
+export type {
+  KubernetesListQuery,
+  KubernetesListResult,
+  KubernetesLogQuery,
+  KubernetesObject,
+} from '@dsh-sentry/kubernetes-store'
 
 /** MCP protocol version this client speaks (matches the deployed gateway). */
 const MCP_PROTOCOL_VERSION = '2025-06-18'
 
 const CLIENT_INFO = { name: 'dsh-sentry-service-kubernetes', version: '0.1.0' }
 
-/** One gateway tool result: machine rows/object when the tool emits them, plus the first text block. */
+/**
+ * One gateway tool result — Provider-internal transport envelope. Machine
+ * rows/object when the tool emits `structuredContent`, plus the first text
+ * block; never crosses the seam in this shape.
+ */
 export interface McpToolResult {
   /** `structuredContent` of the tool result — table rows (`items`) or the raw object, tool-dependent. */
   structured: Record<string, unknown> | undefined
   /** First `content[].text` block — the human-readable table, or the log body for `pods_log`. */
   text: string
-}
-
-/** Paged list arguments shared by the row-returning tools. */
-export interface ListQuery {
-  namespace?: string
-  labelSelector?: string
-  fieldSelector?: string
-  /** Server page size cap; omitting it lets large clusters fail the call. */
-  limit?: number
-  /** Opaque continuation token from a previous page (`structuredContent.continue`). */
-  continue?: string
-}
-
-export interface PodLogQuery {
-  namespace?: string
-  container?: string
-  /** Tail lines (gateway default 100). */
-  tail?: number
-  /** Previous terminated container instance — post-crash log retrieval. */
-  previous?: boolean
 }
 
 /** Plugin configuration; the schema defaults optional fields at load time. */
@@ -96,6 +95,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** Map one gateway list envelope to the seam's row-page shape. */
+function toListResult(result: McpToolResult): KubernetesListResult {
+  const structured = result.structured ?? {}
+  const items = Array.isArray(structured['items'])
+    ? structured['items'].filter(isRecord)
+    : []
+  const continueToken = typeof structured['continue'] === 'string' ? structured['continue'] : null
+  const remaining = structured['remainingItemCount']
+  return {
+    items,
+    continue: continueToken,
+    remainingItemCount: typeof remaining === 'number' ? remaining : null,
+    text: result.text,
+  }
+}
+
+/** Map one gateway get envelope to the seam's object shape. */
+function toObject(result: McpToolResult): KubernetesObject {
+  return { object: result.structured ?? {}, text: result.text }
+}
+
 /**
  * Parse one JSON-RPC response body: plain JSON or a `text/event-stream`
  * frame whose `data:` lines carry the payload.
@@ -113,7 +133,7 @@ export function parseRpcBody(body: string): Record<string, unknown> {
   throw new Error('响应不是 JSON-RPC 对象')
 }
 
-export class KubernetesService extends Service {
+export class KubernetesService extends KubernetesStore {
   static Config: z<Config> = z.object({
     endpoint: endpointField('kubernetes-mcp-server 网关地址，如 http://192.168.5.126:19080/mcp'),
     context: z.string().required().description('本环境绑定的 kubeconfig context（Rancher 集群名，随环境行配置）'),
@@ -133,19 +153,24 @@ export class KubernetesService extends Service {
   private ready: Promise<void> | undefined
 
   constructor(ctx: Context, config: Config = { endpoint: '', context: '' }) {
-    super(ctx, 'kubernetes')
+    super(ctx)
     this.endpoint = (config.endpoint ?? '').replace(/\/+$/, '')
     this.timeoutMs = config.timeoutMs ?? 30_000
     this.config = config
   }
 
+  /** Configuration suffices when endpoint and bound context are present. */
+  override get configured(): boolean {
+    return this.endpoint.length > 0 && this.config.context.length > 0
+  }
+
   /** Kubeconfig context every call is pinned to. */
-  get context(): string {
+  override get context(): string {
     return this.config.context
   }
 
   /** Business namespace used when a tool call omits one. */
-  get namespace(): string {
+  override get namespace(): string {
     return this.config.namespace ?? 'novo-one'
   }
 
@@ -154,37 +179,39 @@ export class KubernetesService extends Service {
    * `backend_ref` — context included, because one gateway serves every
    * environment and the context is what this Provider actually selects.
    */
-  get backendRef(): string {
+  override get backendRef(): string {
     return `kubernetes:${this.config.context}@${this.endpoint}`
   }
 
-  /** Gateway contexts the server's kubeconfig offers (probe/calibration helper). */
+  /** Gateway contexts the server's kubeconfig offers (probe/calibration helper; not part of the seam). */
   async listContexts(): Promise<string> {
     const result = await this.callTool('configuration_contexts_list', {})
     return result.text
   }
 
   /** `pods_list_in_namespace`: pod rows of one namespace (default: the configured one). */
-  async listPods(query: ListQuery = {}): Promise<McpToolResult> {
-    return this.callTool('pods_list_in_namespace', {
+  override async listPods(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
+    const result = await this.callTool('pods_list_in_namespace', {
       namespace: query.namespace ?? this.namespace,
       ...(query.labelSelector !== undefined ? { labelSelector: query.labelSelector } : {}),
       ...(query.fieldSelector !== undefined ? { fieldSelector: query.fieldSelector } : {}),
       ...(query.limit !== undefined ? { limit: query.limit } : {}),
       ...(query.continue !== undefined ? { continue: query.continue } : {}),
     })
+    return toListResult(result)
   }
 
   /** `pods_get`: one full Pod object (container statuses, restarts, node placement). */
-  async getPod(name: string, namespace?: string): Promise<McpToolResult> {
-    return this.callTool('pods_get', {
+  override async getPod(name: string, namespace?: string): Promise<KubernetesObject> {
+    const result = await this.callTool('pods_get', {
       name,
       namespace: namespace ?? this.namespace,
     })
+    return toObject(result)
   }
 
   /** `pods_log`: log text of one pod container (raw text, no structuredContent). */
-  async getPodLogs(name: string, query: PodLogQuery = {}): Promise<string> {
+  override async getPodLogs(name: string, query: KubernetesLogQuery = {}): Promise<string> {
     const result = await this.callTool('pods_log', {
       name,
       namespace: query.namespace ?? this.namespace,
@@ -196,33 +223,35 @@ export class KubernetesService extends Service {
   }
 
   /** `events_list`: warning/error/state-change events; omitting namespace scans the whole cluster. */
-  async listEvents(query: ListQuery = {}): Promise<McpToolResult> {
-    return this.callTool('events_list', {
+  override async listEvents(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
+    const result = await this.callTool('events_list', {
       ...(query.namespace !== undefined ? { namespace: query.namespace } : {}),
       ...(query.fieldSelector !== undefined ? { fieldSelector: query.fieldSelector } : {}),
       ...(query.limit !== undefined ? { limit: query.limit } : {}),
       ...(query.continue !== undefined ? { continue: query.continue } : {}),
     })
+    return toListResult(result)
   }
 
   /** `resources_get`: one full object by apiVersion/kind/name (e.g. Deployment, Ingress, PVC). */
-  async getResource(
+  override async getResource(
     apiVersion: string,
     kind: string,
     name: string,
     namespace?: string,
-  ): Promise<McpToolResult> {
-    return this.callTool('resources_get', {
+  ): Promise<KubernetesObject> {
+    const result = await this.callTool('resources_get', {
       apiVersion,
       kind,
       name,
       ...(namespace !== undefined ? { namespace } : {}),
     })
+    return toObject(result)
   }
 
   /** `resources_list`: object rows by apiVersion/kind, optionally namespace- and label-scoped. */
-  async listResources(apiVersion: string, kind: string, query: ListQuery = {}): Promise<McpToolResult> {
-    return this.callTool('resources_list', {
+  override async listResources(apiVersion: string, kind: string, query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
+    const result = await this.callTool('resources_list', {
       apiVersion,
       kind,
       ...(query.namespace !== undefined ? { namespace: query.namespace } : {}),
@@ -231,12 +260,14 @@ export class KubernetesService extends Service {
       ...(query.limit !== undefined ? { limit: query.limit } : {}),
       ...(query.continue !== undefined ? { continue: query.continue } : {}),
     })
+    return toListResult(result)
   }
 
   /**
-   * Call one gateway tool with this Provider's context pinned in. The
-   * context override is unconditional: even a caller-supplied `context`
-   * argument must not cross the Session environment boundary.
+   * Call one gateway tool with this Provider's context pinned in — transport
+   * helper kept public for Provider tests and probes, never part of the
+   * seam. The context override is unconditional: even a caller-supplied
+   * `context` argument must not cross the Session environment boundary.
    */
   async callTool(tool: string, args: Record<string, unknown>): Promise<McpToolResult> {
     const result = await this.rpc('tools/call', {
@@ -393,12 +424,6 @@ let requestId = 0
 function nextRequestId(): number {
   requestId += 1
   return requestId
-}
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    kubernetes: KubernetesService
-  }
 }
 
 export default KubernetesService

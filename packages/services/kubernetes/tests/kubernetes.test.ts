@@ -1,12 +1,13 @@
 import { Context } from '@deepseek-ai/cordis'
+import { KubernetesStore } from '@dsh-sentry/kubernetes-store'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import KubernetesService, { parseRpcBody } from '../src/index.ts'
 
 /**
  * Golden tests against the probed gateway contract (kubernetes-mcp-server
  * v0.0.69, streamable HTTP, protocol 2025-06-18): SSE-or-JSON bodies, the
- * mcp-session-id handshake, unconditional context injection, structured
- * content preference, tool-level error envelopes, and the one-shot session
+ * mcp-session-id handshake, unconditional context injection, seam-shape
+ * result mapping, tool-level error envelopes, and the one-shot session
  * recovery after a gateway restart (HTTP 404).
  */
 
@@ -30,6 +31,13 @@ function json(payload: unknown, headers: Record<string, string> = {}): Response 
 interface FetchCall {
   body: Record<string, unknown>
   headers: Record<string, string>
+}
+
+/** Arguments of one recorded tools/call, for wire-level assertions. */
+function toolCallArguments(calls: FetchCall[], index = 0): Record<string, unknown> {
+  const found = calls.filter(call => call.body['method'] === 'tools/call')[index]
+  const params = found?.body['params'] as { name: string; arguments: Record<string, unknown> }
+  return params.arguments
 }
 
 /**
@@ -113,6 +121,20 @@ describe('KubernetesService identity', () => {
     expect(service.backendRef).toBe(`kubernetes:${CONTEXT}@${ENDPOINT}`)
     expect(service.context).toBe(CONTEXT)
     expect(service.namespace).toBe('novo-one')
+    expect(service.configured).toBe(true)
+  })
+
+  it('reports itself unconfigured without endpoint or context', () => {
+    expect(new KubernetesService(new Context()).configured).toBe(false)
+    expect(new KubernetesService(new Context(), { endpoint: ENDPOINT, context: '' }).configured).toBe(false)
+  })
+
+  it('occupies the kubernetesStore seam slot when plugged', async () => {
+    const ctx = new Context()
+    await ctx.plugin(KubernetesService, { endpoint: ENDPOINT, context: CONTEXT })
+    expect(ctx.kubernetesStore).toBeInstanceOf(KubernetesStore)
+    expect(ctx.kubernetesStore.backendRef).toBe(`kubernetes:${CONTEXT}@${ENDPOINT}`)
+    await ctx.fiber.dispose()
   })
 })
 
@@ -124,7 +146,8 @@ describe('MCP handshake and context injection', () => {
     const service = makeService()
     const result = await service.listPods({ namespace: 'kube-system', limit: 10 })
 
-    expect(result.structured?.['echoed']).toEqual({ namespace: 'kube-system', limit: 10, context: CONTEXT })
+    expect(toolCallArguments(gateway.calls)).toEqual({ namespace: 'kube-system', limit: 10, context: CONTEXT })
+    expect(result.items).toEqual([])
     const initialize = gateway.calls.find(call => call.body['method'] === 'initialize')
     expect(initialize?.headers['mcp-session-id']).toBeUndefined()
     const calls = gateway.calls.filter(call => call.body['method'] === 'tools/call')
@@ -140,9 +163,7 @@ describe('MCP handshake and context injection', () => {
     const service = makeService()
     await service.callTool('pods_get', { name: 'p', namespace: 'novo-one', context: 'pro-br-saas-aws-eks-novo' })
 
-    const call = gateway.calls.find(item => item.body['method'] === 'tools/call')
-    const params = call?.body['params'] as { arguments: Record<string, unknown> }
-    expect(params.arguments['context']).toBe(CONTEXT)
+    expect(toolCallArguments(gateway.calls)).toMatchObject({ context: CONTEXT })
   })
 
   it('single-flights concurrent first calls through one initialize', async () => {
@@ -169,16 +190,69 @@ describe('MCP handshake and context injection', () => {
   })
 })
 
-describe('result envelopes', () => {
-  it('prefers structuredContent and keeps the text block', async () => {
-    const gateway = gatewayStub()
-    vi.stubGlobal('fetch', gateway.mock)
+describe('seam result mapping', () => {
+  it('maps a list envelope to items / continue / remainingItemCount and keeps the text table', async () => {
+    const mock = vi.fn(async (_url: string | URL, init: RequestInit): Promise<Response> => {
+      const body = JSON.parse(init.body as string) as Record<string, unknown>
+      if (body['method'] === 'initialize') {
+        return sse({ jsonrpc: '2.0', id: 1, result: {} }, { 'mcp-session-id': 'SID-1' })
+      }
+      if (body['method'] === 'notifications/initialized') return new Response('', { status: 202 })
+      return sse({
+        jsonrpc: '2.0',
+        id: body['id'],
+        result: {
+          content: [{ type: 'text', text: '# pods table' }],
+          structuredContent: {
+            items: [
+              { Name: 'commctl-config-6c7679b978-ghj6s', Status: 'Running' },
+              { Name: 'commctl-sip-5d8f7c9b4-x2plm', Status: 'CrashLoopBackOff' },
+            ],
+            continue: 'tok-9',
+            remainingItemCount: 37,
+          },
+        },
+      })
+    })
+    vi.stubGlobal('fetch', mock)
 
     const service = makeService()
-    const result = await service.listPods({ namespace: 'kube-system' })
+    const result = await service.listPods({ namespace: 'novo-one' })
 
-    expect(result.structured?.['echoed']).toEqual({ namespace: 'kube-system', context: CONTEXT })
-    expect(result.text).toBe('echo pods_list_in_namespace')
+    expect(result).toEqual({
+      items: [
+        { Name: 'commctl-config-6c7679b978-ghj6s', Status: 'Running' },
+        { Name: 'commctl-sip-5d8f7c9b4-x2plm', Status: 'CrashLoopBackOff' },
+      ],
+      continue: 'tok-9',
+      remainingItemCount: 37,
+      text: '# pods table',
+    })
+  })
+
+  it('maps a get envelope to the seam object shape', async () => {
+    const mock = vi.fn(async (_url: string | URL, init: RequestInit): Promise<Response> => {
+      const body = JSON.parse(init.body as string) as Record<string, unknown>
+      if (body['method'] === 'initialize') {
+        return sse({ jsonrpc: '2.0', id: 1, result: {} }, { 'mcp-session-id': 'SID-1' })
+      }
+      if (body['method'] === 'notifications/initialized') return new Response('', { status: 202 })
+      return sse({
+        jsonrpc: '2.0',
+        id: body['id'],
+        result: {
+          content: [{ type: 'text', text: 'pod object' }],
+          structuredContent: { apiVersion: 'v1', kind: 'Pod', metadata: { name: 'pod-1' }, status: { phase: 'Running' } },
+        },
+      })
+    })
+    vi.stubGlobal('fetch', mock)
+
+    const service = makeService()
+    const result = await service.getPod('pod-1', 'novo-one')
+
+    expect(result.object).toMatchObject({ kind: 'Pod', status: { phase: 'Running' } })
+    expect(result.text).toBe('pod object')
   })
 
   it('returns the log body as text when the tool emits no structuredContent', async () => {
@@ -252,7 +326,8 @@ describe('session recovery', () => {
     const service = makeService()
     const result = await service.listPods({})
 
-    expect(result.structured?.['echoed']).toEqual({ namespace: 'novo-one', context: CONTEXT })
+    expect(toolCallArguments(gateway.calls, 1)).toEqual({ namespace: 'novo-one', context: CONTEXT })
+    expect(result.text).toBe('echo pods_list_in_namespace')
     expect(gateway.calls.filter(call => call.body['method'] === 'initialize')).toHaveLength(2)
     const retried = gateway.calls.filter(call => call.body['method'] === 'tools/call')
     expect(retried).toHaveLength(2)
