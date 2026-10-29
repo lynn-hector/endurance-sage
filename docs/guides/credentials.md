@@ -53,6 +53,10 @@ Zadig 页面右上角头像 → 个人设置 → OpenAPI → 创建 token。**�
 
 每环境独立或跨环境复用的实测结论记录在 `apps/agent/envs.yml` 头部注释；密码值不入库。
 
+### Kubernetes（网关桥接，当前免鉴权）
+
+K8s 视图腿经平台级 kubernetes-mcp-server 网关（Rancher 多集群 kubeconfig）只读取数：集群凭据、`read_only` 强制与 Secret 拦截全部在服务端一次解决，**本机凭据库目前无需任何键**。网关启用鉴权后，envs.yml 每行 kubernetes 腿补 `tokenRef`（Bearer token），该腿自动进入逐环境就绪推导与切换预检。网关侧加鉴权（token/OIDC）或 IP 白名单仍在推进中——在落地前，能路由到网关的内网客户端都可读全部集群资源。
+
 ## 换 token 的操作
 
 只需修改本机 `~/.dsh/.credentials.yaml`，不需要修改环境矩阵、npm 包或 bundle。保存后重启宿主即可；本地链接开发也可以按现有 profile patch 热重载机制触发重载。

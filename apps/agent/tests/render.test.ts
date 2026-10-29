@@ -32,12 +32,16 @@ const fixture: EnvRow = {
     envName: 'tst-platform-hosted-0',
     tokenRef: 'ZADIG_API_TOKEN',
   },
+  kubernetes: {
+    endpoint: 'http://192.168.5.126:19080/mcp',
+    context: 'test',
+  },
 }
 
 describe('renderEntries', () => {
   const entries = renderEntries(fixture)
 
-  it('renders the 18 host plugins in dependency order', () => {
+  it('renders the 19 host plugins in dependency order', () => {
     expect(entries.map((e) => e.id)).toEqual([
       // 宿主级 Session 路由栈在最前：绑定存储 + Provider 池（环境无关条目）
       'sentry-env-binding',
@@ -50,6 +54,7 @@ describe('renderEntries', () => {
       'sentry-tool-db-inspector',
       'sentry-tool-redis-inspector',
       'sentry-tool-zadig-inspector',
+      'sentry-tool-kubernetes-inspector',
       'sentry-tool-mq-inspector',
       'sentry-tapd',
       'sentry-tool-tapd-inspector',
@@ -88,7 +93,7 @@ describe('renderEntries', () => {
 describe('renderProviderEntries', () => {
   const providers = renderProviderEntries(fixture)
 
-  it('renders the 7 Provider services the pool mounts per environment', () => {
+  it('renders the 8 Provider services the pool mounts per environment', () => {
     expect(providers.map((e) => e.id)).toEqual([
       'sentry-greptimedb',
       'sentry-trace',
@@ -96,6 +101,7 @@ describe('renderProviderEntries', () => {
       'sentry-alertmanager',
       'sentry-dbx',
       'sentry-zadig',
+      'sentry-kubernetes',
       'sentry-service-rocketmq',
     ])
   })
@@ -139,6 +145,22 @@ describe('renderProviderEntries', () => {
       usernameRef: 'GRAFANA_TEST_USERNAME',
       passwordRef: 'GRAFANA_TEST_PASSWORD',
     })
+  })
+
+  it('renders the kubernetes leg from the row: gateway endpoint + pinned context, no credential keys', () => {
+    const entry = providers.find((e) => e.id === 'sentry-kubernetes')
+    expect(entry?.name).toBe('@dsh-sentry/service-kubernetes')
+    expect(entry?.config).toEqual({
+      endpoint: 'http://192.168.5.126:19080/mcp',
+      context: 'test',
+    })
+  })
+
+  it('omits the kubernetes Provider entirely when the row carries no kubernetes block', () => {
+    const { kubernetes: _kubernetes, ...legacyRow } = fixture
+    const rendered = renderProviderEntries(legacyRow)
+    expect(rendered.find((e) => e.id === 'sentry-kubernetes')).toBeUndefined()
+    expect(rendered).toHaveLength(7)
   })
 
   it('no credential values anywhere — refs only', () => {
@@ -268,6 +290,13 @@ describe('envs.yml contract', () => {
         expect(row.greptimedb.passwordRef, `${name}.greptimedb.passwordRef`).toMatch(/^[A-Z0-9_]+$/)
       }
       expect(row.zadig.tokenRef, `${name}.zadig.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
+      // kubernetes 腿可选但当前矩阵全量接线：context 与环境名 1:1，网关平台级共享；
+      // tokenRef 预留给网关鉴权（启用后进入就绪推导与必备引用数）
+      expect(row.kubernetes?.context, `${name}.kubernetes.context`).toBe(name)
+      expect(row.kubernetes?.endpoint, `${name}.kubernetes.endpoint`).toMatch(/^https?:\/\//)
+      if (row.kubernetes?.tokenRef !== undefined) {
+        expect(row.kubernetes.tokenRef, `${name}.kubernetes.tokenRef`).toMatch(/^[A-Z0-9_]+$/)
+      }
       // 8 条必备引用：prometheus 腿统一走表单登录（grafana 账号密码），
       // 不再为禁 basic auth 的实例配 service account token
       expect(requiredCredentialRefs(row).length, `${name} refs`).toBe(greptimedbTokenMode ? 7 : 8)

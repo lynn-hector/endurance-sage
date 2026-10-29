@@ -48,6 +48,7 @@ flowchart TB
 
     subgraph TARGET["外部产品环境（novo-one，环境清单见 envs.yml）"]
         obs["GreptimeDB 日志 · Grafana（Jaeger 链路 + Prometheus 指标 + Alertmanager 告警）<br/>dbx（PG + Redis）· RocketMQ · Zadig · TAPD"]
+        k8s["kubernetes-mcp-server 网关（只读，Rancher 29 context）<br/>K8s 视图腿的传输层"]
         gitlab["GitLab novoone/backend 组产品仓库"]
     end
 
@@ -61,6 +62,7 @@ flowchart TB
     tools --> core
     services --> core
     services -->|HTTPS 只读查询| obs
+    services -->|streamable HTTP MCP（tools/call，按环境行注入 context）| k8s
     services -->|本机文件 / 受控子进程| local
     local -->|git pull / clone| gitlab
     dev -->|先单件试跑再装配| tools

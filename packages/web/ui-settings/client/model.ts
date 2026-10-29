@@ -73,6 +73,7 @@ const CONFIG_FIELD_LABELS: Record<string, string> = {
   project: '项目',
   envName: '环境名称',
   baseDir: '代码根目录',
+  context: '集群 Context',
 }
 
 /** 环境详情中的非机密配置；*Ref 只代表凭据键名，由凭据状态区单独展示。 */

@@ -135,7 +135,7 @@ const CSS = `
 .dshs-refLabel{color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500}
 `
 
-const LEG_NAMES = ['greptimedb', 'grafana', 'prometheus', 'dbx', 'rocketmq', 'zadig'] as const
+const LEG_NAMES = ['greptimedb', 'grafana', 'prometheus', 'dbx', 'rocketmq', 'zadig', 'kubernetes'] as const
 
 type LegName = (typeof LEG_NAMES)[number]
 
@@ -146,9 +146,10 @@ const LEG_LABELS: Record<LegName, string> = {
   dbx: 'dbx',
   rocketmq: 'RocketMQ',
   zadig: 'Zadig',
+  kubernetes: 'Kubernetes',
 }
 
-/** 对话框导航页：六个数据源腿 + 一页通用配置（数据库 / 代码仓库）。 */
+/** 对话框导航页：数据源腿 + 一页通用配置（数据库 / 代码仓库）。 */
 type DialogTab = LegName | 'general'
 
 const NAV_ITEMS: { key: DialogTab; label: string }[] = [
@@ -555,7 +556,7 @@ function EnvironmentDialog({ remote, view, status, onClose, onChanged }: {
   const activeLeg = tab === 'general' ? undefined : tab
   const activeReadiness = activeLeg === undefined ? undefined : view.legs.find(leg => leg.leg === activeLeg)
   const activeRefs = activeLeg === undefined ? [] : credentialRefs.get(activeLeg) ?? []
-  const activeFields = activeLeg === undefined ? [] : configFields(row[activeLeg])
+  const activeFields = activeLeg === undefined ? [] : configFields(row[activeLeg] ?? {})
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
@@ -687,7 +688,7 @@ function EnvironmentDialog({ remote, view, status, onClose, onChanged }: {
                     {LEG_LABELS[activeLeg]}
                     {activeReadiness !== undefined
                       ? <Status state={activeReadiness.ok ? 'ok' : 'miss'}>{activeReadiness.ok ? '就绪' : '未就绪'}</Status>
-                      : <span className="dshs-pill">{activeLeg === 'prometheus' ? '随 Grafana 认证' : '无需独立凭据'}</span>}
+                      : <span className="dshs-pill">{activeLeg === 'prometheus' ? '随 Grafana 认证' : activeLeg === 'kubernetes' ? '网关免鉴权（只读）' : '无需独立凭据'}</span>}
                     {activeReadiness?.authMode !== undefined && (
                       <span className="dshs-legend">{activeReadiness.authMode === 'token' ? 'Token 认证' : '账密认证'}</span>
                     )}

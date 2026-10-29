@@ -23,8 +23,10 @@ export interface EnvLeg {
   envName?: string
   usernameRef?: string
   passwordRef?: string
-  /** 腿特定 token 引用，语义随腿变化：prometheus 腿=Bearer token；greptimedb 腿=dashboard connect token（解密还原账密，见 docs/guides/credentials.md） */
+  /** 腿特定 token 引用，语义随腿变化：prometheus 腿=Bearer token；greptimedb 腿=dashboard connect token（解密还原账密，见 docs/guides/credentials.md）；kubernetes 腿=MCP 网关 Bearer token（网关启用鉴权后配置） */
   tokenRef?: string
+  /** kubernetes 腿的 kubeconfig context 名（Rancher 多集群选择，随环境行配置，与环境名基本 1:1） */
+  context?: string
 }
 
 export interface EnvRow {
@@ -37,6 +39,11 @@ export interface EnvRow {
   zadig: EnvLeg
   db?: { database?: string }
   codeRepository?: { baseDir?: string }
+  /**
+   * kubernetes 视图腿（可选）：经平台级 kubernetes-mcp-server 网关只读访问
+   * 该环境对应的集群。省略整块时该腿不渲染、不参与就绪推导——旧矩阵无需迁移。
+   */
+  kubernetes?: EnvLeg
 }
 
 export interface Matrix {
@@ -64,7 +71,7 @@ export const ENV_ALIASES: Readonly<Record<string, string>> = {
 }
 
 export interface LegReadiness {
-  leg: 'greptimedb' | 'grafana' | 'prometheus' | 'dbx' | 'rocketmq' | 'zadig'
+  leg: 'greptimedb' | 'grafana' | 'prometheus' | 'dbx' | 'rocketmq' | 'zadig' | 'kubernetes'
   ok: boolean
   /** greptimedb 腿的认证模式，与渲染接线一致：tokenRef 定义即 token，否则账密 */
   authMode?: 'token' | 'basic'
@@ -132,6 +139,7 @@ export function requiredCredentialRefs(row: EnvRow): string[] {
     row.rocketmq.passwordRef,
     row.zadig.tokenRef,
     row.prometheus.tokenRef,
+    row.kubernetes?.tokenRef,
   ].filter((ref): ref is string => typeof ref === 'string' && ref.length > 0)
 }
 
@@ -187,6 +195,9 @@ export function legReadiness(row: EnvRow, hasValue: (ref: string) => boolean): L
     legs.push(evaluate('rocketmq', [row.rocketmq.usernameRef, row.rocketmq.passwordRef]))
   }
   if (row.zadig.tokenRef !== undefined) legs.push(evaluate('zadig', [row.zadig.tokenRef]))
+  // kubernetes 网关当前免鉴权：无 tokenRef 时不产生独立就绪腿（网关、集群凭据都在
+  // 服务端）；网关启用鉴权后配置 tokenRef，本腿自动进入逐环境就绪推导
+  if (row.kubernetes?.tokenRef !== undefined) legs.push(evaluate('kubernetes', [row.kubernetes.tokenRef]))
   return legs
 }
 
@@ -225,6 +236,7 @@ export function legCredentialRefs(row: EnvRow): Array<{ leg: LegReadiness['leg']
     })
   }
   if (row.zadig.tokenRef !== undefined) legs.push({ leg: 'zadig', refs: [row.zadig.tokenRef] })
+  if (row.kubernetes?.tokenRef !== undefined) legs.push({ leg: 'kubernetes', refs: [row.kubernetes.tokenRef] })
   return legs
 }
 

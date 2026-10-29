@@ -28,6 +28,7 @@ export const KNOWN_EVIDENCE_TYPES = [
   'redis',
   'mq',
   'cicd',
+  'kubernetes',
   'inference',
 ] as const
 

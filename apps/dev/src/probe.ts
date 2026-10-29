@@ -2,7 +2,7 @@
  * One-shot connectivity probe for a sentry data-source leg:
  *   pnpm --filter @dsh-sentry/dev exec tsx src/probe.ts <腿> [环境]
  *
- * 腿：greptimedb | trace | prometheus | alertmanager | dbx | rocketmq | zadig | grafana-datasources
+ * 腿：greptimedb | trace | prometheus | alertmanager | dbx | rocketmq | zadig | kubernetes | grafana-datasources
  * 环境：envs.yml 行名或短码（DP0/DP1/DC0/TP0/TP1/TC0/SC1/SC2），缺省 dev-platform-hosted-0。
  *
  * Boots the real credentials plane ($DSH_HOME/.credentials.yaml) plus the
@@ -24,9 +24,10 @@ import DbxService from '@dsh-sentry/service-dbx'
 import TraceService from '@dsh-sentry/service-trace'
 import PrometheusService from '@dsh-sentry/service-prometheus'
 import AlertmanagerService from '@dsh-sentry/service-alertmanager'
+import KubernetesService from '@dsh-sentry/service-kubernetes'
 import { parse } from 'yaml'
 
-const LEGS = ['greptimedb', 'trace', 'prometheus', 'alertmanager', 'dbx', 'rocketmq', 'zadig', 'grafana-datasources'] as const
+const LEGS = ['greptimedb', 'trace', 'prometheus', 'alertmanager', 'dbx', 'rocketmq', 'zadig', 'kubernetes', 'grafana-datasources'] as const
 type Leg = (typeof LEGS)[number]
 
 const which = process.argv[2] ?? ''
@@ -179,6 +180,23 @@ try {
     console.log(`ZADIG PROBE OK — ${services.length} workloads (envName=${row.zadig.envName})`)
     for (const svc of services.slice(0, 5)) {
       console.log(`  ${svc.name} | ${svc.status} | ${svc.build_time ?? '-'} build=${svc.build_id ?? '-'} branch=${svc.branch ?? '-'}`)
+    }
+  } else if (leg === 'kubernetes') {
+    if (row.kubernetes === undefined) throw new Error(`环境 ${envName} 未配置 kubernetes 腿（envs.yml 缺 kubernetes 块）`)
+    await ctx.plugin(KubernetesService, {
+      endpoint: row.kubernetes.endpoint!,
+      context: row.kubernetes.context!,
+    })
+    // MCP 握手（initialize + initialized）+ 一次业务命名空间 pod 行查询：
+    // 同时验证网关可达、context 存在（404/未知 context 会以工具错误返回）与只读取数路径。
+    const pods = await ctx.kubernetes.listPods({ namespace: 'novo-one', limit: 5 })
+    const items = Array.isArray(pods.structured?.['items']) ? pods.structured!['items']! : []
+    console.log(`KUBERNETES PROBE OK — context=${row.kubernetes.context} novo-one 前 ${items.length} 个 Pod`)
+    for (const item of items.slice(0, 5)) {
+      if (typeof item === 'object' && item !== null) {
+        const row_ = item as Record<string, unknown>
+        console.log(`  ${String(row_['Name'])} | ${String(row_['Status'])} | ready=${String(row_['Ready'])} | restarts=${String(row_['Restarts'])}`)
+      }
     }
   } else if (leg === 'grafana-datasources') {
     // 校准用：列出该环境 Grafana 的全部数据源（name/type/uid），

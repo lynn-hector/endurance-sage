@@ -33,6 +33,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "dev-platform-hosted-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "dev-platform-hosted-0"
     }
   },
   "dev-platform-hosted-1": {
@@ -66,6 +70,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "dev-platform-hosted-1",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "dev-platform-hosted-1"
     }
   },
   "dev-client-hosted-0": {
@@ -99,6 +107,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "dev-client-hosted-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "dev-client-hosted-0"
     }
   },
   "tst-platform-hosted-0": {
@@ -132,6 +144,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "tst-platform-hosted-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "tst-platform-hosted-0"
     }
   },
   "tst-platform-hosted-1": {
@@ -165,6 +181,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "tst-platform-hosted-1",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "tst-platform-hosted-1"
     }
   },
   "tst-client-hosted-0": {
@@ -198,6 +218,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "tst-client-hosted-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "tst-client-hosted-0"
     }
   },
   "sit-client-hosted-1": {
@@ -231,6 +255,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "sit-client-hosted-1",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "sit-client-hosted-1"
     }
   },
   "sit-client-hosted-2": {
@@ -264,6 +292,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "sit-client-hosted-2",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "sit-client-hosted-2"
     }
   },
   "pro-br-saas-aws-eks-novo": {
@@ -296,6 +328,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "pro-br-saas-aws-eks-novo",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "pro-br-saas-aws-eks-novo"
     }
   },
   "tst-platform-aws-eks-sg-0": {
@@ -329,6 +365,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "tst-platform-aws-eks-sg-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "tst-platform-aws-eks-sg-0"
     }
   },
   "pro-use-saas-aws-eks-novo": {
@@ -362,6 +402,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "pro-use-saas-aws-eks-novo",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "pro-use-saas-aws-eks-novo"
     }
   },
   "pro-za-saas-aws-eks-novo": {
@@ -395,6 +439,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "pro-za-saas-aws-eks-novo",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "pro-za-saas-aws-eks-novo"
     }
   },
   "pro-de-saas-aws-eks-novo": {
@@ -428,6 +476,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "pro-de-saas-aws-eks-novo",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "pro-de-saas-aws-eks-novo"
     }
   },
   "pro-sg-saas-aws-eks-novo": {
@@ -461,6 +513,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "pro-sg-saas-aws-eks-novo",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "pro-sg-saas-aws-eks-novo"
     }
   },
   "tst-platform-aws-eks-de-0": {
@@ -494,6 +550,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "tst-platform-aws-eks-de-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "tst-platform-aws-eks-de-0"
     }
   },
   "tst-platform-aws-eks-us-0": {
@@ -527,6 +587,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "tst-platform-aws-eks-us-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "tst-platform-aws-eks-us-0"
     }
   },
   "tst-platform-aws-eks-au-0": {
@@ -560,6 +624,10 @@ export const MATRIX: Matrix = {
       "project": "novo-one-helm-charts-project",
       "envName": "tst-platform-aws-eks-au-0",
       "tokenRef": "ZADIG_API_TOKEN"
+    },
+    "kubernetes": {
+      "endpoint": "http://192.168.5.126:19080/mcp",
+      "context": "tst-platform-aws-eks-au-0"
     }
   }
 } as unknown as Matrix

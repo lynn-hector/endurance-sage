@@ -7,7 +7,7 @@ import * as sentrySkills from '../src/index.ts'
 
 /**
  * Native-bundle gate for the sentry skills: the filesystem provider must
- * discover the complete 16-skill catalog from `../skills/<name>/SKILL.md`,
+ * discover the complete 17-skill catalog from `../skills/<name>/SKILL.md`,
  * strip frontmatter from loaded bodies, and own them as `sentry-bundled`
  * contributions. Content-level golden pinning lives in the per-skill blocks
  * below.
@@ -25,6 +25,7 @@ const SKILL_NAMES = [
   'defect-troubleshooting',
   'env-switcher',
   'incident-templates',
+  'kubernetes-inspector',
   'log-analyzer',
   'metrics-inspector',
   'mq-inspector',
@@ -43,7 +44,7 @@ async function bootSkills(): Promise<Context> {
 }
 
 describe('sentry-skills native bundle', () => {
-  it('discovers exactly the full 16-skill catalog', async () => {
+  it('discovers exactly the full 17-skill catalog', async () => {
     const ctx = await bootSkills()
     const names = (await ctx.skills.list()).map(skill => skill.name)
     expect(names).toEqual(SKILL_NAMES)

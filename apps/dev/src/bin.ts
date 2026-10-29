@@ -20,7 +20,7 @@ await root.plugin(SessionStore)
 await root.plugin(SessionProjectionRegistry)
 await root.plugin(sentry, { defaultEnv: 'dev-platform-hosted-0' })
 
-const TOOLS = ['sentry_query_logs', 'sentry_list_log_services', 'sentry_query_call_flow', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_get_alert_rule', 'sentry_list_am_alerts', 'sentry_list_am_silences', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq']
+const TOOLS = ['sentry_query_logs', 'sentry_list_log_services', 'sentry_query_call_flow', 'sentry_fetch_trace', 'sentry_query_metrics', 'sentry_list_metrics', 'sentry_list_alerts', 'sentry_get_alert_rule', 'sentry_list_am_alerts', 'sentry_list_am_silences', 'sentry_query_db', 'sentry_query_redis', 'sentry_query_zadig', 'sentry_query_k8s_pods', 'sentry_read_k8s_pod_logs', 'sentry_list_k8s_events', 'sentry_query_k8s_resource', 'sentry_search_code', 'sentry_read_code', 'sentry_sync_code', 'sentry_query_mq']
 for (const name of TOOLS) {
   if (root.tools.get(name) === undefined) throw new Error(`FAIL: tool "${name}" was not registered`)
 }
@@ -31,7 +31,7 @@ if (!assembly.sections.some(section => section.name === 'sentry-persona')) {
 }
 
 const skills = await root.skills.list()
-for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
+for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector', 'kubernetes-inspector']) {
   if (!skills.some(skill => skill.name === expected)) throw new Error(`FAIL: skill "${expected}" was not registered`)
 }
 

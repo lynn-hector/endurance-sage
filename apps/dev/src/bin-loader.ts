@@ -33,6 +33,10 @@ while (Date.now() < deadline) {
     && tools.get('sentry_query_db') !== undefined
     && tools.get('sentry_query_redis') !== undefined
     && tools.get('sentry_query_zadig') !== undefined
+    && tools.get('sentry_query_k8s_pods') !== undefined
+    && tools.get('sentry_read_k8s_pod_logs') !== undefined
+    && tools.get('sentry_list_k8s_events') !== undefined
+    && tools.get('sentry_query_k8s_resource') !== undefined
     && tools.get('sentry_search_code') !== undefined
     && tools.get('sentry_sync_code') !== undefined
     && tools.get('sentry_query_mq') !== undefined
@@ -44,7 +48,7 @@ if (!ready) {
 }
 
 const skills = await ctx.skills.list()
-for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector']) {
+for (const expected of ['log-analyzer', 'defect-troubleshooting', 'cross-service-latency', 'incident-templates', 'project-context', 'code-repository', 'mq-inspector', 'trace-analyzer', 'metrics-inspector', 'db-inspector', 'redis-inspector', 'zadig-inspector', 'kubernetes-inspector']) {
   if (!skills.some(skill => skill.name === expected)) {
     throw new Error(`FAIL: skill "${expected}" was not registered via cordis.yml`)
   }

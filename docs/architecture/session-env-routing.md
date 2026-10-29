@@ -188,7 +188,8 @@ Provider 配置由 `renderProviderEntries(row)` 从同一份 `envs.yml` 推导�
 - Prometheus → `metricsStore`；
 - Alertmanager → `alertmanager`；
 - RocketMQ → `mqStore`；
-- Zadig → `zadig`。
+- Zadig → `zadig`；
+- Kubernetes（经 kubernetes-mcp-server 网关桥接，按环境行 `kubernetes.context` 选集群）→ `kubernetes`。
 
 生命周期规则：
 

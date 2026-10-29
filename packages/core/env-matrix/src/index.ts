@@ -217,6 +217,7 @@ export function renderEntries(row: EnvRow): Entry[] {
     },
     { id: 'sentry-tool-redis-inspector', name: '@dsh-sentry/tool-redis-inspector' },
     { id: 'sentry-tool-zadig-inspector', name: '@dsh-sentry/tool-zadig-inspector' },
+    { id: 'sentry-tool-kubernetes-inspector', name: '@dsh-sentry/tool-kubernetes-inspector' },
     { id: 'sentry-tool-mq-inspector', name: '@dsh-sentry/tool-mq-inspector' },
     {
       id: 'sentry-tapd',
@@ -327,6 +328,19 @@ export function renderProviderEntries(row: EnvRow): Entry[] {
         tokenRef: row.zadig.tokenRef,
       },
     },
+    // kubernetes 腿是可选的（矩阵行省略 kubernetes 块即不渲染，Pool 记为该腿
+    // 不可用）；网关 endpoint 平台级共享，环境差异只在 context 名
+    ...(row.kubernetes !== undefined
+      ? [{
+          id: 'sentry-kubernetes',
+          name: '@dsh-sentry/service-kubernetes',
+          config: {
+            endpoint: row.kubernetes.endpoint,
+            context: row.kubernetes.context,
+            ...(row.kubernetes.tokenRef !== undefined ? { tokenRef: row.kubernetes.tokenRef } : {}),
+          },
+        }]
+      : []),
     {
       id: 'sentry-service-rocketmq',
       name: '@dsh-sentry/service-rocketmq',
