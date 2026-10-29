@@ -5,6 +5,8 @@ import {
   type KubernetesListQuery,
   type KubernetesListResult,
   type KubernetesLogQuery,
+  type KubernetesNodeLogQuery,
+  type KubernetesNodeQuery,
   type KubernetesObject,
 } from '@dsh-sentry/kubernetes-store'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -73,6 +75,11 @@ class FakeKubernetesStore extends KubernetesStore {
   eventCalls: KubernetesListQuery[] = []
   resourceLists: Array<{ apiVersion: string; kind: string; query: KubernetesListQuery }> = []
   resourceGets: Array<{ apiVersion: string; kind: string; name: string; namespace: string | undefined }> = []
+  topPodCalls: KubernetesListQuery[] = []
+  topNodeCalls: KubernetesNodeQuery[] = []
+  namespaceCalls: KubernetesListQuery[] = []
+  nodeLogCalls: Array<{ name: string; query: KubernetesNodeLogQuery }> = []
+  nodeStatsCalls: string[] = []
   error?: Error
 
   override get backendRef(): string {
@@ -165,6 +172,60 @@ class FakeKubernetesStore extends KubernetesStore {
       text: 'resource table',
     }
   }
+
+  override async topPods(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
+    this.topPodCalls.push(query)
+    if (this.error) throw this.error
+    return {
+      items: [{ Namespace: 'novo-one', Name: 'commctl-config-6c7679b978-ghj6s', 'CPU(cores)': '59m', 'MEMORY(bytes)': '1010Mi' }],
+      continue: null,
+      remainingItemCount: null,
+      text: 'pods top table',
+    }
+  }
+
+  override async topNodes(query: KubernetesNodeQuery = {}): Promise<KubernetesListResult> {
+    this.topNodeCalls.push(query)
+    if (this.error) throw this.error
+    return {
+      items: [{ Name: 'node-a', CPU: '813000000n', Memory: '17616000Ki' }],
+      continue: null,
+      remainingItemCount: null,
+      text: 'NAME     CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)\nnode-a   813m         10%      17222Mi         56%',
+    }
+  }
+
+  override async listNamespaces(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
+    this.namespaceCalls.push(query)
+    if (this.error) throw this.error
+    return {
+      items: [{ Name: 'novo-one', Status: 'Active' }, { Name: 'kube-system', Status: 'Active' }],
+      continue: 'tok-ns',
+      remainingItemCount: 18,
+      text: 'namespaces table',
+    }
+  }
+
+  override async getNodeLogs(name: string, query: KubernetesNodeLogQuery): Promise<string> {
+    this.nodeLogCalls.push({ name, query })
+    if (this.error) throw this.error
+    return 'kubelet line 1\nkubelet line 2'
+  }
+
+  override async getNodeStatsSummary(name: string): Promise<KubernetesObject> {
+    this.nodeStatsCalls.push(name)
+    if (this.error) throw this.error
+    return {
+      object: {
+        node: { nodeName: name, cpu: { usageNanoCores: 813000000 }, memory: { workingSetBytes: 18038862672 } },
+        pods: [
+          { podRef: { name: 'small-pod', namespace: 'novo-one' }, cpu: { usageNanoCores: 1000000 }, memory: { workingSetBytes: 100 } },
+          { podRef: { name: 'big-pod', namespace: 'novo-one' }, cpu: { usageNanoCores: 2000000 }, memory: { workingSetBytes: 999999 } },
+        ],
+      },
+      text: 'summary json',
+    }
+  }
 }
 
 interface Envelope {
@@ -193,7 +254,16 @@ afterEach(async () => {
   await ctx.fiber.dispose()
 })
 
-type ToolName = 'sentry_query_k8s_pods' | 'sentry_read_k8s_pod_logs' | 'sentry_list_k8s_events' | 'sentry_query_k8s_resource'
+type ToolName =
+  | 'sentry_query_k8s_pods'
+  | 'sentry_read_k8s_pod_logs'
+  | 'sentry_list_k8s_events'
+  | 'sentry_query_k8s_resource'
+  | 'sentry_top_k8s_pods'
+  | 'sentry_top_k8s_nodes'
+  | 'sentry_list_k8s_namespaces'
+  | 'sentry_read_k8s_node_logs'
+  | 'sentry_read_k8s_node_stats'
 
 function tool(name: ToolName) {
   const found = ctx.tools.get(name)
@@ -202,8 +272,18 @@ function tool(name: ToolName) {
 }
 
 describe('tool-kubernetes-inspector KubernetesStore Consumer', () => {
-  it('registers exactly the four curated read-only tools', () => {
-    for (const name of ['sentry_query_k8s_pods', 'sentry_read_k8s_pod_logs', 'sentry_list_k8s_events', 'sentry_query_k8s_resource']) {
+  it('registers exactly the nine curated read-only tools', () => {
+    for (const name of [
+      'sentry_query_k8s_pods',
+      'sentry_read_k8s_pod_logs',
+      'sentry_list_k8s_events',
+      'sentry_query_k8s_resource',
+      'sentry_top_k8s_pods',
+      'sentry_top_k8s_nodes',
+      'sentry_list_k8s_namespaces',
+      'sentry_read_k8s_node_logs',
+      'sentry_read_k8s_node_stats',
+    ]) {
       expect(ctx.tools.get(name), name).not.toBeUndefined()
     }
   })
@@ -219,6 +299,7 @@ describe('tool-kubernetes-inspector KubernetesStore Consumer', () => {
       namespace: 'novo-one',
       mode: 'pod_list',
       item_count: 2,
+      table: '# pods table',
       continue: 'tok-9',
       remaining_item_count: 37,
     })
@@ -284,6 +365,7 @@ describe('tool-kubernetes-inspector KubernetesStore Consumer', () => {
       mode: 'event_list',
       item_count: 2,
       warning_count: 1,
+      table: 'events table',
     })
     expect(output.evidence.summary).toContain('1 条 Warning')
   })
@@ -317,7 +399,94 @@ describe('tool-kubernetes-inspector KubernetesStore Consumer', () => {
     }, {} as never) as Envelope
 
     expect(service.resourceLists).toEqual([{ apiVersion: 'apps/v1', kind: 'Deployment', query: { limit: 50 } }])
-    expect(output.evidence.data).toMatchObject({ mode: 'resource_list', item_count: 1 })
+    expect(output.evidence.data).toMatchObject({ mode: 'resource_list', item_count: 1, table: 'resource table' })
+  })
+
+  it('lists pods across all namespaces when allNamespaces is set', async () => {
+    const output = await tool('sentry_query_k8s_pods').execute({ allNamespaces: true }, {} as never) as Envelope
+
+    expect(service.podLists).toEqual([{ allNamespaces: true, namespace: 'novo-one', limit: 100 }])
+    expect(output.evidence.data).toMatchObject({ mode: 'pod_list', namespace: null })
+    expect(output.evidence.summary).toContain('全部命名空间')
+  })
+
+  it('tops pods with the default namespace and Metrics Server rows', async () => {
+    const output = await tool('sentry_top_k8s_pods').execute({}, {} as never) as Envelope
+
+    expect(service.topPodCalls).toEqual([{ namespace: 'novo-one', limit: 100 }])
+    expect(output.evidence.data).toMatchObject({
+      env: 'test',
+      backend_ref: FAKE_BACKEND_REF,
+      mode: 'pod_top',
+      namespace: 'novo-one',
+      item_count: 1,
+      table: 'pods top table',
+    })
+    expect(output.evidence.summary).toContain('Metrics Server')
+  })
+
+  it('tops pods cluster-wide with allNamespaces and selector passthrough', async () => {
+    const output = await tool('sentry_top_k8s_pods').execute({ allNamespaces: true, labelSelector: 'app=a' }, {} as never) as Envelope
+
+    expect(service.topPodCalls).toEqual([{ allNamespaces: true, labelSelector: 'app=a', limit: 100 }])
+    expect(output.evidence.data).toMatchObject({ mode: 'pod_top', namespace: null })
+  })
+
+  it('tops nodes with selector passthrough and pressure columns in the summary', async () => {
+    const output = await tool('sentry_top_k8s_nodes').execute({ labelSelector: 'node-role.kubernetes.io/worker=' }, {} as never) as Envelope
+
+    expect(service.topNodeCalls).toEqual([{ labelSelector: 'node-role.kubernetes.io/worker=', limit: 100 }])
+    expect(output.evidence.data).toMatchObject({ mode: 'node_top', item_count: 1 })
+    expect(output.evidence.data['items']).toEqual([{ Name: 'node-a', CPU: '813000000n', Memory: '17616000Ki' }])
+    expect(output.evidence.data['table']).toContain('CPU(%)')
+    expect(output.evidence.data['table']).toContain('MEMORY(%)')
+    expect(output.evidence.data['table']).toContain('10%')
+    expect(output.evidence.data['table']).toContain('56%')
+    expect(output.evidence.summary).toContain('百分比')
+  })
+
+  it('lists namespaces with paging metadata', async () => {
+    const output = await tool('sentry_list_k8s_namespaces').execute({}, {} as never) as Envelope
+
+    expect(service.namespaceCalls).toEqual([{ limit: 100 }])
+    expect(output.evidence.data).toMatchObject({
+      mode: 'namespace_list',
+      item_count: 2,
+      table: 'namespaces table',
+      continue: 'tok-ns',
+      remaining_item_count: 18,
+    })
+  })
+
+  it('reads node logs with tail clamping and the journal source', async () => {
+    const output = await tool('sentry_read_k8s_node_logs').execute({ node: 'node-a', source: 'kubelet', tail: 5000 }, {} as never) as Envelope
+
+    expect(service.nodeLogCalls).toEqual([{ name: 'node-a', query: { source: 'kubelet', tail: 2000 } }])
+    expect(output.evidence.data).toMatchObject({ mode: 'node_logs', node: 'node-a', log_source: 'kubelet', line_count: 2 })
+    expect(output.evidence.data['logs']).toContain('kubelet line 2')
+  })
+
+  it('curates node stats to node-level data plus top-5 memory pods', async () => {
+    const output = await tool('sentry_read_k8s_node_stats').execute({ node: 'node-a' }, {} as never) as Envelope
+
+    expect(service.nodeStatsCalls).toEqual(['node-a'])
+    expect(output.evidence.data).toMatchObject({ mode: 'node_stats', node: 'node-a', pod_count: 2 })
+    expect(output.evidence.data['node_stats']).toMatchObject({ nodeName: 'node-a' })
+    const topPods = output.evidence.data['top_memory_pods'] as Array<{ name: string; memory_working_set_bytes: number }>
+    expect(topPods[0]).toMatchObject({ name: 'big-pod', memory_working_set_bytes: 999999 })
+    expect(topPods).toHaveLength(2)
+  })
+
+  it('keeps the extended tools error branch inside the evidence envelope', async () => {
+    service.error = new Error('请求 Kubernetes MCP 失败: metrics.k8s.io 不可用')
+    const output = await tool('sentry_top_k8s_nodes').execute({}, {} as never) as Envelope
+
+    expect(output.evidence.confidence).toBe(0)
+    expect(output.evidence.data).toMatchObject({
+      mode: 'node_top',
+      backend_ref: FAKE_BACKEND_REF,
+      error: '请求 Kubernetes MCP 失败: metrics.k8s.io 不可用',
+    })
   })
 
   it('keeps Provider failures inside the evidence envelope with the identity intact', async () => {

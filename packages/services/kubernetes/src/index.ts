@@ -46,6 +46,8 @@ import {
   type KubernetesListQuery,
   type KubernetesListResult,
   type KubernetesLogQuery,
+  type KubernetesNodeLogQuery,
+  type KubernetesNodeQuery,
   type KubernetesObject,
 } from '@dsh-sentry/kubernetes-store'
 
@@ -53,6 +55,8 @@ export type {
   KubernetesListQuery,
   KubernetesListResult,
   KubernetesLogQuery,
+  KubernetesNodeLogQuery,
+  KubernetesNodeQuery,
   KubernetesObject,
 } from '@dsh-sentry/kubernetes-store'
 
@@ -198,14 +202,21 @@ export class KubernetesService extends KubernetesStore {
     return result.text
   }
 
-  /** `pods_list_in_namespace`: pod rows of one namespace (default: the configured one). */
+  /** `pods_list_in_namespace`: pod rows of one namespace (default: the configured one); `allNamespaces` switches to the cluster-wide `pods_list`. */
   override async listPods(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
-    const result = await this.callTool('pods_list_in_namespace', {
-      namespace: query.namespace ?? this.namespace,
+    const selectors = {
       ...(query.labelSelector !== undefined ? { labelSelector: query.labelSelector } : {}),
       ...(query.fieldSelector !== undefined ? { fieldSelector: query.fieldSelector } : {}),
       ...(query.limit !== undefined ? { limit: query.limit } : {}),
       ...(query.continue !== undefined ? { continue: query.continue } : {}),
+    }
+    if (query.allNamespaces === true) {
+      const result = await this.callTool('pods_list', selectors)
+      return toListResult(result)
+    }
+    const result = await this.callTool('pods_list_in_namespace', {
+      namespace: query.namespace ?? this.namespace,
+      ...selectors,
     })
     return toListResult(result)
   }
@@ -270,6 +281,68 @@ export class KubernetesService extends KubernetesStore {
       ...(query.continue !== undefined ? { continue: query.continue } : {}),
     })
     return toListResult(result)
+  }
+
+  /** `namespaces_list`: cluster-scoped rows; the gateway only takes fieldSelector/limit/continue. */
+  override async listNamespaces(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
+    const result = await this.callTool('namespaces_list', {
+      ...(query.fieldSelector !== undefined ? { fieldSelector: query.fieldSelector } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      ...(query.continue !== undefined ? { continue: query.continue } : {}),
+    })
+    return toListResult(result)
+  }
+
+  /**
+   * `pods_top`: usage rows via Metrics Server. The gateway's `all_namespaces`
+   * defaults to true and its selector is snake_case — both mapped explicitly
+   * so the namespace default cannot silently widen to the whole cluster.
+   */
+  override async topPods(query: KubernetesListQuery = {}): Promise<KubernetesListResult> {
+    const all = query.allNamespaces === true
+    const result = await this.callTool('pods_top', {
+      all_namespaces: all,
+      ...(all ? {} : { namespace: query.namespace ?? this.namespace }),
+      ...(query.labelSelector !== undefined ? { label_selector: query.labelSelector } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      ...(query.continue !== undefined ? { continue: query.continue } : {}),
+    })
+    return toListResult(result)
+  }
+
+  /** `nodes_top`: node usage rows with CPU%/MEMORY% columns (snake_case selector, as above). */
+  override async topNodes(query: KubernetesNodeQuery = {}): Promise<KubernetesListResult> {
+    const result = await this.callTool('nodes_top', {
+      ...(query.labelSelector !== undefined ? { label_selector: query.labelSelector } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      ...(query.continue !== undefined ? { continue: query.continue } : {}),
+    })
+    return toListResult(result)
+  }
+
+  /** `nodes_log`: journal service or /var/log file content (text-only, node-OS dependent). */
+  override async getNodeLogs(name: string, query: KubernetesNodeLogQuery): Promise<string> {
+    const result = await this.callTool('nodes_log', {
+      name,
+      query: query.source,
+      ...(query.tail !== undefined ? { tailLines: query.tail } : {}),
+    })
+    return result.text
+  }
+
+  /**
+   * `nodes_stats_summary`: the kubelet Summary API. The gateway emits it as
+   * one large text JSON (no structuredContent) — parsed here so callers get
+   * the seam object shape and can curate fields instead of regexing text.
+   */
+  override async getNodeStatsSummary(name: string): Promise<KubernetesObject> {
+    const result = await this.callTool('nodes_stats_summary', { name })
+    if (result.structured !== undefined) return toObject(result)
+    try {
+      return { object: JSON.parse(result.text) as Record<string, unknown>, text: result.text }
+    } catch {
+      return { object: {}, text: result.text }
+    }
   }
 
   /**
