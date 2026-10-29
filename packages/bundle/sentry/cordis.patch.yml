@@ -4,3 +4,5 @@
       name: '@dsh-sentry/sentry'
       config:
         defaultEnv: dev-platform-hosted-0
+    - id: sentry-ui-settings
+      name: '@dsh-sentry/ui-settings'

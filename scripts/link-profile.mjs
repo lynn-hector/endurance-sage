@@ -47,8 +47,13 @@ function sentryPackages() {
   const profilePkg = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8'))
   const wanted = new Set(Object.entries(profilePkg.dependencies ?? {})
     .filter(([, spec]) => String(spec) === 'workspace:*').map(([name]) => name))
+  // ui-settings 虽由 sentry bundle 依赖携带，但它是 profile 级 Loader 条目
+  // （dsh-client-modules 只扫描 Loader 条目；cordis.patch.yml / cordis.include.yml
+  // 都有它的 insert 行）。引入模式下 pnpm link: 不会把 link 目标的依赖摊进个人
+  // profile 的 node_modules，所以这里必须显式 link，Loader 才能解析到它。
+  wanted.add('@dsh-sentry/ui-settings')
   const map = new Map()
-  for (const group of ['bundle', 'core', 'services', 'tools', 'guard', 'skills']) {
+  for (const group of ['bundle', 'core', 'services', 'tools', 'guard', 'skills', 'web']) {
     const gdir = join(repoRoot, 'packages', group)
     if (!existsSync(gdir)) continue
     for (const entry of readdirSync(gdir)) {

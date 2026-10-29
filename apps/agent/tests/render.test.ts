@@ -232,15 +232,18 @@ describe('code leg baseDir', () => {
 })
 
 describe('renderPatch', () => {
-  it('renders one aggregate bundle override that round-trips through the real parser', () => {
+  it('renders the aggregate bundle override plus the ui-settings Loader entry, round-tripping through the real parser', () => {
     const patch = renderPatch(fixture)
     const parsed = parse(patch) as { id: string; name: string; config?: Record<string, unknown> }[]
-    expect(parsed).toHaveLength(1)
+    expect(parsed).toHaveLength(2)
     expect(parsed[0]).toMatchObject({
       id: 'sentry',
       name: '@dsh-sentry/sentry',
       config: { defaultEnv: 'test' },
     })
+    // ui-settings 是 profile 级 Loader 条目（web 设置页），随装配携带、无 config
+    expect(parsed[1]).toMatchObject({ id: 'sentry-ui-settings', name: '@dsh-sentry/ui-settings' })
+    expect(parsed[1]?.config).toBeUndefined()
   })
 
   it('keeps the header minimal: env marker + regen pointer, no inline commentary', () => {

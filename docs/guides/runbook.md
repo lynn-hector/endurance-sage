@@ -6,7 +6,7 @@ dsh-sentry 通过 DSH profile 加载统一的 `@dsh-sentry/sentry` bundle。本�
 
 - **profile**：`~/.dsh/profiles/<name>` 下的独立运行单元，保存插件依赖和 `cordis.patch.yml`。不同 profile 的插件互不可见。
 - **统一 bundle**：`@dsh-sentry/sentry` 负责加载全部 sentry 插件。用户只需安装这一个包，不再逐条安装 evidence、datasource、service 和 tool。
-- **patch 层**：在 bundle 之上覆盖配置。sentry 默认只有一个 `id: sentry` 的装配入口，`defaultEnv` 等配置在这里覆盖。
+- **patch 层**：在 bundle 之上覆盖配置。sentry 默认只有一个 `id: sentry` 的装配入口，`defaultEnv` 在这里覆盖，表示装配环境；本机偏好 `DSH_SENTRY_DEFAULT_ENV` 未设置或失效时，它才作为新 Session 默认环境。
 - **凭据**：`$DSH_HOME/.credentials.yaml` 或进程环境变量保存真实值；插件配置只包含 `*Ref` 引用名。
 - **模型**：沿用 `$DSH_HOME/settings.yaml`，sentry bundle 不引入自己的模型配置。
 

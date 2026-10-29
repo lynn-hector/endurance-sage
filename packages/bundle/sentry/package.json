@@ -44,6 +44,7 @@
     "@dsh-sentry/tool-trace-analyzer": "workspace:*",
     "@dsh-sentry/tool-zadig-inspector": "workspace:*",
     "@dsh-sentry/trace-store": "workspace:*",
+    "@dsh-sentry/ui-settings": "workspace:*",
     "@deepseek-ai/cordis": "^4.0.5",
     "@deepseek-ai/schemastery": "^3.18.1"
   },

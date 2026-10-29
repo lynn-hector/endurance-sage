@@ -23,7 +23,11 @@ TAPD_TOKEN: <token>
 
 往已有文件补键时保持该文件原有形态即可；历史事故：只读顶层键的旧版校验会把嵌套形态下的一切环境误判为缺凭据。
 
-凭据库同时承载**机器本地配置键**。当前只有 `DSH_SENTRY_CODE_BASE`：代码检索腿 backend 组的检出根目录，整体优先级为 `envs.yml` 行内值 > 环境变量 > 凭据库，空值继续回退。行内团队配置可进入装配；环境变量与凭据库只在服务构造期解析，不进入装配，修改后重启宿主生效、无需 regenerate。引导 clone 见 [onboarding.md](onboarding.md) 第 4 步。这类键不是机密，但放这里能让“一台机器只配一个文件”；dsh 宿主只解析被 `*Ref` 引用的键，其余键由 dsh-sentry 读取，互不影响。
+凭据库同时承载**机器本地配置键**，这类键不是机密，放这里能让“一台机器只配一个文件”；dsh 宿主只解析被 `*Ref` 引用的键，其余键由 dsh-sentry 读取，互不影响。
+
+- `DSH_SENTRY_CODE_BASE`：代码检索腿 backend 组的检出根目录，整体优先级为 `envs.yml` 行内值 > 环境变量 > 凭据库，空值继续回退。行内团队配置可进入装配；环境变量与凭据库只在服务构造期解析，不进入装配，修改后重启宿主生效、无需 regenerate。引导 clone 见 [onboarding.md](onboarding.md) 第 4 步。
+- `DSH_SENTRY_DEFAULT_ENV`：新 Session 的默认环境偏好（canonical 环境名或短名），优先级高于装配环境 `defaultEnv`；未设置或失效（矩阵漂移）时使用装配环境。Web 设置页「环境与凭据」通过独立的非机密设置 Remote 展示具体环境名、实际生效值和来源，并可直接编辑/清除本机偏好；`env-binding` 每次解析现读文件，偏好变更后下一个新 Session 生效、无需重启，不改写装配文件，语义详见 [env-switching.md](env-switching.md)。
+- `DSH_SENTRY_CODE_BASE`：代码检索腿的全局本机路径。Web 设置页在「全局配置」卡片展示实际解析出的路径；Zadig OpenAPI token 等所有环境共用的键也在同一卡片展示配置状态（不展示 token 值）。
 
 ## 各数据源 token 获取方式
 

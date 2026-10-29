@@ -14,58 +14,25 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse, stringify } from 'yaml'
 
-export interface EnvLeg {
-  endpoint?: string
-  database?: string
-  /** Prometheus 数据源 uid（仅 prometheus 腿使用） */
-  datasourceUid?: string
-  /** Grafana 内 GreptimeDB-Jaeger 数据源的 uid（仅 grafana 腿使用，uid 随环境漂移） */
-  greptimedbJaegerDatasourceUid?: string
-  /** Grafana 内 Alertmanager 数据源的 uid（仅 grafana 腿派生服务使用，缺省 alertmanager） */
-  alertmanagerDatasourceUid?: string
-  project?: string
-  envName?: string
-  usernameRef?: string
-  passwordRef?: string
-  /** 腿特定 token 引用，语义随腿变化：prometheus 腿=Bearer token；greptimedb 腿=dashboard connect token（解密还原账密，见 docs/guides/credentials.md） */
-  tokenRef?: string
-}
+// 纯词汇与就绪推导位于 ./pure.ts（零 Node 依赖，可被 web 客户端 bundle 内联）；
+// 本文件只保留文件系统与装配渲染相关的宿主侧实现。
+export {
+  ENV_ALIASES,
+  PLATFORM_CREDENTIAL_REFS,
+  TAPD_TOKEN_REF,
+  DEFAULT_ENV_REF,
+  CODE_BASE_REF,
+  aliasesForEnv,
+  legCredentialRefs,
+  legReadiness,
+  matrixCredentialRefs,
+  resolveEnvName,
+  requiredCredentialRefs,
+} from './pure.ts'
+export type { EnvLeg, EnvRow, LegReadiness, Matrix, PlatformCredentialRef } from './pure.ts'
 
-export interface EnvRow {
-  envLabel: string
-  greptimedb: EnvLeg
-  grafana: EnvLeg
-  prometheus: EnvLeg
-  dbx: EnvLeg
-  rocketmq: EnvLeg
-  zadig: EnvLeg
-  db?: { database?: string }
-  codeRepository?: { baseDir?: string }
-}
-
-export interface Matrix {
-  [env: string]: EnvRow
-}
-
-export const ENV_ALIASES: Readonly<Record<string, string>> = {
-  DP0: 'dev-platform-hosted-0',
-  DP1: 'dev-platform-hosted-1',
-  DC0: 'dev-client-hosted-0',
-  TP0: 'tst-platform-hosted-0',
-  TP1: 'tst-platform-hosted-1',
-  TC0: 'tst-client-hosted-0',
-  SC1: 'sit-client-hosted-1',
-  SC2: 'sit-client-hosted-2',
-  PBO: 'pro-br-saas-aws-eks-novo',
-  TPSG0: 'tst-platform-aws-eks-sg-0',
-  PUO: 'pro-use-saas-aws-eks-novo',
-  PZO: 'pro-za-saas-aws-eks-novo',
-  PDO: 'pro-de-saas-aws-eks-novo',
-  PSO: 'pro-sg-saas-aws-eks-novo',
-  TPDE0: 'tst-platform-aws-eks-de-0',
-  TPUS0: 'tst-platform-aws-eks-us-0',
-  TPAU0: 'tst-platform-aws-eks-au-0',
-}
+import { CODE_BASE_REF, TAPD_TOKEN_REF, legReadiness } from './pure.ts'
+import type { EnvRow, LegReadiness, Matrix } from './pure.ts'
 
 const DEFAULT_DB_DATABASE = 'novo_commctl_config'
 
@@ -74,12 +41,6 @@ type Entry = { id: string; name: string; config?: Record<string, unknown> }
 /** Anchors env detection: present in every assembly, always carries `config.env`. */
 const ENV_SWITCHER_ENTRY_ID = 'sentry-tool-env-switcher'
 
-export function resolveEnvName(input: string, matrix: Matrix): string | undefined {
-  if (Object.hasOwn(matrix, input)) return input
-  const canonical = ENV_ALIASES[input.toUpperCase()]
-  return canonical !== undefined && Object.hasOwn(matrix, canonical) ? canonical : undefined
-}
-
 /** Read the shared YAML environment matrix without interpreting credentials. */
 export function readMatrix(path: string): Matrix {
   const parsed = parse(readFileSync(path, 'utf8')) as Matrix | null
@@ -87,33 +48,6 @@ export function readMatrix(path: string): Matrix {
     throw new Error(`环境矩阵不是合法对象: ${path}`)
   }
   return parsed
-}
-
-export function aliasesForEnv(name: string): string[] {
-  return Object.entries(ENV_ALIASES)
-    .filter(([, canonical]) => canonical === name)
-    .map(([alias]) => alias)
-}
-
-/**
- * All credential refs a row declares — a config-shape contract (envs.yml rows
- * must name every ref they wire; greptimedb dual-config lists both sets).
- * Value-aware runtime readiness (missing/empty degrades the leg, never blocks
- * a switch) lives in {@link credentialReadiness}.
- */
-export function requiredCredentialRefs(row: EnvRow): string[] {
-  return [
-    row.greptimedb.usernameRef,
-    row.greptimedb.passwordRef,
-    row.greptimedb.tokenRef,
-    row.grafana.usernameRef,
-    row.grafana.passwordRef,
-    row.dbx.passwordRef,
-    row.rocketmq.usernameRef,
-    row.rocketmq.passwordRef,
-    row.zadig.tokenRef,
-    row.prometheus.tokenRef,
-  ].filter((ref): ref is string => typeof ref === 'string' && ref.length > 0)
 }
 
 /**
@@ -177,23 +111,13 @@ export function credentialValues(storePath: string, env: NodeJS.ProcessEnv = pro
   return values
 }
 
-export interface LegReadiness {
-  leg: 'greptimedb' | 'grafana' | 'prometheus' | 'dbx' | 'rocketmq' | 'zadig'
-  ok: boolean
-  /** greptimedb 腿的认证模式，与渲染接线一致：tokenRef 定义即 token，否则账密 */
-  authMode?: 'token' | 'basic'
-  missingRefs: string[]
-}
-
 /**
- * Per-leg credential readiness. Values absent or empty degrade only that leg
- * (`ok: false` + its `missingRefs`) — never a whole-environment refusal; the
- * switcher warns and the leg's tools fail lazily at call time. Only legs that
- * configure refs are evaluated. greptimedb is either/or: with `tokenRef`
- * defined the leg evaluates token mode only (leftover basic refs are ignored,
- * mirroring renderEntries' connectTokenRef-first wiring). A degraded `grafana`
- * leg is wider than its name: trace / prometheus (form login) / alertmanager
- * tools share the grafana credentials and degrade with it.
+ * Per-leg credential readiness over the local machine's sources (credential
+ * store file + process environment). Pure derivation over an arbitrary value
+ * predicate lives in {@link legReadiness} (`./pure.ts`); this wrapper only
+ * supplies the host-side value view. Values absent or empty degrade only that
+ * leg (`ok: false` + its `missingRefs`) — never a whole-environment refusal;
+ * the switcher warns and the leg's tools fail lazily at call time.
  */
 export function credentialReadiness(
   row: EnvRow,
@@ -201,46 +125,7 @@ export function credentialReadiness(
   env: NodeJS.ProcessEnv = process.env,
 ): LegReadiness[] {
   const values = credentialValues(storePath, env)
-  const evaluate = (
-    leg: LegReadiness['leg'],
-    refs: Array<string | undefined>,
-    authMode?: LegReadiness['authMode'],
-  ): LegReadiness => {
-    const missingRefs = refs
-      .filter((ref): ref is string => ref !== undefined)
-      .filter(ref => !values.has(ref))
-    return {
-      leg,
-      ok: missingRefs.length === 0,
-      ...(authMode !== undefined ? { authMode } : {}),
-      missingRefs,
-    }
-  }
-  const legs: LegReadiness[] = []
-  const greptimedbToken = row.greptimedb.tokenRef !== undefined
-  const greptimedbHasRefs = greptimedbToken
-    || row.greptimedb.usernameRef !== undefined
-    || row.greptimedb.passwordRef !== undefined
-  if (greptimedbHasRefs) {
-    legs.push(evaluate(
-      'greptimedb',
-      greptimedbToken ? [row.greptimedb.tokenRef] : [row.greptimedb.usernameRef, row.greptimedb.passwordRef],
-      greptimedbToken ? 'token' : 'basic',
-    ))
-  }
-  if (row.grafana.usernameRef !== undefined || row.grafana.passwordRef !== undefined) {
-    legs.push(evaluate('grafana', [row.grafana.usernameRef, row.grafana.passwordRef]))
-  }
-  // prometheus 统一走 grafana 表单登录；tokenRef 是单环境 Bearer 逃生口
-  if (row.prometheus.tokenRef !== undefined) {
-    legs.push(evaluate('prometheus', [row.prometheus.tokenRef], 'token'))
-  }
-  if (row.dbx.passwordRef !== undefined) legs.push(evaluate('dbx', [row.dbx.passwordRef]))
-  if (row.rocketmq.usernameRef !== undefined || row.rocketmq.passwordRef !== undefined) {
-    legs.push(evaluate('rocketmq', [row.rocketmq.usernameRef, row.rocketmq.passwordRef]))
-  }
-  if (row.zadig.tokenRef !== undefined) legs.push(evaluate('zadig', [row.zadig.tokenRef]))
-  return legs
+  return legReadiness(row, ref => values.has(ref))
 }
 
 /**
@@ -282,13 +167,16 @@ function expandConfiguredPath(value: unknown): string | undefined {
  * 2–3) never enter the repository. clone-repos and the use-env readiness
  * warning also use the full chain.
  */
-export function resolveCodeBaseDir(row?: Pick<EnvRow, 'codeRepository'>): string | undefined {
+export function resolveCodeBaseDir(
+  row?: Pick<EnvRow, 'codeRepository'>,
+  storePath: string = credentialStorePath(),
+): string | undefined {
   const fromRow = expandConfiguredPath(row?.codeRepository?.baseDir)
   if (fromRow !== undefined) return fromRow
-  const fromEnv = expandConfiguredPath(process.env.DSH_SENTRY_CODE_BASE)
+  const fromEnv = expandConfiguredPath(process.env[CODE_BASE_REF])
   if (fromEnv !== undefined) return fromEnv
   // 低优先级来源惰性读取：行内值或环境变量已生效时，坏凭据库不应产生无关告警。
-  const fromStore = readCredentialStore(credentialStorePath())['DSH_SENTRY_CODE_BASE']
+  const fromStore = readCredentialStore(storePath)[CODE_BASE_REF]
   return expandConfiguredPath(fromStore)
 }
 
@@ -335,7 +223,7 @@ export function renderEntries(row: EnvRow): Entry[] {
       name: '@dsh-sentry/service-tapd',
       config: {
         workspaceId: '63822673',
-        tokenRef: 'TAPD_TOKEN',
+        tokenRef: TAPD_TOKEN_REF,
       },
     },
     {
@@ -454,6 +342,9 @@ export function renderProviderEntries(row: EnvRow): Entry[] {
 /** Regeneration pointer shared by both assembly headers: don't hand-edit, change the source. */
 const REGEN_NOTE = '# 修改入口：apps/agent/envs.yml；重新生成：pnpm --filter @dsh-sentry/agent run regenerate'
 
+/** UI 插件（web 设置页）是 profile 级 Loader 条目：dsh-client-modules 只扫描 Loader 条目，库式 ctx.plugin 不生效。 */
+const UI_SETTINGS_ENTRY: Entry = { id: 'sentry-ui-settings', name: '@dsh-sentry/ui-settings' }
+
 export function renderPatch(row: EnvRow): string {
   const header = [
     `# dsh-sentry 组装（env: ${row.envLabel}）——由 apps/agent/envs.yml 生成，勿手改。`,
@@ -463,7 +354,7 @@ export function renderPatch(row: EnvRow): string {
     id: 'sentry',
     name: '@dsh-sentry/sentry',
     config: { defaultEnv: row.envLabel },
-  }]
+  }, UI_SETTINGS_ENTRY]
   return `${header}\n\n${stringifyEntries(entries)}\n`
 }
 
@@ -476,7 +367,7 @@ export function renderIncludePatch(row: EnvRow): string {
     id: 'sentry',
     name: '@dsh-sentry/sentry',
     config: { defaultEnv: row.envLabel },
-  }]
+  }, UI_SETTINGS_ENTRY]
   return `${header}\n${stringifyEntries(entries, '  ')}\n`
 }
 

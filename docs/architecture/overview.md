@@ -98,9 +98,9 @@ flowchart LR
         switch --> precheck --> binding
     end
 
-    default["use-env CLI<br/>只生成启动装配 / 默认环境"]
+    default["use-env CLI<br/>只生成装配环境"]
     envyml --> default
-    default -.重写启动锚点，不改在线 Session.-> gen
+    default -.重写装配锚点，不改在线 Session.-> gen
 ```
 
 要点：
@@ -108,7 +108,7 @@ flowchart LR
 - **envs.yml 是环境矩阵唯一权威**：每行环境 = 数据源 endpoint + 凭据键名（`*Ref`，值在本机 `~/.dsh/.credentials.yaml`）。环境清单与凭据键名以该文件为准，本文不复制。
 - **生成物勿手改**：两份 cordis yml 头部都有再生成指引，修改入口只有 envs.yml。
 - **接入两模式自动判定**：目标 profile 路径不存在 → 符号链接（服务器 / 本地独立 profile）；已是真实目录 → 引入模式（本地开发机，原 patch 自动备份为 `cordis.patch.yml.pre-sentry-core`）。
-- **热切换原理**：`sentry_env_switch` 只更新调用 Session 的持久化绑定，Provider Pool 按绑定路由后续查询；不写共享装配文件、不依赖 watcher。`use-env` CLI 只设置新 Session 使用的启动默认环境，详见 [guides/env-switching.md](../guides/env-switching.md)。
+- **热切换原理**：`sentry_env_switch` 只更新当前 Session 的持久化绑定，Provider Pool 按绑定路由后续查询；不写共享装配文件、不依赖 watcher。`use-env` CLI 只生成装配环境；`DSH_SENTRY_DEFAULT_ENV` 未设置或失效时，装配环境才作为新 Session 默认环境，详见 [guides/env-switching.md](../guides/env-switching.md)。
 - **宿主侧机制**（bundle 基座 + patch 叠加的加载时序、注册路线、热重载边界、官方文档参照）：见 [dsh-loading.md](dsh-loading.md)。
 
 ## 4. 代码检索闭环

@@ -47,13 +47,27 @@ for (const dir of packageDirs) {
     manifest.exports['./package.json'] = './package.json'
     manifest.exports['./locale/*.json'] = './locale/*.json'
   }
+  // env-matrix 的纯词汇模块（零 Node 依赖）：web 客户端 bundle 需要按子路径内联。
+  if (manifest.name === '@dsh-sentry/env-matrix') {
+    manifest.exports['./pure'] = {
+      types: './dist/pure.d.ts',
+      default: './dist/pure.js',
+    }
+  }
+  // ui-settings 是双面包包：浏览器半由 DSH client module system 经 ./client 提供。
+  if (manifest.name === '@dsh-sentry/ui-settings') {
+    manifest.exports['./client'] = './dist/client.js'
+  }
   manifest.files = ['dist']
   if (manifest.name === '@dsh-sentry/env-matrix') manifest.files.push('envs.yml')
   if (manifest.name === '@dsh-sentry/sentry-skills') manifest.files.push('skills')
   if (manifest.name === '@dsh-sentry/sentry') manifest.files.push('cordis.patch.yml', 'locale/*.json', 'icon.svg')
   manifest.scripts = {
     ...manifest.scripts,
-    build: 'node ../../../scripts/build-package.mjs',
+  }
+  // 自带构建脚本的包（如 ui-settings：矩阵嵌入 + esbuild client bundle）保持原样。
+  if (manifest.scripts.build === undefined) {
+    manifest.scripts.build = 'node ../../../scripts/build-package.mjs'
   }
   writeIfChanged(path, `${JSON.stringify(manifest, null, 2)}\n`)
 }
@@ -80,7 +94,9 @@ const matrix = readFileSync(matrixSource, 'utf8')
 if (!new RegExp(`^${defaultEnv}:`, 'm').test(matrix)) {
   throw new Error(`Bundle default environment ${defaultEnv} is missing from apps/agent/envs.yml`)
 }
-const bundlePatch = `# 由 pnpm run sync:release 生成，勿手改。\n- insert:\n    - id: sentry\n      name: '@dsh-sentry/sentry'\n      config:\n        defaultEnv: ${defaultEnv}\n`
+// sentry-ui-settings 是 profile 级 Loader 条目（client 半由 dsh-client-modules
+// 扫描 Loader 条目提供），不进 sentry 聚合的库式 ctx.plugin 列表。
+const bundlePatch = `# 由 pnpm run sync:release 生成，勿手改。\n- insert:\n    - id: sentry\n      name: '@dsh-sentry/sentry'\n      config:\n        defaultEnv: ${defaultEnv}\n    - id: sentry-ui-settings\n      name: '@dsh-sentry/ui-settings'\n`
 writeIfChanged(join(rootDir, 'packages/bundle/sentry/cordis.patch.yml'), bundlePatch)
 
 if (check) process.stdout.write(`release metadata OK: ${packageDirs.length} packages at ${version}\n`)

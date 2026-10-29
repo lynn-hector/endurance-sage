@@ -2,12 +2,13 @@
 
 dsh-sentry 的环境路由是 **Session 级绑定**：对话内切换只影响当前会话，其他会话保持原环境；切换不写装配文件、不依赖 patch watcher，也不中断会话历史。绑定会持久化，宿主重启并恢复原会话后继续生效。
 
-## 两类环境状态
+## 环境相关的三个概念
 
-- **启动 / 默认环境**：新 Session，以及旧 Session 没有可用绑定时使用的默认值。由统一 `sentry` bundle 的 `defaultEnv` 配置决定。
+- **装配环境**：`cordis.patch.yml` 里 `sentry.config.defaultEnv` 指向的环境。它用于从环境矩阵生成插件装配，也在本机偏好未设置或失效时作为新 Session 的默认环境。
+- **本机默认环境偏好**：凭据库或进程环境中的 `DSH_SENTRY_DEFAULT_ENV`。它优先于装配环境，决定下一个新 Session 实际使用的默认环境。
 - **Session 当前环境**：某次会话后续证据查询实际使用的环境。通过对话内 `sentry_env_switch` 修改。
 
-两者不要混淆：修改默认环境不会重绑在线 Session，`sentry_env_switch` 也不会修改默认环境或环境矩阵。
+三者不要混淆：修改默认环境不会重绑在线 Session，`sentry_env_switch` 也不会修改默认环境或环境矩阵；修改装配环境不会覆盖有效的 `DSH_SENTRY_DEFAULT_ENV`。
 
 ## 配置与状态归属
 
@@ -36,7 +37,13 @@ dsh-sentry 的环境路由是 **Session 级绑定**：对话内切换只影响�
 - `degradedLegs`：目标环境缺凭据的腿，缺值只降级对应腿；
 - `persisted`：绑定是否已确认持久化。若为 `false`，本进程内已经生效，但重启恢复可能失败，应根据 `persistenceError` 排查。
 
-## 修改启动 / 默认环境
+## 修改新 Session 默认环境与装配环境
+
+新 Session 的默认环境以机器本地偏好键 `DSH_SENTRY_DEFAULT_ENV`（本机凭据库或进程环境）为准；该键未设置或失效时，使用装配环境 `defaultEnv`。修改默认环境只影响新 Session，不会重绑在线 Session。
+
+### DSH 设置页
+
+Web 设置面板的「环境与凭据」页会展示**下一个新 Session 实际生效的默认环境**、其来源（本机偏好 `DSH_SENTRY_DEFAULT_ENV` 或装配环境 `defaultEnv`）以及装配环境值，并可直接编辑/清除本机偏好 `DSH_SENTRY_DEFAULT_ENV`。页面不修改装配环境或环境矩阵。已有 Session 的环境仍通过 `sentry_env_switch` 切换。
 
 ### 本地工作区
 
@@ -46,16 +53,16 @@ dsh-sentry 的环境路由是 **Session 级绑定**：对话内切换只影响�
 # 查看环境矩阵与各腿凭据就绪度
 pnpm --filter @dsh-sentry/agent run use-env --list
 
-# 为 sentry profile 生成 TP0 启动装配，不改在线 Session
+# 为 sentry profile 生成 TP0 装配环境，不改在线 Session
 pnpm --filter @dsh-sentry/agent run use-env TP0 -- --profile sentry
 
-# 查看 profile 装配声明的默认环境，不是 Session 实时绑定
+# 查看 profile 装配声明的装配环境，不是 Session 实时绑定
 pnpm --filter @dsh-sentry/agent run use-env --current --profile sentry
 
 # 预览装配，不写文件
 pnpm --filter @dsh-sentry/agent run use-env TP0 -- --dry-run
 
-# 重新生成仓库内装配并恢复 DP0
+# 重新生成仓库内装配并恢复 DP0 装配环境
 pnpm --filter @dsh-sentry/agent run regenerate
 ```
 
@@ -71,7 +78,14 @@ npm 用户不需要仓库 CLI。可以在对应 profile 的 `cordis.patch.yml` �
     defaultEnv: tst-platform-hosted-0
 ```
 
-保存后重启宿主。该修改只影响新 Session 的默认环境，已有 Session 仍使用自己的持久绑定。
+保存后重启宿主。该修改调整的是**装配环境**：它决定插件装配按哪个环境行生成，并在 `DSH_SENTRY_DEFAULT_ENV` 未设置或失效时作为新 Session 默认环境；已有 Session 仍使用自己的持久绑定。
+
+npm 用户调整默认环境时有两种入口：
+
+- **调整本机默认环境**：在 `$DSH_HOME/.credentials.yaml` 的 `refs:` 下设置 `DSH_SENTRY_DEFAULT_ENV`，优先级更高，下一个新 Session 生效。
+- **调整 profile / 团队装配环境**：修改上述 `defaultEnv` 并重启宿主，用于改变装配锚点和无本机偏好时的默认值。
+
+设置页展示最终生效值及其来源，并可编辑本机偏好；装配环境仍按上述 profile 配置修改。
 
 ## 新增或修改环境
 

@@ -12,7 +12,7 @@ import {
 } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import type { EnvRow, Matrix } from '@dsh-sentry/env-matrix'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ENV_BINDING_RECORD_TYPE,
   EnvBindingError,
@@ -357,5 +357,64 @@ describe('SessionEnvBindingStore', () => {
       expect.objectContaining<Partial<EnvBindingError>>({ code: 'DEFAULT_ENV_INVALID' }),
     )
     expect(bindingRecords(legacyEvents)).toHaveLength(0)
+  })
+
+  it('exposes the stored preference, effective default, and assembly fallback', async () => {
+    writeFileSync(credentialStorePath, 'DSH_SENTRY_DEFAULT_ENV: TP0\n')
+    const ctx = await createRuntime()
+
+    expect(ctx.envBinding.defaultEnv()).toEqual({
+      preference: 'tst-platform-hosted-0',
+      effectiveEnv: 'tst-platform-hosted-0',
+      assemblyEnv: 'dev-platform-hosted-0',
+    })
+  })
+
+  it('exposes the effective machine-global code base dir from the configured store', async () => {
+    vi.stubEnv('DSH_SENTRY_CODE_BASE', '')
+    writeFileSync(credentialStorePath, 'DSH_SENTRY_CODE_BASE: /store/novoone-backend\n')
+    const ctx = await createRuntime()
+
+    expect(ctx.envBinding.globalConfig()).toEqual({ codeBaseDir: '/store/novoone-backend' })
+    vi.unstubAllEnvs()
+  })
+
+  it('prefers the DSH_SENTRY_DEFAULT_ENV store key over the assembly default', async () => {
+    writeFileSync(credentialStorePath, 'DSH_SENTRY_DEFAULT_ENV: TP0\n')
+    const ctx = await createRuntime()
+    const current = session(ctx, 'S-preferred-default')
+
+    // 别名与 canonical 名都可解析；偏好对已绑定 Session 不重绑
+    await expect(ctx.envBinding.initialize(current)).resolves.toMatchObject({
+      env: 'tst-platform-hosted-0',
+      source: 'default',
+    })
+  })
+
+  it('applies a saved default-env preference to the next new Session without restart', async () => {
+    const ctx = await createRuntime()
+    const first = session(ctx, 'S-default-before')
+    await ctx.envBinding.initialize(first)
+    expect((await ctx.envBinding.current(first)).env).toBe('dev-platform-hosted-0')
+
+    // Web 设置页经 remote.credentials.set 落盘后，同一宿主进程内的下一个新 Session 生效
+    writeFileSync(credentialStorePath, 'DSH_SENTRY_DEFAULT_ENV: tst-platform-hosted-0\n')
+    const second = session(ctx, 'S-default-after')
+    await expect(ctx.envBinding.initialize(second)).resolves.toMatchObject({
+      env: 'tst-platform-hosted-0',
+      source: 'default',
+    })
+    expect((await ctx.envBinding.current(first)).env).toBe('dev-platform-hosted-0')
+  })
+
+  it('degrades to the assembly default when the stored preference no longer resolves', async () => {
+    writeFileSync(credentialStorePath, 'DSH_SENTRY_DEFAULT_ENV: env-removed-from-matrix\n')
+    const ctx = await createRuntime()
+    const current = session(ctx, 'S-stale-preference')
+
+    await expect(ctx.envBinding.initialize(current)).resolves.toMatchObject({
+      env: 'dev-platform-hosted-0',
+      source: 'default',
+    })
   })
 })
