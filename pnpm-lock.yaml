@@ -322,6 +322,9 @@ importers:
       '@dsh-sentry/guard-git':
         specifier: workspace:*
         version: link:../../guard/git-guard
+      '@dsh-sentry/kubernetes-store':
+        specifier: workspace:*
+        version: link:../../core/kubernetes-store
       '@dsh-sentry/log-store':
         specifier: workspace:*
         version: link:../../core/log-store
@@ -363,7 +366,7 @@ importers:
         version: link:../../services/rocketmq
       '@dsh-sentry/service-tapd':
         specifier: workspace:*
-        version: link:../../services/service-tapd
+        version: link:../../services/tapd
       '@dsh-sentry/service-trace':
         specifier: workspace:*
         version: link:../../services/trace
@@ -842,14 +845,14 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
 
-  packages/services/service-tapd:
+  packages/services/tapd:
     dependencies:
       '@deepseek-ai/cordis':
         specifier: ^4.0.5
         version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
-        version: 3.18.1
+        version: 3.18.5
       '@dsh-sentry/datasource':
         specifier: workspace:*
         version: link:../../core/datasource
@@ -1310,7 +1313,7 @@ importers:
         version: link:../../core/evidence
       '@dsh-sentry/service-tapd':
         specifier: workspace:*
-        version: link:../../services/service-tapd
+        version: link:../../services/tapd
     devDependencies:
       typescript:
         specifier: ^5.9.0

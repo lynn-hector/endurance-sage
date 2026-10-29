@@ -34,7 +34,7 @@ packages/<group>/<package>/
 |---|---|---|
 | tool 包目录与包名 | `tool-<domain>` / `@dsh-sentry/tool-<domain>` | `tool-metrics-inspector` |
 | 环境 Provider 包 | 优先 `<backend>` / `@dsh-sentry/service-<backend>` | `services/prometheus` → `service-prometheus` |
-| 共享命名 service | `service-<domain>` / `@dsh-sentry/service-<domain>` | `service-tapd` |
+| 共享命名 service | `<domain>` / `@dsh-sentry/service-<domain>` | `services/tapd` → `service-tapd` |
 | Definition 包 | `<capability>-store` / `@dsh-sentry/<capability>-store` | `metrics-store` |
 | guard 包 | `guard-<domain>` / `@dsh-sentry/guard-<domain>` | `git-guard` → `guard-git` |
 | model-facing tool | `sentry_<verb>_<noun>`，snake_case | `sentry_query_metrics` |

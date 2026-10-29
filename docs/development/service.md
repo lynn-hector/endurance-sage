@@ -175,7 +175,7 @@ Tool ─────────────→ Definition ←──────
 
 以 TAPD 形态为例：
 
-1. 在 `packages/services/service-<domain>/` 实现 `Service`。
+1. 在 `packages/services/<domain>/` 实现 `Service`。
 2. `super(ctx, '<slot>')` 注册插槽。
 3. 声明实际需要的 `static inject`，例如 `credentials`。
 4. 在 `renderEntries()` 中注册 service，再注册消费它的 tool。
