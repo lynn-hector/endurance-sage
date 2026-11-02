@@ -290,6 +290,18 @@ importers:
         specifier: ^0.77.0
         version: 0.77.0(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/schemastery@3.18.5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
+  apps/superagent-profile:
+    dependencies:
+      '@dsh-sentry/sentry':
+        specifier: workspace:*
+        version: link:../../packages/bundle/sentry
+      dsh-context:
+        specifier: ^0.77.0
+        version: 0.77.0(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/schemastery@3.18.5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      dsh-superagent:
+        specifier: link:../../../endurance-sage-nexus
+        version: link:../../../endurance-sage-nexus
+
   packages/bundle/sentry:
     dependencies:
       '@deepseek-ai/cordis':

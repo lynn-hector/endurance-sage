@@ -1,0 +1,31 @@
+# endurance-sage 排障 superagent 装配 —— 手工维护，不走 apps/agent/envs.yml 生成管线。
+# 组合：dsh-superagent（协作编排，飞书 Source 接管入口）+ @dsh-sentry/sentry（证据工具，worker Session 使用）。
+# 运行前提：~/.dsh/.credentials.yaml 已含各环境凭据键；ZAI_CODING_CN_API_KEY 已设置；
+# 飞书 bot 的 lark-cli 在首次启动后于面板 Sources 设置里配置。
+
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3083          # 避开现有 apps/profile（直连排障）的默认端口
+- id: dsh-superagent
+  config:
+    stateDir: /Users/yangfm/.dsh/state/superagent
+- id: dsh-superagent-github
+  disabled: true        # 排障场景先走飞书入口；GitHub Source 后续需要时再开
+- id: dsh-superagent-feishu
+  disabled: false       # 启用飞书 Source；bot 的 lark-cli 在 Sources 设置里配置
+- id: sentry
+  name: '@dsh-sentry/sentry'
+  config:
+    defaultEnv: tst-platform-hosted-0
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      zai-coding-cn:
+        apiKeyEnv: ZAI_CODING_CN_API_KEY
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: zai-coding-cn
+    model: glm-5.3

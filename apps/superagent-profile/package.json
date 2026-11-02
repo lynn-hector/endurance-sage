@@ -1,0 +1,23 @@
+{
+  "name": "@dsh-sentry/superagent-profile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "排障 superagent 装配：dsh-superagent 接管飞书入口并编排工单，worker Session 使用 sentry 证据工具完成排查。手工维护，不走 apps/agent/envs.yml 生成管线。",
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dsh-context",
+        "@dsh-sentry/sentry",
+        "dsh-superagent"
+      ]
+    }
+  },
+  "dependencies": {
+    "@dsh-sentry/sentry": "workspace:*",
+    "dsh-context": "^0.77.0",
+    "dsh-superagent": "link:../../../endurance-sage-nexus"
+  }
+}
