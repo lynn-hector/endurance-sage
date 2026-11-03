@@ -6,7 +6,7 @@
 - id: webserver
   config:
     host: 127.0.0.1
-    port: 3083          # 避开现有 apps/profile（直连排障）的默认端口
+    port: 3082          # 沿用原有 superagent profile 的端口习惯；直连 sentry 在 3090 互不影响
 - id: dsh-superagent
   config:
     stateDir: /Users/yangfm/.dsh/state/superagent
